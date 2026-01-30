@@ -126,7 +126,39 @@ async def help_command(message: Message):
         "<b>Sphere</b> — умные знакомства на ивентах\n\n"
         "📱 Сканируй QR → получай матчи → общайся\n\n"
         "/start — начать\n"
-        "/menu — меню"
+        "/menu — меню\n"
+        "/reset — сбросить профиль (тест)"
+    )
+
+
+@router.message(Command("reset"))
+async def reset_command(message: Message, state: FSMContext):
+    """Reset user profile for testing"""
+    from config.settings import settings
+
+    user_id = str(message.from_user.id)
+
+    # Check if admin or debug mode
+    is_admin = message.from_user.id in settings.admin_telegram_ids
+    is_debug = settings.debug
+
+    if not is_admin and not is_debug:
+        await message.answer("⛔ Команда доступна только админам")
+        return
+
+    # Reset user onboarding status
+    await user_service.update_user(
+        MessagePlatform.TELEGRAM,
+        user_id,
+        onboarding_completed=False
+    )
+
+    # Clear FSM state
+    await state.clear()
+
+    await message.answer(
+        "🔄 Профиль сброшен!\n\n"
+        "Напиши /start чтобы начать заново."
     )
 
 
