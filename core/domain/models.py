@@ -1,0 +1,197 @@
+"""
+Domain models - the core of business logic.
+These models are transport-agnostic (work with Telegram, WhatsApp, API, etc.)
+"""
+
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from uuid import UUID
+from enum import Enum
+
+
+# === ENUMS ===
+
+class MatchType(str, Enum):
+    FRIENDSHIP = "friendship"
+    PROFESSIONAL = "professional"
+    ROMANTIC = "romantic"
+    CREATIVE = "creative"
+
+
+class MatchStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+
+
+class MessagePlatform(str, Enum):
+    """Platform abstraction for future multi-messenger support"""
+    TELEGRAM = "telegram"
+    WHATSAPP = "whatsapp"
+    WEB = "web"
+
+
+# === USER ===
+
+class UserBase(BaseModel):
+    """Base user data - platform agnostic"""
+    display_name: Optional[str] = None
+    city_born: Optional[str] = None
+    city_current: Optional[str] = None
+    interests: List[str] = Field(default_factory=list)
+    goals: List[str] = Field(default_factory=list)
+    bio: Optional[str] = None
+
+
+class UserCreate(UserBase):
+    """Data for creating a new user"""
+    platform: MessagePlatform
+    platform_user_id: str  # telegram_id, whatsapp_id, etc.
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+
+
+class User(UserBase):
+    """Full user model"""
+    id: UUID
+    platform: MessagePlatform
+    platform_user_id: str
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    photo_url: Optional[str] = None
+    voice_intro_url: Optional[str] = None
+    social_links: Dict[str, str] = Field(default_factory=dict)
+    ai_summary: Optional[str] = None
+    onboarding_completed: bool = False
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    """Data for updating user"""
+    display_name: Optional[str] = None
+    city_born: Optional[str] = None
+    city_current: Optional[str] = None
+    interests: Optional[List[str]] = None
+    goals: Optional[List[str]] = None
+    bio: Optional[str] = None
+    photo_url: Optional[str] = None
+    voice_intro_url: Optional[str] = None
+    social_links: Optional[Dict[str, str]] = None
+    ai_summary: Optional[str] = None
+    onboarding_completed: Optional[bool] = None
+
+
+# === EVENT ===
+
+class EventCreate(BaseModel):
+    """Data for creating an event"""
+    name: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    event_date: Optional[datetime] = None
+    organizer_platform: MessagePlatform
+    organizer_platform_id: str
+    settings: Dict[str, Any] = Field(default_factory=lambda: {
+        "auto_match": True,
+        "match_threshold": 0.6
+    })
+
+
+class Event(BaseModel):
+    """Full event model"""
+    id: UUID
+    code: str
+    name: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    event_date: Optional[datetime] = None
+    organizer_id: Optional[UUID] = None
+    image_url: Optional[str] = None
+    is_active: bool = True
+    settings: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# === MATCH ===
+
+class MatchResult(BaseModel):
+    """AI analysis result for a potential match"""
+    compatibility_score: float = Field(ge=0.0, le=1.0)
+    match_type: MatchType
+    explanation: str
+    icebreaker: str
+
+
+class MatchCreate(BaseModel):
+    """Data for creating a match"""
+    event_id: Optional[UUID] = None
+    user_a_id: UUID
+    user_b_id: UUID
+    compatibility_score: float
+    match_type: MatchType
+    ai_explanation: str
+    icebreaker: str
+
+
+class Match(BaseModel):
+    """Full match model"""
+    id: UUID
+    event_id: Optional[UUID] = None
+    user_a_id: UUID
+    user_b_id: UUID
+    compatibility_score: float
+    match_type: MatchType
+    ai_explanation: str
+    icebreaker: str
+    status: MatchStatus = MatchStatus.PENDING
+    user_a_notified: bool = False
+    user_b_notified: bool = False
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# === MESSAGE ===
+
+class MessageCreate(BaseModel):
+    """Data for creating a message"""
+    match_id: UUID
+    sender_id: UUID
+    content: str
+
+
+class Message(BaseModel):
+    """Full message model"""
+    id: UUID
+    match_id: UUID
+    sender_id: UUID
+    content: str
+    is_read: bool = False
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# === ONBOARDING STATE ===
+
+class OnboardingData(BaseModel):
+    """Temporary data during onboarding process"""
+    display_name: Optional[str] = None
+    city_born: Optional[str] = None
+    city_current: Optional[str] = None
+    selected_interests: List[str] = Field(default_factory=list)
+    selected_goals: List[str] = Field(default_factory=list)
+    bio: Optional[str] = None
+    pending_event_code: Optional[str] = None  # Event to join after onboarding
