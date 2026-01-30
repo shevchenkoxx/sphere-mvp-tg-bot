@@ -3,14 +3,26 @@
 ## Project Overview
 Telegram bot for meaningful connections at events. Users scan QR code → onboard via AI conversation → get AI-matched with other participants.
 
-## Key Concept: Conversational Onboarding
+## Key Concept: Conversational Onboarding (v2)
 Instead of scripted questions with buttons, we use LLM-driven conversation:
 - **Multilingual**: Auto-detects user language, responds in same language
 - **Natural flow**: LLM asks questions one at a time, acknowledges answers
 - **Data extraction**: After conversation, extract structured data with separate prompt
 - **Marker-based**: `PROFILE_COMPLETE` marker signals successful onboarding
+- **Modular**: Easy to swap LLM providers (OpenAI → Anthropic, local models)
 
-See `core/prompts/templates.py` for the `ONBOARDING_SYSTEM_PROMPT`.
+### Switching Onboarding Versions
+In `adapters/telegram/handlers/__init__.py`:
+```python
+ONBOARDING_VERSION = "v2"  # "v1" = buttons, "v2" = LLM conversation
+```
+
+### Key Components
+- `core/interfaces/conversation.py` - Abstract interfaces
+- `core/services/conversation_service.py` - Orchestration logic
+- `infrastructure/ai/conversation_ai.py` - OpenAI implementation
+- `adapters/telegram/handlers/onboarding_v2.py` - Telegram handler
+- `core/prompts/templates.py` - Prompts (ONBOARDING_SYSTEM_PROMPT)
 
 ## Architecture
 

@@ -2,6 +2,23 @@
 
 All notable changes to Sphere Bot will be documented in this file.
 
+## [0.3.0] - 2025-01-30
+
+### Added
+- **Conversational Onboarding v2** - LLM-driven natural conversation
+- Multilingual support (auto-detects user language)
+- `core/interfaces/conversation.py` - Abstract conversation interfaces
+- `core/services/conversation_service.py` - Conversation orchestration
+- `infrastructure/ai/conversation_ai.py` - OpenAI conversation implementation
+- `adapters/telegram/handlers/onboarding_v2.py` - New conversational handler
+- Profile extraction from conversation with separate LLM call
+- `ONBOARDING_VERSION` config to switch between v1/v2
+
+### Technical
+- Modular AI provider design (easy to swap OpenAI → Anthropic)
+- Serializable conversation state for FSM storage
+- Factory pattern for conversation AI instantiation
+
 ## [0.2.0] - 2025-01-30
 
 ### Added

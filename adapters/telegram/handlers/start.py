@@ -17,6 +17,7 @@ from adapters.telegram.keyboards import (
     get_back_to_menu_keyboard,
 )
 from adapters.telegram.states import OnboardingStates
+from adapters.telegram.handlers import ONBOARDING_VERSION
 
 router = Router()
 
@@ -41,14 +42,23 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
 
         if event:
             if not user.onboarding_completed:
-                # Save event code, start quick onboarding
-                await state.update_data(pending_event=event_code)
-                await message.answer(
-                    f"👋 Привет! Ты на <b>{event.name}</b>\n\n"
-                    "Давай быстро познакомимся — займёт 1 минуту!\n\n"
-                    "Как тебя зовут?"
-                )
-                await state.set_state(OnboardingStates.waiting_name)
+                # Start onboarding with event context
+                if ONBOARDING_VERSION == "v2":
+                    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+                    await start_conversational_onboarding(
+                        message, state,
+                        event_name=event.name,
+                        event_code=event_code
+                    )
+                else:
+                    # Legacy v1 flow
+                    await state.update_data(pending_event=event_code)
+                    await message.answer(
+                        f"👋 Привет! Ты на <b>{event.name}</b>\n\n"
+                        "Давай быстро познакомимся — займёт 1 минуту!\n\n"
+                        "Как тебя зовут?"
+                    )
+                    await state.set_state(OnboardingStates.waiting_name)
             else:
                 await message.answer(
                     f"🎉 <b>{event.name}</b>\n\n"
@@ -80,11 +90,17 @@ async def start_command(message: Message, state: FSMContext):
             reply_markup=get_main_menu_keyboard()
         )
     else:
-        await message.answer(
-            "👋 Привет! Я помогу найти интересных людей.\n\n"
-            "Займёт 1 минуту. Как тебя зовут?"
-        )
-        await state.set_state(OnboardingStates.waiting_name)
+        # Start onboarding
+        if ONBOARDING_VERSION == "v2":
+            from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+            await start_conversational_onboarding(message, state)
+        else:
+            # Legacy v1 flow
+            await message.answer(
+                "👋 Привет! Я помогу найти интересных людей.\n\n"
+                "Займёт 1 минуту. Как тебя зовут?"
+            )
+            await state.set_state(OnboardingStates.waiting_name)
 
 
 @router.message(Command("menu"))
