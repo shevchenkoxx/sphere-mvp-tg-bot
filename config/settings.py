@@ -2,9 +2,14 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Only load .env file if it exists (for local development)
+# On Railway, env vars are set directly
+env_file = Path(__file__).parent.parent / ".env"
+if env_file.exists():
+    from dotenv import load_dotenv
+    load_dotenv(env_file)
 
 
 class Settings(BaseSettings):
