@@ -4,20 +4,21 @@ Single point of database connection.
 """
 
 from supabase import create_client, Client
-from config.settings import settings
 import asyncio
 import sys
+import os
 from functools import wraps
 
-# Get Supabase credentials (support both KEY and SERVICE_KEY)
-_supabase_url = settings.supabase_url
-_supabase_key = settings.supabase_service_key or settings.supabase_key
+# Get Supabase credentials directly from env (bypass pydantic for reliability)
+_supabase_url = os.environ.get("SUPABASE_URL", "")
+_supabase_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY", "")
 
 if not _supabase_url or not _supabase_key:
     print("❌ ERROR: Supabase credentials not configured!")
     print("   Required env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY (or SUPABASE_KEY)")
     print(f"   SUPABASE_URL: {'set' if _supabase_url else 'MISSING'}")
     print(f"   SUPABASE_KEY: {'set' if _supabase_key else 'MISSING'}")
+    print(f"   All env vars: {list(os.environ.keys())}")
     sys.exit(1)
 
 # Initialize Supabase client
