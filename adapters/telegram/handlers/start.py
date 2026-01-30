@@ -1,5 +1,6 @@
 """
 Start handler - /start command and main menu.
+Fast, friendly, conversational.
 """
 
 from aiogram import Router, F
@@ -39,39 +40,31 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         event = await event_service.get_event_by_code(event_code)
 
         if event:
-            # Check if onboarding completed
             if not user.onboarding_completed:
-                # Save event code for joining after onboarding
+                # Save event code, start quick onboarding
                 await state.update_data(pending_event=event_code)
                 await message.answer(
-                    f"Привет! Ты хочешь присоединиться к <b>{event.name}</b>.\n\n"
-                    "Для этого давай быстро познакомимся — мне нужно узнать о тебе немного больше, "
-                    "чтобы найти тебе интересные знакомства!\n\n"
+                    f"👋 Привет! Ты на <b>{event.name}</b>\n\n"
+                    "Давай быстро познакомимся — займёт 1 минуту!\n\n"
                     "Как тебя зовут?"
                 )
                 await state.set_state(OnboardingStates.waiting_name)
             else:
-                # Show event info and join button
                 await message.answer(
-                    f"<b>{event.name}</b>\n\n"
-                    f"{event.location or 'Локация не указана'}\n"
-                    f"{event.description or ''}\n\n"
-                    "Хочешь присоединиться?",
+                    f"🎉 <b>{event.name}</b>\n\n"
+                    f"📍 {event.location or ''}\n\n"
+                    "Присоединяйся!",
                     reply_markup=get_join_event_keyboard(event_code)
                 )
         else:
-            await message.answer(
-                "К сожалению, ивент не найден или уже завершился.\n\n"
-                "Используй /menu для просмотра доступных функций."
-            )
+            await message.answer("Упс, ивент не найден 😕")
     else:
-        # Regular /start
         await start_command(message, state)
 
 
 @router.message(CommandStart())
 async def start_command(message: Message, state: FSMContext):
-    """Handle regular /start"""
+    """Handle regular /start - quick and friendly"""
     user = await user_service.get_or_create_user(
         platform=MessagePlatform.TELEGRAM,
         platform_user_id=str(message.from_user.id),
@@ -80,18 +73,16 @@ async def start_command(message: Message, state: FSMContext):
     )
 
     if user.onboarding_completed:
-        name = user.display_name or message.from_user.first_name
+        name = user.display_name or message.from_user.first_name or "друг"
         await message.answer(
-            f"С возвращением, <b>{name}</b>!\n\n"
-            "Выбери, что хочешь сделать:",
+            f"👋 {name}!\n\n"
+            "Что делаем?",
             reply_markup=get_main_menu_keyboard()
         )
     else:
         await message.answer(
-            "Привет! Я <b>Sphere</b> — помогу тебе найти интересных людей!\n\n"
-            "Чтобы начать, мне нужно узнать о тебе немного больше. "
-            "Это займёт пару минут.\n\n"
-            "Как тебя зовут?"
+            "👋 Привет! Я помогу найти интересных людей.\n\n"
+            "Займёт 1 минуту. Как тебя зовут?"
         )
         await state.set_state(OnboardingStates.waiting_name)
 
@@ -99,27 +90,17 @@ async def start_command(message: Message, state: FSMContext):
 @router.message(Command("menu"))
 async def menu_command(message: Message):
     """Show main menu"""
-    await message.answer(
-        "<b>Главное меню</b>\n\n"
-        "Выбери действие:",
-        reply_markup=get_main_menu_keyboard()
-    )
+    await message.answer("Что делаем?", reply_markup=get_main_menu_keyboard())
 
 
 @router.message(Command("help"))
 async def help_command(message: Message):
-    """Show help"""
+    """Show help - short and clear"""
     await message.answer(
-        "<b>Sphere — умные знакомства</b>\n\n"
-        "Сканируй QR-коды на ивентах\n"
-        "Получай персональные матчи\n"
-        "Общайся с интересными людьми\n\n"
-        "<b>Команды:</b>\n"
+        "<b>Sphere</b> — умные знакомства на ивентах\n\n"
+        "📱 Сканируй QR → получай матчи → общайся\n\n"
         "/start — начать\n"
-        "/menu — главное меню\n"
-        "/profile — мой профиль\n"
-        "/matches — мои матчи\n"
-        "/help — эта справка"
+        "/menu — меню"
     )
 
 
@@ -129,8 +110,7 @@ async def help_command(message: Message):
 async def back_to_menu(callback: CallbackQuery):
     """Return to main menu"""
     await callback.message.edit_text(
-        "<b>Главное меню</b>\n\n"
-        "Выбери действие:",
+        "Что делаем?",
         reply_markup=get_main_menu_keyboard()
     )
     await callback.answer()
@@ -138,7 +118,7 @@ async def back_to_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_profile")
 async def show_profile(callback: CallbackQuery):
-    """Show user profile"""
+    """Show user profile - compact"""
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
@@ -148,18 +128,18 @@ async def show_profile(callback: CallbackQuery):
         await callback.answer("Профиль не найден", show_alert=True)
         return
 
-    interests = ', '.join([get_interest_display(i) for i in user.interests]) or 'Не указаны'
-    goals = ', '.join([get_goal_display(g) for g in user.goals]) or 'Не указаны'
+    interests = ', '.join([get_interest_display(i) for i in user.interests[:3]]) or '—'
+    goals = ', '.join([get_goal_display(g) for g in user.goals[:2]]) or '—'
 
-    await callback.message.edit_text(
-        f"<b>Твой профиль</b>\n\n"
-        f"<b>Имя:</b> {user.display_name or 'Не указано'}\n"
-        f"<b>Город:</b> {user.city_current or 'Не указан'}\n"
-        f"<b>Интересы:</b> {interests}\n"
-        f"<b>Цели:</b> {goals}\n"
-        f"<b>О себе:</b> {user.bio or 'Не заполнено'}",
-        reply_markup=get_back_to_menu_keyboard()
+    text = (
+        f"<b>{user.display_name or 'Аноним'}</b>\n\n"
+        f"🎯 {interests}\n"
+        f"🎪 {goals}\n"
     )
+    if user.bio:
+        text += f"\n<i>{user.bio[:100]}{'...' if len(user.bio) > 100 else ''}</i>"
+
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard())
     await callback.answer()
 
 
@@ -172,24 +152,18 @@ async def show_events(callback: CallbackQuery):
     )
 
     if not events:
-        await callback.message.edit_text(
-            "<b>Твои ивенты</b>\n\n"
-            "У тебя пока нет ивентов.\n"
-            "Сканируй QR-коды на мероприятиях, чтобы присоединиться!",
-            reply_markup=get_back_to_menu_keyboard()
-        )
+        text = "Пока нет ивентов.\nСканируй QR-коды чтобы присоединиться!"
     else:
-        text = "<b>Твои ивенты</b>\n\n"
-        for event in events:
+        text = "<b>Твои ивенты:</b>\n\n"
+        for event in events[:5]:
             text += f"• {event.name}\n"
 
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard())
-
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard())
     await callback.answer()
 
 
 @router.callback_query(F.data == "my_matches")
 async def show_matches_menu(callback: CallbackQuery):
-    """Show matches (redirect to matches handler)"""
+    """Show matches"""
     from adapters.telegram.handlers.matches import list_matches_callback
     await list_matches_callback(callback)
