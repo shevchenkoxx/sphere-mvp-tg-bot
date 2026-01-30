@@ -1,19 +1,12 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import List
+from typing import List, Optional
 import os
 from pathlib import Path
 
-# Only load .env file if it exists (for local development)
-# On Railway, env vars are set directly
-env_file = Path(__file__).parent.parent / ".env"
-if env_file.exists():
-    from dotenv import load_dotenv
-    load_dotenv(env_file)
-
 
 class Settings(BaseSettings):
-    """Application settings - single source of truth for configuration"""
+    """Application settings - reads from environment variables"""
 
     # Telegram
     telegram_bot_token: str = ""
@@ -33,7 +26,7 @@ class Settings(BaseSettings):
 
     # Environment
     env: str = "development"
-    debug: bool = True
+    debug: bool = False
 
     @field_validator('admin_telegram_ids', mode='before')
     @classmethod
@@ -46,9 +39,20 @@ class Settings(BaseSettings):
             return v
         return []
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    # Pydantic v2 config
+    model_config = SettingsConfigDict(
+        env_file=".env" if Path(".env").exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,  # SUPABASE_URL == supabase_url
+    )
 
 
+# Create settings instance
 settings = Settings()
+
+# Debug: print what we got (remove in production)
+if os.getenv("DEBUG", "").lower() == "true":
+    print(f"Settings loaded:")
+    print(f"  SUPABASE_URL: {'set' if settings.supabase_url else 'MISSING'}")
+    print(f"  SUPABASE_KEY: {'set' if settings.supabase_key else 'MISSING'}")
