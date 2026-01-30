@@ -7,6 +7,8 @@ Currently supports Telegram, with WhatsApp and Web API planned.
 
 import asyncio
 import logging
+import sys
+from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
 from adapters.telegram.loader import bot, dp
 from adapters.telegram.handlers import routers
 from config.features import features
@@ -18,12 +20,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Retry settings
+MAX_RETRIES = 5
+RETRY_DELAY = 10  # seconds
+
 
 async def main():
-    """Main function - starts the bot."""
+    """Main function - starts the bot with graceful error handling."""
 
     # Log feature status
-    logger.info("=== Feature Flags ===")
+    logger.info("=== Sphere Bot Starting ===")
+    logger.info("Feature Flags:")
     for key, value in features.to_dict().items():
         logger.info(f"  {key}: {value}")
 
@@ -32,15 +39,65 @@ async def main():
         dp.include_router(router)
 
     # Delete webhook (if exists) and start polling
-    await bot.delete_webhook(drop_pending_updates=True)
-
-    logger.info("Sphere Bot started!")
-
     try:
-        await dp.start_polling(bot)
-    finally:
-        await bot.session.close()
+        await bot.delete_webhook(drop_pending_updates=True)
+    except TelegramUnauthorizedError:
+        logger.error("❌ Invalid bot token! Check TELEGRAM_BOT_TOKEN env var.")
+        sys.exit(1)
+
+    logger.info("✅ Sphere Bot started!")
+
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            await dp.start_polling(bot)
+            break  # Normal exit
+
+        except TelegramConflictError:
+            retries += 1
+            if retries >= MAX_RETRIES:
+                logger.error(
+                    "❌ Another bot instance is running with the same token.\n"
+                    "   This can happen when:\n"
+                    "   - Bot is running locally AND on Railway\n"
+                    "   - Multiple Railway deployments\n"
+                    "   - Previous instance didn't shut down properly\n\n"
+                    "   Solutions:\n"
+                    "   1. Stop other instances\n"
+                    "   2. Wait 1-2 minutes for Telegram to release the connection\n"
+                    "   3. Regenerate bot token in @BotFather"
+                )
+                sys.exit(1)
+            else:
+                logger.warning(
+                    f"⚠️ Conflict detected (another instance running). "
+                    f"Retry {retries}/{MAX_RETRIES} in {RETRY_DELAY}s..."
+                )
+                await asyncio.sleep(RETRY_DELAY)
+
+        except TelegramUnauthorizedError:
+            logger.error("❌ Bot token was revoked or is invalid.")
+            sys.exit(1)
+
+        except Exception as e:
+            logger.error(f"❌ Unexpected error: {e}")
+            retries += 1
+            if retries < MAX_RETRIES:
+                logger.info(f"Retrying in {RETRY_DELAY}s... ({retries}/{MAX_RETRIES})")
+                await asyncio.sleep(RETRY_DELAY)
+            else:
+                raise
+        finally:
+            pass
+
+    await bot.session.close()
+    logger.info("Bot stopped.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user (Ctrl+C)")
+    except SystemExit as e:
+        sys.exit(e.code)
