@@ -1,62 +1,86 @@
 # Changelog
 
-All notable changes to Sphere Bot will be documented in this file.
+All notable changes to Sphere Bot.
 
-## [0.3.0] - 2025-01-30
+## [0.4.0] - 2026-01-30
 
 ### Added
-- **Conversational Onboarding v2** - LLM-driven natural conversation
-- Multilingual support (auto-detects user language)
-- `core/interfaces/conversation.py` - Abstract conversation interfaces
-- `core/services/conversation_service.py` - Conversation orchestration
-- `infrastructure/ai/conversation_ai.py` - OpenAI conversation implementation
-- `adapters/telegram/handlers/onboarding_v2.py` - New conversational handler
-- Profile extraction from conversation with separate LLM call
-- `ONBOARDING_VERSION` config to switch between v1/v2
+- Railway deployment support (railway.json, Procfile, runtime.txt)
+- Graceful error handling for bot conflicts (5 retries, clear messages)
+- Support for both `SUPABASE_KEY` and `SUPABASE_SERVICE_KEY`
+
+### Fixed
+- TelegramConflictError no longer crashes - retries with backoff
+- Missing env vars show clear error message instead of cryptic exception
+
+## [0.3.0] - 2026-01-30
+
+### Added
+- **Audio Onboarding** - 60 sec voice message → structured profile
+- Feature flags system (`config/features.py`)
+- Prompt testing framework (`tests/prompts/`)
+- Database migration 002 with enhanced profile fields
+- PLAN.md with integration roadmap
+
+### Database
+- `current_event_id` - track user's current event
+- `profession`, `company`, `skills` - professional info
+- `looking_for`, `can_help_with` - networking goals
+- `deep_profile` JSONB - LLM-generated analysis
+- `audio_transcription` - voice message text
+- `linkedin_url`, `linkedin_data` - social parsing prep
 
 ### Technical
 - Modular AI provider design (easy to swap OpenAI → Anthropic)
 - Serializable conversation state for FSM storage
-- Factory pattern for conversation AI instantiation
+- Factory pattern for conversation AI
 
-## [0.2.0] - 2025-01-30
+## [0.2.0] - 2026-01-30
 
 ### Added
+- **Conversational Onboarding v2** - LLM-driven multilingual chat
 - Centralized AI prompts in `core/prompts/templates.py`
-- Fast onboarding flow (60 seconds target)
-- Voice message support for bio (Whisper transcription)
-- Emoji-based interest/goal selection keyboards
-- Skip option for optional fields
+- `ONBOARDING_SYSTEM_PROMPT` with auto language detection
+- `PROFILE_EXTRACTION_PROMPT` for structured data extraction
 
 ### Changed
-- Simplified onboarding: Name → Interests → Goals → Bio (removed city step)
-- More conversational, friendly tone in all messages
-- Compact button layouts for better mobile UX
+- Onboarding simplified: Name → Interests → Goals → Bio
+- More conversational, friendly tone
 
-### Technical
-- Clean architecture: core → infrastructure → adapters
-- Platform abstraction for future WhatsApp/Web support
-- Repository pattern for data access
-
-## [0.1.0] - 2025-01-30
+## [0.1.0] - 2026-01-30
 
 ### Added
-- Initial project structure
+- Initial project structure (clean architecture)
 - Telegram bot with aiogram 3.x
 - Supabase integration (PostgreSQL)
-- User registration and onboarding
-- Event system with QR codes
-- AI-powered matching (OpenAI GPT-4o-mini)
-- Basic match notifications
+- User registration and onboarding (v1 - buttons)
+- Event system with QR codes / deep links
+- AI-powered matching (GPT-4o-mini)
+- Voice transcription (Whisper)
+- Match notifications
 
 ### Database
-- Users table with platform support
+- Users table with platform support (Telegram/WhatsApp/Web ready)
 - Events and event_participants tables
 - Matches table with compatibility scores
 - Messages table for future in-app chat
 
 ---
 
-## Roadmap
+## Upcoming
 
-See [ROADMAP.md](./ROADMAP.md) for planned features.
+### v0.5.0 (Next)
+- [ ] Current event tracking in onboarding flow
+- [ ] Top 3 matches display after onboarding
+- [ ] Contact sharing (username/link)
+- [ ] Icebreaker suggestions
+
+### v0.6.0
+- [ ] Deep profiling (second LLM pass)
+- [ ] LinkedIn URL parsing
+- [ ] Enhanced matching algorithm
+
+### v1.0.0
+- [ ] WhatsApp adapter
+- [ ] REST API
+- [ ] Admin dashboard

@@ -1,157 +1,155 @@
-# Sphere Bot - Claude Code Instructions
+# Sphere Bot - Project Documentation
 
-## Project Overview
-Telegram bot for meaningful connections at events. Users scan QR code → onboard via AI conversation → get AI-matched with other participants.
+## Overview
+Telegram bot for meaningful connections at events. Users scan QR → quick voice onboarding → AI matching → meet top 3 people.
 
-## Key Concept: Conversational Onboarding (v2)
-Instead of scripted questions with buttons, we use LLM-driven conversation:
-- **Multilingual**: Auto-detects user language, responds in same language
-- **Natural flow**: LLM asks questions one at a time, acknowledges answers
-- **Data extraction**: After conversation, extract structured data with separate prompt
-- **Marker-based**: `PROFILE_COMPLETE` marker signals successful onboarding
-- **Modular**: Easy to swap LLM providers (OpenAI → Anthropic, local models)
+**Bot:** @Matchd_bot
+**Repo:** https://github.com/shevchenkoxx/sphere-mvp-tg-bot
+**Deploy:** Railway (auto-deploy from main branch)
 
-### Switching Onboarding Versions
-In `adapters/telegram/handlers/__init__.py`:
-```python
-ONBOARDING_VERSION = "v2"  # "v1" = buttons, "v2" = LLM conversation
-```
+---
 
-### Key Components
-- `core/interfaces/conversation.py` - Abstract interfaces
-- `core/services/conversation_service.py` - Orchestration logic
-- `infrastructure/ai/conversation_ai.py` - OpenAI implementation
-- `adapters/telegram/handlers/onboarding_v2.py` - Telegram handler
-- `core/prompts/templates.py` - Prompts (ONBOARDING_SYSTEM_PROMPT)
+## What's Done ✅
 
-## Architecture
+### Core Features
+- **Audio Onboarding** (60 sec) - user records voice, AI extracts structured profile
+- **Conversational Onboarding** (v2) - LLM-driven multilingual chat
+- **Button Onboarding** (v1) - classic flow with inline keyboards
+- **Event System** - QR codes, deep links, participant tracking
+- **AI Matching** - GPT-4o-mini analyzes compatibility
+- **Voice Transcription** - Whisper API
 
+### Architecture
 ```
 sphere-bot/
 ├── core/                    # Business logic (platform-agnostic)
 │   ├── domain/              # Models, constants
-│   ├── interfaces/          # Abstract repositories
-│   ├── services/            # Business services
-│   └── prompts/             # AI prompt templates
+│   ├── interfaces/          # Abstract repositories & services
+│   ├── services/            # UserService, EventService, MatchingService
+│   └── prompts/             # All AI prompts (easy to modify)
 ├── infrastructure/          # External services
 │   ├── database/            # Supabase repositories
-│   └── ai/                  # OpenAI services
+│   └── ai/                  # OpenAI, Whisper, ConversationAI
 ├── adapters/                # Platform adapters
-│   └── telegram/            # Telegram bot
-│       ├── handlers/        # Message handlers
-│       └── keyboards/       # Inline keyboards
-└── config/                  # Settings
+│   └── telegram/            # Bot handlers, keyboards
+├── config/                  # Settings, feature flags
+├── tests/prompts/           # Prompt testing framework
+└── supabase/                # SQL schema & migrations
 ```
 
-## Key Files
+### Database (Supabase)
+Tables: `users`, `events`, `event_participants`, `matches`, `messages`
 
-### Prompts (easy to modify)
-- `core/prompts/templates.py` - All AI prompts in Russian
+New columns (migration 002):
+- `current_event_id` - tracks which event user is at
+- `profession`, `company`, `skills` - professional info
+- `looking_for`, `can_help_with` - networking goals
+- `deep_profile` (JSONB) - LLM-generated analysis
+- `audio_transcription` - voice message text
+- `linkedin_url`, `linkedin_data` - social parsing
 
-### Onboarding Flow
-- `adapters/telegram/handlers/onboarding.py` - 4-step flow
-- `adapters/telegram/keyboards/inline.py` - Selection keyboards
+### Feature Flags
+```bash
+ONBOARDING_MODE=audio    # v1, v2, audio
+MATCHING_ENABLED=true
+AUTO_MATCH_ON_JOIN=true
+SHOW_TOP_MATCHES=3
+DEEP_PROFILE_ENABLED=true
+DEBUG=false
+```
 
-### Business Logic
-- `core/services/matching_service.py` - AI matching algorithm
-- `core/services/user_service.py` - User management
+### Deployment
+- **Railway** - auto-deploy from GitHub
+- **Graceful error handling** - retries on conflicts, clear error messages
+- Supports both `SUPABASE_KEY` and `SUPABASE_SERVICE_KEY`
 
-### Database
-- `supabase/schema.sql` - PostgreSQL schema
-- `infrastructure/database/user_repository.py` - User CRUD
+---
 
-## Commands
+## In Progress 🔄
+
+### Current Event Tracking
+When user joins via QR link (`t.me/bot?start=event_CODE`):
+1. Extract event_code from deep link
+2. Save to `current_event_id` on profile completion
+3. Use for matching context
+
+### Top 3 Matches Display
+After onboarding, show:
+```
+🎯 Meet these people at [Event]:
+
+1️⃣ Anna - Product Designer
+   💡 You both love AI, she needs a technical co-founder
+   📱 @anna_design
+
+2️⃣ Mike - ML Engineer
+   💡 He's looking to join a startup, you're hiring
+   📱 @mike_ml
+```
+
+---
+
+## Planned 📋
+
+### Phase 1: Enhanced Matching
+- [ ] Multi-factor scoring (interests + goals + skills + AI)
+- [ ] Show top 3 matches immediately after onboarding
+- [ ] Include contact info (username/link)
+- [ ] Icebreaker suggestions
+
+### Phase 2: Deep Profiling
+- [ ] Second LLM pass for personality analysis
+- [ ] Ideal match profile generation
+- [ ] Conversation starters based on shared interests
+- [ ] Confidence scoring
+
+### Phase 3: LinkedIn/Social Parsing
+- [ ] Accept LinkedIn URL during onboarding
+- [ ] Fetch public profile data (Proxycurl API)
+- [ ] Enrich profile with skills, experience
+- [ ] Parse other socials (Twitter, GitHub)
+
+### Phase 4: Multi-Platform
+- [ ] WhatsApp adapter
+- [ ] REST API for PWA
+- [ ] Admin dashboard (event creation, QR codes)
+
+---
+
+## Quick Commands
 
 ```bash
-# Run bot
-cd sphere-bot && python main.py
+# Run locally
+cd sphere-bot && python3 main.py
 
-# Check logs
-tail -f logs/*.log
+# Test prompts
+python3 tests/prompts/runner.py
 
-# Apply DB schema
-# Copy supabase/schema.sql to Supabase SQL Editor
+# Apply DB migration
+# Copy supabase/migrations/002_enhanced_profiles.sql to Supabase SQL Editor
 ```
 
 ## Environment Variables
 
-```env
+```bash
+# Required
 TELEGRAM_BOT_TOKEN=xxx
 SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_KEY=xxx
+SUPABASE_KEY=xxx  # or SUPABASE_SERVICE_KEY
 OPENAI_API_KEY=sk-xxx
-ADMIN_TELEGRAM_IDS=44420077
+
+# Optional
+ADMIN_TELEGRAM_IDS=123,456
+ONBOARDING_MODE=audio
+DEBUG=false
 ```
 
-## Coding Guidelines
+## Key Files
 
-1. **Russian UI**: All user-facing text in Russian
-2. **Short messages**: Telegram messages should be concise
-3. **Emoji usage**: Use sparingly, for visual structure
-4. **Error handling**: Always show friendly error messages
-5. **Platform abstraction**: Use `MessagePlatform` enum for future WhatsApp/Web
-
-## Adding New Features
-
-### New Interest/Goal
-Edit `core/domain/constants.py`:
-```python
-INTERESTS = {
-    "new_key": {"label_ru": "Новый интерес", "category": "category"},
-    ...
-}
-```
-
-### New AI Prompt
-Edit `core/prompts/templates.py`:
-```python
-NEW_PROMPT = """Your prompt here with {placeholders}..."""
-```
-
-### New Handler
-Create in `adapters/telegram/handlers/`:
-```python
-from aiogram import Router
-router = Router()
-
-@router.message(SomeFilter())
-async def handler(message: Message):
-    ...
-```
-Register in `adapters/telegram/handlers/__init__.py`.
-
-## Database Schema
-
-### Users
-- `platform` + `platform_user_id` = unique identifier
-- `interests`, `goals` = JSONB arrays
-- `ai_summary` = AI-generated profile summary
-
-### Events
-- `code` = unique QR code identifier
-- `created_by` = admin user ID
-
-### Matches
-- `compatibility_score` = 0.0-1.0
-- `match_type` = friendship/professional/romantic/creative
-
-## Testing Locally
-
-1. Create test event in Supabase
-2. Generate deep link: `https://t.me/BOT_USERNAME?start=event_CODE`
-3. Test onboarding flow
-4. Check matches in database
-
-## Common Issues
-
-### Bot not responding
-- Check if another instance is running
-- Regenerate token in BotFather if needed
-
-### Database errors
-- Verify schema is applied
-- Check Supabase service key permissions
-
-### AI errors
-- Check OpenAI API key and credits
-- Review prompt format in templates.py
+| File | Purpose |
+|------|---------|
+| `config/features.py` | Feature flags (on/off toggles) |
+| `core/prompts/templates.py` | Conversational prompts |
+| `core/prompts/audio_onboarding.py` | Voice extraction prompts |
+| `adapters/telegram/config.py` | Telegram-specific config |
+| `main.py` | Entry point with error handling |
