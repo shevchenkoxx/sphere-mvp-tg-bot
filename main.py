@@ -9,10 +9,11 @@ import asyncio
 import logging
 from adapters.telegram.loader import bot, dp
 from adapters.telegram.handlers import routers
+from config.features import features
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if features.DEBUG_MODE else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 async def main():
     """Main function - starts the bot."""
+
+    # Log feature status
+    logger.info("=== Feature Flags ===")
+    for key, value in features.to_dict().items():
+        logger.info(f"  {key}: {value}")
 
     # Register Telegram routers
     for router in routers:

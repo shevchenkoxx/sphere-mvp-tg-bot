@@ -1,6 +1,10 @@
 """
 Telegram adapter configuration.
+Uses centralized feature flags.
 """
 
-# Onboarding version: 'v1' = scripted buttons, 'v2' = LLM conversation
-ONBOARDING_VERSION = "v2"
+from config.features import features
+
+# Onboarding mode from feature flags
+# Options: 'v1' (buttons), 'v2' (conversation), 'audio' (voice)
+ONBOARDING_VERSION = features.ONBOARDING_MODE
