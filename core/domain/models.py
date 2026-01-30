@@ -66,6 +66,7 @@ class User(UserBase):
     ai_summary: Optional[str] = None
     onboarding_completed: bool = False
     is_active: bool = True
+    current_event_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -86,6 +87,7 @@ class UserUpdate(BaseModel):
     social_links: Optional[Dict[str, str]] = None
     ai_summary: Optional[str] = None
     onboarding_completed: Optional[bool] = None
+    current_event_id: Optional[UUID] = None
 
 
 # === EVENT ===

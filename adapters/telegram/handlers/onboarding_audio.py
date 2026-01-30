@@ -21,7 +21,7 @@ from core.prompts.audio_onboarding import (
     AUDIO_CONFIRMATION_TEMPLATE,
     AUDIO_CONFIRMATION_TEMPLATE_RU,
 )
-from adapters.telegram.loader import user_service, event_service, voice_service, bot
+from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot
 from adapters.telegram.keyboards import get_main_menu_keyboard
 from config.settings import settings
 
@@ -314,9 +314,11 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
     if hasattr(message_or_callback, 'message'):
         message = message_or_callback.message
         user_id = str(message_or_callback.from_user.id)
+        tg_username = message_or_callback.from_user.username
     else:
         message = message_or_callback
         user_id = str(message.from_user.id)
+        tg_username = message.from_user.username
 
     data = await state.get_data()
     lang = data.get("language", "ru")
@@ -357,6 +359,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
     # Handle event join
     pending_event = data.get("pending_event")
+    event = None
+
     if pending_event:
         success, msg, event = await event_service.join_event(
             pending_event,
@@ -365,15 +369,32 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         )
 
         if success and event:
+            # Save current_event_id to user profile
+            from uuid import UUID
+            await user_service.update_user(
+                MessagePlatform.TELEGRAM,
+                user_id,
+                current_event_id=event.id
+            )
+
+            # Re-fetch user with updated current_event_id
+            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
             text = (
                 f"🎉 Ты в ивенте <b>{event.name}</b>!\n\n"
-                "Уже ищу для тебя интересных людей. Напишу, когда найду!"
+                "Ищу для тебя интересных людей..."
             ) if lang == "ru" else (
                 f"🎉 You're in <b>{event.name}</b>!\n\n"
-                "Already finding interesting people for you!"
+                "Finding interesting people for you..."
             )
+            await message.answer(text)
+
+            # Find and show top matches
+            if user:
+                await show_top_matches(message, user, event, lang, tg_username)
         else:
             text = "✓ Профиль сохранён!" if lang == "ru" else "✓ Profile saved!"
+            await message.answer(text, reply_markup=get_main_menu_keyboard())
     else:
         text = (
             "🎉 <b>Профиль готов!</b>\n\n"
@@ -382,9 +403,89 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
             "🎉 <b>Profile ready!</b>\n\n"
             "Scan QR codes at events to meet interesting people!"
         )
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
 
-    await message.answer(text, reply_markup=get_main_menu_keyboard())
     await state.clear()
+
+
+async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
+    """Show top 3 matches after onboarding"""
+    from config.features import Features
+
+    try:
+        # Find matches for this user
+        matches = await matching_service.find_and_create_matches_for_user(
+            user=user,
+            event_id=event.id,
+            limit=Features.SHOW_TOP_MATCHES
+        )
+
+        if not matches:
+            text = (
+                "👀 Пока мало участников для матчинга.\n"
+                "Как только появятся — напишу тебе!"
+            ) if lang == "ru" else (
+                "👀 Not enough participants yet.\n"
+                "I'll notify you when matches are found!"
+            )
+            await message.answer(text, reply_markup=get_main_menu_keyboard())
+            return
+
+        # Format top matches message
+        if lang == "ru":
+            header = f"🎯 <b>Топ-{len(matches)} людей на {event.name}:</b>\n\n"
+        else:
+            header = f"🎯 <b>Top {len(matches)} people to meet at {event.name}:</b>\n\n"
+
+        lines = []
+        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+        for i, (matched_user, match_result) in enumerate(matches):
+            emoji = emojis[i] if i < len(emojis) else f"{i+1}."
+
+            # Name and role
+            name = matched_user.display_name or matched_user.first_name or "Unknown"
+            role_line = matched_user.bio[:50] if matched_user.bio else ""
+
+            # Why match
+            why = match_result.explanation[:100] if match_result.explanation else ""
+
+            # Contact
+            contact = ""
+            if matched_user.username:
+                contact = f"📱 @{matched_user.username}"
+
+            line = f"{emoji} <b>{name}</b>"
+            if role_line:
+                line += f"\n   {role_line}"
+            if why:
+                line += f"\n   💡 {why}"
+            if contact:
+                line += f"\n   {contact}"
+
+            lines.append(line)
+
+        text = header + "\n\n".join(lines)
+
+        # Add icebreaker tip
+        if matches:
+            first_match = matches[0][1]
+            if first_match.icebreaker:
+                if lang == "ru":
+                    text += f"\n\n💬 <i>Начни разговор: {first_match.icebreaker}</i>"
+                else:
+                    text += f"\n\n💬 <i>Start with: {first_match.icebreaker}</i>"
+
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
+
+    except Exception as e:
+        logger.error(f"Error showing top matches: {e}")
+        text = (
+            "✓ Профиль сохранён! Напишу когда найду матчи."
+        ) if lang == "ru" else (
+            "✓ Profile saved! I'll notify you about matches."
+        )
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
 
 
 # === Profile Extraction ===

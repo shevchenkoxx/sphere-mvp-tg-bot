@@ -167,3 +167,83 @@ class MatchingService:
     async def mark_match_notified(self, match_id: UUID, user_position: str) -> None:
         """Mark that user was notified about match"""
         await self.match_repo.mark_notified(match_id, user_position)
+
+    async def get_top_matches_for_user(
+        self,
+        user_id: UUID,
+        event_id: Optional[UUID] = None,
+        limit: int = 3
+    ) -> List[Tuple[User, Match]]:
+        """
+        Get top N matches for a user, optionally filtered by event.
+        Returns list of (matched_user, match) tuples sorted by score.
+        """
+        from infrastructure.database.user_repository import SupabaseUserRepository
+        user_repo = SupabaseUserRepository()
+
+        # Get all matches for user
+        matches = await self.match_repo.get_user_matches(user_id)
+
+        # Filter by event if specified
+        if event_id:
+            matches = [m for m in matches if m.event_id == event_id]
+
+        # Sort by compatibility score (highest first)
+        matches.sort(key=lambda m: m.compatibility_score, reverse=True)
+
+        # Get top N with user details
+        results = []
+        for match in matches[:limit]:
+            # Determine which user is the "other" one
+            other_user_id = match.user_b_id if match.user_a_id == user_id else match.user_a_id
+            other_user = await user_repo.get_by_id(other_user_id)
+            if other_user:
+                results.append((other_user, match))
+
+        return results
+
+    async def find_and_create_matches_for_user(
+        self,
+        user: User,
+        event_id: UUID,
+        limit: int = 3
+    ) -> List[Tuple[User, MatchResult]]:
+        """
+        Find matches for a specific user within an event.
+        Creates match records and returns top matches.
+        """
+        participants = await self.event_repo.get_participants(event_id)
+        event = await self.event_repo.get_by_id(event_id)
+        event_context = event.name if event else None
+
+        # Filter out self
+        others = [p for p in participants if p.id != user.id]
+
+        if not others:
+            return []
+
+        matches = []
+        for other in others:
+            # Skip if match already exists
+            if await self.match_repo.exists(event_id, user.id, other.id):
+                continue
+
+            # Analyze pair
+            result = await self.analyze_pair(user, other, event_context)
+            if result:
+                # Create match record
+                match_create = MatchCreate(
+                    event_id=event_id,
+                    user_a_id=user.id,
+                    user_b_id=other.id,
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    ai_explanation=result.explanation,
+                    icebreaker=result.icebreaker
+                )
+                await self.match_repo.create(match_create)
+                matches.append((other, result))
+
+        # Sort by score and return top N
+        matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
+        return matches[:limit]

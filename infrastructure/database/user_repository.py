@@ -37,6 +37,7 @@ class SupabaseUserRepository(IUserRepository):
             ai_summary=data.get("ai_summary"),
             onboarding_completed=data.get("onboarding_completed", False),
             is_active=data.get("is_active", True),
+            current_event_id=data.get("current_event_id"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
         )
