@@ -17,7 +17,7 @@ from adapters.telegram.keyboards import (
     get_back_to_menu_keyboard,
 )
 from adapters.telegram.states import OnboardingStates
-from adapters.telegram.handlers import ONBOARDING_VERSION
+from adapters.telegram.config import ONBOARDING_VERSION
 
 router = Router()
 

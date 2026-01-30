@@ -1,7 +1,5 @@
+from adapters.telegram.config import ONBOARDING_VERSION
 from adapters.telegram.handlers import start, onboarding, onboarding_v2, events, matches
-
-# Choose onboarding version: 'v1' = scripted buttons, 'v2' = LLM conversation
-ONBOARDING_VERSION = "v2"
 
 routers = [
     start.router,
