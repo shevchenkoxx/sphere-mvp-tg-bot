@@ -128,6 +128,13 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     await state.clear()
 
+    # Delete old message with buttons to avoid confusion
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass  # Message might be too old to delete
+
+    # Create a fake message object with correct user info for the new flow
     await start_conversational_onboarding(
         callback.message,
         state,

@@ -225,3 +225,15 @@ async def show_matches_menu(callback: CallbackQuery):
     """Show matches"""
     from adapters.telegram.handlers.matches import list_matches_callback
     await list_matches_callback(callback)
+
+
+# === FALLBACK FOR OLD/STALE CALLBACKS ===
+
+@router.callback_query(F.data.in_(["audio_ready", "audio_confirm", "audio_retry", "switch_to_text"]))
+async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
+    """Handle clicks on old audio onboarding buttons"""
+    await callback.answer("Эта кнопка устарела. Напиши /start", show_alert=True)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
