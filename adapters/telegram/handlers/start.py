@@ -185,28 +185,49 @@ async def back_to_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_profile")
 async def show_profile(callback: CallbackQuery):
-    """Show user profile - compact"""
+    """Show user profile - detailed with hashtags"""
+    lang = detect_lang(callback.message) if hasattr(callback.message, 'from_user') else "en"
+
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
     )
 
     if not user:
-        await callback.answer("Профиль не найден", show_alert=True)
+        await callback.answer("Profile not found" if lang == "en" else "Профиль не найден", show_alert=True)
         return
 
-    interests = ', '.join([get_interest_display(i) for i in user.interests[:3]]) or '—'
-    goals = ', '.join([get_goal_display(g) for g in user.goals[:2]]) or '—'
+    # Build structured profile display
+    name = user.display_name or user.first_name or ("Anonymous" if lang == "en" else "Аноним")
+    text = f"👤 <b>{name}</b>\n"
 
-    text = (
-        f"<b>{user.display_name or 'Аноним'}</b>\n\n"
-        f"🎯 {interests}\n"
-        f"🎪 {goals}\n"
-    )
+    # Hashtag interests
+    if user.interests:
+        hashtags = " ".join([f"#{i}" for i in user.interests[:5]])
+        text += f"\n{hashtags}\n"
+
+    # Bio / About
     if user.bio:
-        text += f"\n<i>{user.bio[:100]}{'...' if len(user.bio) > 100 else ''}</i>"
+        text += f"\n📝 <b>{'About' if lang == 'en' else 'О себе'}:</b>\n{user.bio[:200]}{'...' if len(user.bio) > 200 else ''}\n"
 
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard())
+    # Looking for
+    if user.looking_for:
+        text += f"\n🔍 <b>{'Looking for' if lang == 'en' else 'Ищу'}:</b>\n{user.looking_for[:150]}{'...' if len(user.looking_for) > 150 else ''}\n"
+
+    # Can help with
+    if user.can_help_with:
+        text += f"\n💪 <b>{'Can help with' if lang == 'en' else 'Могу помочь'}:</b>\n{user.can_help_with[:150]}{'...' if len(user.can_help_with) > 150 else ''}\n"
+
+    # Goals
+    if user.goals:
+        goals_display = ", ".join([get_goal_display(g) for g in user.goals[:3]])
+        text += f"\n🎯 <b>{'Goals' if lang == 'en' else 'Цели'}:</b> {goals_display}\n"
+
+    # Contact
+    if user.username:
+        text += f"\n📱 @{user.username}"
+
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
     await callback.answer()
 
 
@@ -240,7 +261,7 @@ async def show_matches_menu(callback: CallbackQuery):
 # Note: Audio callbacks (audio_ready, audio_confirm, etc.) are handled by onboarding_audio.py
 # Only catch them here if user is NOT in any onboarding state
 
-@router.callback_query(F.data.in_(["audio_ready", "audio_confirm", "audio_retry", "switch_to_text"]))
+@router.callback_query(F.data.in_(["audio_ready", "audio_confirm", "audio_retry", "audio_add_details", "switch_to_text"]))
 async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
     """Handle clicks on old audio onboarding buttons - only when NOT in onboarding"""
     current_state = await state.get_state()
@@ -250,7 +271,9 @@ async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
         return  # Let the actual onboarding handler process this
 
     # Otherwise it's a stale button
-    await callback.answer("Эта кнопка устарела. Напиши /start", show_alert=True)
+    lang = detect_lang(callback.message) if hasattr(callback.message, 'from_user') else "en"
+    msg = "This button expired. Type /start" if lang == "en" else "Эта кнопка устарела. Напиши /start"
+    await callback.answer(msg, show_alert=True)
     try:
         await callback.message.delete()
     except Exception:

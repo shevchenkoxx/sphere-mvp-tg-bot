@@ -67,6 +67,7 @@ class AudioOnboarding(StatesGroup):
     waiting_audio = State()      # Waiting for voice message
     waiting_followup = State()   # Waiting for follow-up answer
     confirming = State()         # Confirming extracted profile
+    adding_details = State()     # Adding more details to profile
 
 
 # === Keyboards ===
@@ -89,10 +90,10 @@ def get_audio_confirm_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if lang == "ru":
         builder.button(text="✅ Всё верно!", callback_data="audio_confirm")
-        builder.button(text="🎤 Перезаписать", callback_data="audio_retry")
+        builder.button(text="➕ Добавить детали", callback_data="audio_add_details")
     else:
         builder.button(text="✅ Looks good!", callback_data="audio_confirm")
-        builder.button(text="🎤 Re-record", callback_data="audio_retry")
+        builder.button(text="➕ Add details", callback_data="audio_add_details")
     builder.adjust(2)
     return builder.as_markup()
 
@@ -531,56 +532,198 @@ async def confirm_profile(callback: CallbackQuery, state: FSMContext):
     await save_audio_profile(callback, state, profile_data)
 
 
-@router.callback_query(AudioOnboarding.confirming, F.data == "audio_retry")
-async def retry_audio(callback: CallbackQuery, state: FSMContext):
-    """User wants to re-record"""
+@router.callback_query(AudioOnboarding.confirming, F.data == "audio_add_details")
+async def add_details(callback: CallbackQuery, state: FSMContext):
+    """User wants to add more details to profile"""
     data = await state.get_data()
     lang = data.get("language", "ru")
 
-    await callback.message.edit_text(
-        "🎤 Окей! Записывай новое голосовое сообщение." if lang == "ru"
-        else "🎤 Okay! Record a new voice message."
-    )
-    await state.set_state(AudioOnboarding.waiting_audio)
+    if lang == "ru":
+        text = (
+            "📝 Расскажи, что хочешь добавить или уточнить!\n\n"
+            "Можешь записать голосовое или написать текстом."
+        )
+    else:
+        text = (
+            "📝 Tell me what you'd like to add or clarify!\n\n"
+            "You can send a voice message or type."
+        )
+
+    await callback.message.edit_text(text)
+    await state.set_state(AudioOnboarding.adding_details)
     await callback.answer()
 
 
 @router.message(AudioOnboarding.confirming, F.text)
 async def handle_confirmation_text(message: Message, state: FSMContext):
-    """Handle text confirmation"""
+    """Handle text in confirmation - either confirm or treat as additional details"""
     data = await state.get_data()
     lang = data.get("language", "ru")
     text_lower = message.text.lower().strip()
 
     # Check for confirmation
-    confirmations = ["да", "yes", "ок", "ok", "верно", "correct", "подтверждаю", "confirm"]
+    confirmations = ["да", "yes", "ок", "ok", "верно", "correct", "подтверждаю", "confirm", "good", "хорошо"]
     if text_lower in confirmations:
         profile_data = data.get("profile_data", {})
         await save_audio_profile(message, state, profile_data)
         return
 
-    # Check for retry
-    retries = ["нет", "no", "заново", "retry", "перезаписать"]
-    if text_lower in retries:
-        await message.answer(
-            "🎤 Окей! Записывай новое голосовое сообщение." if lang == "ru"
-            else "🎤 Okay! Record a new voice message."
-        )
-        await state.set_state(AudioOnboarding.waiting_audio)
+    # If longer text - treat as additional details and merge into profile
+    if len(message.text) > 10:
+        await merge_additional_details(message, state, message.text)
         return
 
-    await message.answer(
-        "Скажи 'да' для подтверждения или 'нет' чтобы перезаписать." if lang == "ru"
-        else "Say 'yes' to confirm or 'no' to re-record."
-    )
+    # Short text that's not confirmation - ask to clarify
+    if lang == "ru":
+        text = "Скажи 'да' чтобы сохранить, или расскажи что добавить/изменить."
+    else:
+        text = "Say 'yes' to save, or tell me what to add/change."
+    await message.answer(text)
 
 
 @router.message(AudioOnboarding.confirming, F.voice)
 async def handle_new_voice_in_confirmation(message: Message, state: FSMContext):
-    """User recorded new voice instead of confirming - process it"""
-    # Treat as re-record
-    await state.set_state(AudioOnboarding.waiting_audio)
-    await process_audio(message, state)
+    """User recorded new voice - merge as additional details"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription:
+            await status.delete()
+            await merge_additional_details(message, state, transcription)
+        else:
+            await status.edit_text(
+                "Couldn't hear that. Try again or type." if lang == "en"
+                else "Не расслышал. Попробуй ещё раз или напиши."
+            )
+    except Exception as e:
+        logger.error(f"Voice in confirmation error: {e}")
+        await status.edit_text("Please try again." if lang == "en" else "Попробуй ещё раз.")
+
+
+# === Adding Details State Handlers ===
+
+@router.message(AudioOnboarding.adding_details, F.text)
+async def handle_adding_details_text(message: Message, state: FSMContext):
+    """Handle text when adding details"""
+    await merge_additional_details(message, state, message.text)
+
+
+@router.message(AudioOnboarding.adding_details, F.voice)
+async def handle_adding_details_voice(message: Message, state: FSMContext):
+    """Handle voice when adding details"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription:
+            await status.delete()
+            await merge_additional_details(message, state, transcription)
+        else:
+            await status.edit_text(
+                "Couldn't hear that. Please type instead." if lang == "en"
+                else "Не расслышал. Напиши текстом."
+            )
+    except Exception as e:
+        logger.error(f"Adding details voice error: {e}")
+        await status.edit_text("Please type instead." if lang == "en" else "Напиши текстом.")
+
+
+async def merge_additional_details(message: Message, state: FSMContext, new_text: str):
+    """Merge additional details into existing profile using LLM"""
+    from openai import AsyncOpenAI
+
+    data = await state.get_data()
+    profile_data = data.get("profile_data", {})
+    lang = data.get("language", "en")
+
+    status = await message.answer("✨ Updating profile..." if lang == "en" else "✨ Обновляю профиль...")
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        prompt = f"""Update this profile with NEW information from the user's message.
+MERGE new info into existing fields - don't replace unless the new info is clearly a correction.
+
+CURRENT PROFILE:
+- Name: {profile_data.get("display_name") or "N/A"}
+- About: {profile_data.get("about") or "N/A"}
+- Looking for: {profile_data.get("looking_for") or "N/A"}
+- Can help with: {profile_data.get("can_help_with") or "N/A"}
+- Interests: {", ".join(profile_data.get("interests", [])) or "N/A"}
+- Profession: {profile_data.get("profession") or "N/A"}
+- Company: {profile_data.get("company") or "N/A"}
+
+USER'S NEW MESSAGE:
+{new_text}
+
+Return JSON with ALL profile fields (keep existing values if not updated):
+{{
+  "display_name": "updated or existing name",
+  "about": "merged about text",
+  "looking_for": "merged looking_for text",
+  "can_help_with": "merged can_help_with text",
+  "interests": ["merged list of interests"],
+  "goals": ["merged list of goals"],
+  "profession": "updated or existing",
+  "company": "updated or existing"
+}}
+
+RULES:
+- If user corrects something, use the correction
+- If user adds new info, append/merge it
+- Keep the same language as existing content
+- For interests/goals, add new ones but keep existing relevant ones
+
+Return ONLY valid JSON."""
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.2
+        )
+
+        text = response.choices[0].message.content.strip()
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+
+        updates = json.loads(text)
+
+        # Merge updates
+        updated_profile = profile_data.copy()
+        for key, value in updates.items():
+            if value and value not in ["N/A", "null", "None", ""]:
+                if key == "interests":
+                    updated_profile[key] = list(set(value))[:5]
+                elif key == "goals":
+                    updated_profile[key] = list(set(value))[:3]
+                else:
+                    updated_profile[key] = value
+
+        await state.update_data(profile_data=updated_profile)
+        await status.delete()
+        await show_profile_confirmation(message, state, updated_profile, lang)
+
+    except Exception as e:
+        logger.error(f"Merge additional details error: {e}")
+        await status.edit_text(
+            "Couldn't process that. Try again?" if lang == "en"
+            else "Не получилось обработать. Попробуй ещё раз?"
+        )
+        await state.set_state(AudioOnboarding.confirming)
 
 
 # === Save Profile ===
