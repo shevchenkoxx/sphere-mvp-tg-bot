@@ -8,12 +8,13 @@ from aiogram.filters import Command
 
 from core.domain.models import MessagePlatform, MatchStatus
 from core.domain.constants import get_interest_display
-from adapters.telegram.loader import matching_service, user_service, bot
+from adapters.telegram.loader import matching_service, user_service, event_service, bot
 from adapters.telegram.keyboards import (
     get_match_keyboard,
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
 )
+from config.features import Features
 
 router = Router()
 
@@ -43,6 +44,100 @@ async def list_matches_command(message: Message):
         return
 
     await show_matches(message, user.id, lang=lang, edit=False)
+
+
+@router.message(Command("find_matches"))
+async def find_matches_command(message: Message):
+    """Manually trigger matching algorithm for current event"""
+    lang = detect_lang(message)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+
+    if not user:
+        text = "Complete your profile first! /start" if lang == "en" else "Сначала заполни профиль! /start"
+        await message.answer(text)
+        return
+
+    if not user.current_event_id:
+        text = "Join an event first! Scan a QR code." if lang == "en" else "Сначала присоединись к ивенту! Сканируй QR."
+        await message.answer(text)
+        return
+
+    event = await event_service.get_event_by_id(user.current_event_id)
+    if not event:
+        text = "Event not found." if lang == "en" else "Ивент не найден."
+        await message.answer(text)
+        return
+
+    status = await message.answer(
+        f"🔍 {'Finding matches at' if lang == 'en' else 'Ищу матчи на'} {event.name}..."
+    )
+
+    try:
+        matches = await matching_service.find_and_create_matches_for_user(
+            user=user,
+            event_id=event.id,
+            limit=Features.SHOW_TOP_MATCHES
+        )
+
+        await status.delete()
+
+        if not matches:
+            text = (
+                "No new matches found. Try again later when more people join!"
+                if lang == "en" else
+                "Новых матчей не найдено. Попробуй позже, когда будет больше участников!"
+            )
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+            return
+
+        # Show matches
+        await show_new_matches(message, matches, event.name, lang)
+
+    except Exception as e:
+        await status.edit_text(
+            f"Error: {str(e)[:100]}" if lang == "en" else f"Ошибка: {str(e)[:100]}"
+        )
+
+
+async def show_new_matches(message: Message, matches: list, event_name: str, lang: str):
+    """Show newly created matches"""
+    header = (
+        f"🎯 <b>Found {len(matches)} matches at {event_name}:</b>\n\n"
+        if lang == "en" else
+        f"🎯 <b>Найдено {len(matches)} матчей на {event_name}:</b>\n\n"
+    )
+
+    lines = []
+    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+    for i, (matched_user, match_result) in enumerate(matches):
+        emoji = emojis[i] if i < len(emojis) else f"{i+1}."
+        name = matched_user.display_name or matched_user.first_name or "Anonymous"
+
+        # Hashtags
+        hashtags = " ".join([f"#{x}" for x in matched_user.interests[:3]]) if matched_user.interests else ""
+
+        line = f"{emoji} <b>{name}</b>"
+        if hashtags:
+            line += f"\n   {hashtags}"
+        line += f"\n   💡 {match_result.explanation[:80]}..."
+        if matched_user.username:
+            line += f"\n   📱 @{matched_user.username}"
+
+        lines.append(line)
+
+    text = header + "\n\n".join(lines)
+
+    # Add icebreaker from first match
+    if matches:
+        icebreaker = matches[0][1].icebreaker
+        text += f"\n\n💬 <b>{'Start with' if lang == 'en' else 'Начни с'}:</b>\n<i>{icebreaker}</i>"
+
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
 async def list_matches_callback(callback: CallbackQuery):
