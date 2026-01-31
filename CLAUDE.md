@@ -211,6 +211,16 @@ sphere-bot/
     - FSM state fully cleared on error recovery
     - Fallback profile has valid looking_for/can_help_with defaults
     - Improved matching prompt with weighted criteria
+14. **Language detection fixes** - all commands and callbacks use proper language:
+    - /menu, /help, /reset detect and use user's language
+    - back_to_menu, show_events callbacks fixed
+    - Added detect_lang_callback() for callback handlers
+15. **Reset command fixed** - now properly clears ALL profile fields in DB
+    - Added reset_user() method with proper NULL handling
+    - Added reset_profile() to repository
+16. **Selfie request for text onboarding** - v2 now asks for photo too
+    - Added waiting_selfie state
+    - Photo upload, skip button, text fallback handlers
 
 ---
 
