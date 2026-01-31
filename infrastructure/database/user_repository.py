@@ -115,6 +115,22 @@ class SupabaseUserRepository(IUserRepository):
         data = await self._update_by_platform_id_sync(platform, platform_user_id, user_data)
         return self._to_model(data) if data else None
 
+    @run_sync
+    def _reset_profile_sync(self, platform: MessagePlatform, platform_user_id: str,
+                            reset_data: dict) -> Optional[dict]:
+        """Reset profile with explicit NULL values (bypasses exclude_none)"""
+        response = supabase.table("users").update(reset_data)\
+            .eq("platform", platform.value)\
+            .eq("platform_user_id", platform_user_id)\
+            .execute()
+        return response.data[0] if response.data else None
+
+    async def reset_profile(self, platform: MessagePlatform, platform_user_id: str,
+                            reset_data: dict) -> Optional[User]:
+        """Reset user profile with explicit NULL values"""
+        data = await self._reset_profile_sync(platform, platform_user_id, reset_data)
+        return self._to_model(data) if data else None
+
     async def get_or_create(self, user_data: UserCreate) -> User:
         # Try to get existing user
         existing = await self.get_by_platform_id(user_data.platform, user_data.platform_user_id)

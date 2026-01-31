@@ -61,6 +61,28 @@ class UserService:
         update_data = UserUpdate(**{k: v for k, v in kwargs.items() if v is not None})
         return await self.user_repo.update_by_platform_id(platform, platform_user_id, update_data)
 
+    async def reset_user(
+        self,
+        platform: MessagePlatform,
+        platform_user_id: str
+    ) -> Optional[User]:
+        """Full reset of user profile - clears all fields to defaults"""
+        # Use raw update to set fields including NULL for current_event_id
+        reset_data = {
+            "display_name": None,
+            "first_name": None,
+            "bio": None,
+            "interests": [],
+            "goals": [],
+            "looking_for": None,
+            "can_help_with": None,
+            "ai_summary": None,
+            "photo_url": None,
+            "current_event_id": None,
+            "onboarding_completed": False
+        }
+        return await self.user_repo.reset_profile(platform, platform_user_id, reset_data)
+
     async def complete_onboarding(
         self,
         platform: MessagePlatform,

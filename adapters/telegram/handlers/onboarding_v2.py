@@ -18,6 +18,18 @@ from core.services.conversation_service import (
 from infrastructure.ai.conversation_ai import create_conversation_ai
 from adapters.telegram.loader import user_service, event_service, bot
 from adapters.telegram.keyboards import get_main_menu_keyboard
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardMarkup
+
+
+def get_selfie_keyboard_v2(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for selfie request"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="⏩ Пропустить", callback_data="skip_selfie_v2")
+    else:
+        builder.button(text="⏩ Skip", callback_data="skip_selfie_v2")
+    return builder.as_markup()
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +41,7 @@ router = Router(name="onboarding_v2")
 class ConversationalOnboarding(StatesGroup):
     """States for conversational onboarding"""
     in_conversation = State()  # Active conversation with LLM
+    waiting_selfie = State()   # Waiting for selfie photo
 
 
 # === Service initialization ===
@@ -315,7 +328,12 @@ async def complete_conversational_onboarding(
             ai_summary=summary
         )
 
+    # Detect language
+    lang_code = message.from_user.language_code or "en"
+    lang = "ru" if lang_code.startswith(("ru", "uk")) else "en"
+
     # Handle event join if pending
+    event = None
     if pending_event:
         success, msg, event = await event_service.join_event(
             pending_event,
@@ -331,34 +349,33 @@ async def complete_conversational_onboarding(
                 current_event_id=event.id
             )
 
-            # Re-fetch user with updated current_event_id
-            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+    # Save event info for after selfie
+    await state.update_data(
+        pending_event=pending_event,
+        event_id=str(event.id) if event else None,
+        event_name=event.name if event else None,
+        language=lang
+    )
 
-            await message.answer(
-                f"🎉 You're in! Welcome to <b>{event.name}</b>\n\n"
-                "Finding interesting people for you..."
-            )
-
-            # Show top matches
-            if user:
-                await show_top_matches_v2(message, user, event, tg_username)
-        else:
-            text = (
-                "✓ Profile saved!\n\n"
-                "The event is no longer available, but you can join other events."
-            )
-            await message.answer(text, reply_markup=get_main_menu_keyboard())
-    else:
-        text = (
-            "🎉 <b>Profile complete!</b>\n\n"
-            "Scan QR codes at events to start meeting interesting people!"
+    # Ask for selfie
+    if lang == "ru":
+        selfie_text = (
+            "📸 <b>Последний шаг!</b>\n\n"
+            "Отправь своё фото, чтобы твои матчи могли легко найти тебя на ивенте.\n\n"
+            "<i>Это поможет быстрее узнать друг друга в толпе!</i>"
         )
-        await message.answer(text, reply_markup=get_main_menu_keyboard())
+    else:
+        selfie_text = (
+            "📸 <b>One last thing!</b>\n\n"
+            "Send a photo of yourself so your matches can easily find you at the event.\n\n"
+            "<i>This helps you recognize each other in the crowd!</i>"
+        )
 
-    await state.clear()
+    await message.answer(selfie_text, reply_markup=get_selfie_keyboard_v2(lang))
+    await state.set_state(ConversationalOnboarding.waiting_selfie)
 
 
-async def show_top_matches_v2(message: Message, user, event, tg_username: str = None):
+async def show_top_matches_v2(message: Message, user, event, tg_username: str = None, lang: str = "en"):
     """Show top matches after onboarding (v2 version) and notify matched users"""
     from adapters.telegram.loader import matching_service
     from adapters.telegram.handlers.matches import notify_about_match
@@ -372,11 +389,11 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
         )
 
         if not matches:
-            await message.answer(
-                "👀 Not enough participants yet.\n"
-                "I'll notify you when matches are found!",
-                reply_markup=get_main_menu_keyboard()
-            )
+            if lang == "ru":
+                text = "👀 Пока мало участников для матчинга.\nКак только появятся — напишу тебе!"
+            else:
+                text = "👀 Not enough participants yet.\nI'll notify you when matches are found!"
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
             return
 
         # Notify matched users about new match
@@ -384,8 +401,8 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
         for matched_user, match_result in matches:
             if matched_user.platform_user_id:
                 try:
-                    # Use Russian for ru/uk users, English for others
-                    matched_lang = "en"  # Default, could be stored in user profile later
+                    # Use matched user's language preference if available
+                    matched_lang = getattr(matched_user, 'language_preference', 'en')
                     await notify_about_match(
                         user_telegram_id=int(matched_user.platform_user_id),
                         partner_name=new_user_name,
@@ -399,7 +416,10 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
                     logger.error(f"Failed to notify user {matched_user.platform_user_id}: {e}")
 
         # Format matches
-        header = f"🎯 <b>Top {len(matches)} people to meet at {event.name}:</b>\n\n"
+        if lang == "ru":
+            header = f"🎯 <b>Топ-{len(matches)} людей на {event.name}:</b>\n\n"
+        else:
+            header = f"🎯 <b>Top {len(matches)} people to meet at {event.name}:</b>\n\n"
         lines = []
         emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
@@ -423,16 +443,124 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
 
         # Add icebreaker
         if matches and matches[0][1].icebreaker:
-            text += f"\n\n💬 <i>Start with: {matches[0][1].icebreaker}</i>"
+            if lang == "ru":
+                text += f"\n\n💬 <i>Начни с: {matches[0][1].icebreaker}</i>"
+            else:
+                text += f"\n\n💬 <i>Start with: {matches[0][1].icebreaker}</i>"
 
-        await message.answer(text, reply_markup=get_main_menu_keyboard())
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
     except Exception as e:
         logger.error(f"Error showing top matches v2: {e}")
-        await message.answer(
-            "✓ Profile saved! I'll notify you about matches.",
-            reply_markup=get_main_menu_keyboard()
-        )
+        if lang == "ru":
+            text = "✓ Профиль сохранён! Напишу, когда найду матчи."
+        else:
+            text = "✓ Profile saved! I'll notify you about matches."
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+
+# === Selfie Handlers ===
+
+@router.message(ConversationalOnboarding.waiting_selfie, F.photo)
+async def handle_selfie_photo_v2(message: Message, state: FSMContext):
+    """Handle selfie photo upload"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    user_id = str(message.from_user.id)
+
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Save photo URL
+    await user_service.update_user(
+        MessagePlatform.TELEGRAM,
+        user_id,
+        photo_url=photo.file_id
+    )
+
+    if lang == "ru":
+        text = "✅ Фото сохранено! Теперь тебя легко найти на ивенте."
+    else:
+        text = "✅ Photo saved! Now you're easy to spot at the event."
+
+    await message.answer(text)
+    await finish_onboarding_v2(message, state)
+
+
+@router.callback_query(ConversationalOnboarding.waiting_selfie, F.data == "skip_selfie_v2")
+async def skip_selfie_v2(callback: CallbackQuery, state: FSMContext):
+    """Skip selfie upload"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    if lang == "ru":
+        text = "👌 Хорошо, можешь добавить фото позже в профиле."
+    else:
+        text = "👌 No problem, you can add a photo later in your profile."
+
+    await callback.message.edit_text(text)
+    await callback.answer()
+    await finish_onboarding_v2(callback.message, state, callback.from_user.id)
+
+
+@router.message(ConversationalOnboarding.waiting_selfie, F.text)
+async def handle_selfie_text_v2(message: Message, state: FSMContext):
+    """Handle text when expecting selfie"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    text_lower = message.text.lower()
+    if text_lower in ["skip", "пропустить", "нет", "no", "позже", "later"]:
+        if lang == "ru":
+            text = "👌 Хорошо, можешь добавить фото позже в профиле."
+        else:
+            text = "👌 No problem, you can add a photo later in your profile."
+        await message.answer(text)
+        await finish_onboarding_v2(message, state)
+    else:
+        if lang == "ru":
+            text = "📸 Отправь фото или нажми 'Пропустить'"
+        else:
+            text = "📸 Send a photo or tap 'Skip'"
+        await message.answer(text, reply_markup=get_selfie_keyboard_v2(lang))
+
+
+async def finish_onboarding_v2(message: Message, state: FSMContext, user_tg_id: int = None):
+    """Complete onboarding after selfie step"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    event_id = data.get("event_id")
+    event_name = data.get("event_name")
+
+    # Get user
+    tg_id = user_tg_id or message.from_user.id
+    user_id = str(tg_id)
+    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+    if event_id and user:
+        from uuid import UUID
+        if lang == "ru":
+            text = f"🎉 Ты в ивенте <b>{event_name}</b>!\n\nИщу для тебя интересных людей..."
+        else:
+            text = f"🎉 You're in <b>{event_name}</b>!\n\nFinding interesting people for you..."
+        await message.answer(text)
+
+        # Create fake event object for show_top_matches_v2
+        class EventWrapper:
+            def __init__(self, id, name):
+                self.id = UUID(id)
+                self.name = name
+
+        event = EventWrapper(event_id, event_name)
+        await show_top_matches_v2(message, user, event, user.username, lang)
+    else:
+        if lang == "ru":
+            text = "🎉 <b>Профиль готов!</b>\n\nСканируй QR-коды на ивентах, чтобы находить интересных людей!"
+        else:
+            text = "🎉 <b>Profile ready!</b>\n\nScan QR codes at events to meet interesting people!"
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+    await state.clear()
 
 
 # Note: Reset/Cancel is now handled inside process_conversation_message to ensure proper priority

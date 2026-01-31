@@ -79,6 +79,7 @@ class User(UserBase):
 class UserUpdate(BaseModel):
     """Data for updating user"""
     display_name: Optional[str] = None
+    first_name: Optional[str] = None
     city_born: Optional[str] = None
     city_current: Optional[str] = None
     interests: Optional[List[str]] = None

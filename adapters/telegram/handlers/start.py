@@ -125,19 +125,32 @@ async def start_command(message: Message, state: FSMContext):
 @router.message(Command("menu"))
 async def menu_command(message: Message):
     """Show main menu"""
-    await message.answer("Что делаем?", reply_markup=get_main_menu_keyboard())
+    lang = detect_lang(message)
+    text = "What would you like to do?" if lang == "en" else "Что делаем?"
+    await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
 @router.message(Command("help"))
 async def help_command(message: Message):
     """Show help - short and clear"""
-    await message.answer(
-        "<b>Sphere</b> — умные знакомства на ивентах\n\n"
-        "📱 Сканируй QR → получай матчи → общайся\n\n"
-        "/start — начать\n"
-        "/menu — меню\n"
-        "/reset — сбросить профиль (тест)"
-    )
+    lang = detect_lang(message)
+    if lang == "ru":
+        text = (
+            "<b>Sphere</b> — умные знакомства на ивентах\n\n"
+            "📱 Сканируй QR → получай матчи → общайся\n\n"
+            "/start — начать\n"
+            "/menu — меню\n"
+            "/reset — сбросить профиль (тест)"
+        )
+    else:
+        text = (
+            "<b>Sphere</b> — smart networking at events\n\n"
+            "📱 Scan QR → get matches → connect\n\n"
+            "/start — start\n"
+            "/menu — menu\n"
+            "/reset — reset profile (test)"
+        )
+    await message.answer(text)
 
 
 @router.message(Command("reset"))
@@ -145,6 +158,7 @@ async def reset_command(message: Message, state: FSMContext):
     """Full reset of user profile for testing"""
     from config.settings import settings
 
+    lang = detect_lang(message)
     user_id = str(message.from_user.id)
 
     # Check if admin or debug mode
@@ -152,42 +166,39 @@ async def reset_command(message: Message, state: FSMContext):
     is_debug = settings.debug
 
     if not is_admin and not is_debug:
-        await message.answer("⛔ Команда доступна только админам")
+        text = "⛔ Admin only command" if lang == "en" else "⛔ Команда доступна только админам"
+        await message.answer(text)
         return
 
-    # FULL profile reset - clear all fields
-    await user_service.update_user(
-        MessagePlatform.TELEGRAM,
-        user_id,
-        display_name=None,
-        bio=None,
-        interests=[],
-        goals=[],
-        looking_for=None,
-        can_help_with=None,
-        ai_summary=None,
-        photo_url=None,
-        current_event_id=None,
-        onboarding_completed=False
-    )
+    # FULL profile reset - clear all fields using dedicated reset method
+    await user_service.reset_user(MessagePlatform.TELEGRAM, user_id)
 
     # Clear FSM state
     await state.clear()
 
-    await message.answer(
-        "🔄 Профиль полностью очищен!\n\n"
-        "Все данные удалены. Напиши /start чтобы начать заново."
-    )
+    if lang == "ru":
+        text = "🔄 Профиль полностью очищен!\n\nВсе данные удалены. Напиши /start чтобы начать заново."
+    else:
+        text = "🔄 Profile fully reset!\n\nAll data cleared. Type /start to begin again."
+    await message.answer(text)
 
 
 # === MAIN MENU CALLBACKS ===
 
+def detect_lang_callback(callback: CallbackQuery) -> str:
+    """Detect language from callback user settings. Default: English."""
+    lang_code = callback.from_user.language_code or "en"
+    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery):
     """Return to main menu"""
+    lang = detect_lang_callback(callback)
+    text = "What would you like to do?" if lang == "en" else "Что делаем?"
     await callback.message.edit_text(
-        "Что делаем?",
-        reply_markup=get_main_menu_keyboard()
+        text,
+        reply_markup=get_main_menu_keyboard(lang)
     )
     await callback.answer()
 
@@ -195,7 +206,7 @@ async def back_to_menu(callback: CallbackQuery):
 @router.callback_query(F.data == "my_profile")
 async def show_profile(callback: CallbackQuery):
     """Show user profile - detailed with hashtags"""
-    lang = detect_lang(callback.message) if hasattr(callback.message, 'from_user') else "en"
+    lang = detect_lang_callback(callback)
 
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
@@ -267,19 +278,23 @@ async def show_profile(callback: CallbackQuery):
 @router.callback_query(F.data == "my_events")
 async def show_events(callback: CallbackQuery):
     """Show user's events"""
+    lang = detect_lang_callback(callback)
     events = await event_service.get_user_events(
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
     )
 
     if not events:
-        text = "Пока нет ивентов.\nСканируй QR-коды чтобы присоединиться!"
+        if lang == "ru":
+            text = "Пока нет ивентов.\nСканируй QR-коды чтобы присоединиться!"
+        else:
+            text = "No events yet.\nScan QR codes to join!"
     else:
-        text = "<b>Твои ивенты:</b>\n\n"
+        text = "<b>Your events:</b>\n\n" if lang == "en" else "<b>Твои ивенты:</b>\n\n"
         for event in events[:5]:
             text += f"• {event.name}\n"
 
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard())
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
     await callback.answer()
 
 
@@ -304,7 +319,7 @@ async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
         return  # Let the actual onboarding handler process this
 
     # Otherwise it's a stale button
-    lang = detect_lang(callback.message) if hasattr(callback.message, 'from_user') else "en"
+    lang = detect_lang_callback(callback)
     msg = "This button expired. Type /start" if lang == "en" else "Эта кнопка устарела. Напиши /start"
     await callback.answer(msg, show_alert=True)
     try:
