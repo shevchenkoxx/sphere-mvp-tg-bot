@@ -77,6 +77,10 @@ class EventService:
 
         # Add to event
         await self.event_repo.add_participant(event.id, user.id)
+
+        # Update user's current event
+        await self.user_repo.update(user.id, {"current_event_id": str(event.id)})
+
         return True, "Successfully joined!", event
 
     async def get_event_participants(self, event_id: UUID) -> List[User]:

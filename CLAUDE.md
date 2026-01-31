@@ -206,10 +206,70 @@ DEFAULT_MATCH_THRESHOLD=0.6
 
 ## TODO / Next Steps
 
+### Completed
 - [x] Match pagination (next/prev buttons) - DONE
 - [x] Back to menu from all screens - DONE
 - [x] Better match explanations display - DONE
-- [ ] LinkedIn URL parsing
+- [x] Fix: current_event_id not set on join_event - DONE
+- [x] Improve extraction prompt for richer profiles - DONE
+
+### High Priority
+- [ ] **Selfie feature** - photo upload to find people at event
+- [ ] LinkedIn URL parsing from voice/text
 - [ ] Notifications when new match found
+
+### Medium Priority
 - [ ] Admin dashboard for events
 - [ ] Multi-match chat forwarding
+- [ ] Profile editing after onboarding
+- [ ] Event-specific matching settings
+
+### Future Ideas
+- [ ] Group matching (find common groups)
+- [ ] Follow-up reminders after event
+- [ ] Event analytics for organizers
+
+---
+
+## Flow: When 5 Real People Register
+
+1. **User scans QR** → opens `t.me/Matchd_bot?start=event_EVENTCODE`
+2. **If new user:**
+   - Starts audio onboarding
+   - Records 60-sec voice message
+   - LLM extracts: about, looking_for, can_help_with, skills, interests
+   - Saves profile + sets `current_event_id`
+3. **If existing user:**
+   - Clicks "Join Event" button
+   - Added to event_participants + `current_event_id` updated
+4. **Matching triggers:**
+   - Manual: user runs `/find_matches`
+   - Auto: admin runs event matching
+   - OpenAI analyzes all pairs → creates matches above threshold
+5. **User sees matches:**
+   - 💫 Matches button shows paginated list
+   - AI explanation of why matched
+   - Icebreaker to start conversation
+   - Direct @username link
+
+---
+
+## Extraction Prompt (Improved)
+
+Located in `core/prompts/audio_onboarding.py`
+
+Now extracts:
+- **about** - rich 3-4 sentence summary with personality
+- **looking_for** - SPECIFIC people/connections wanted
+- **can_help_with** - SPECIFIC expertise and skills
+- **profession** - detailed job title (Senior PM, not just PM)
+- **experience_level** - junior/mid/senior/founder
+- **skills** - technical and soft skills
+- **personality_traits** - how they come across
+- **unique_value** - what makes them special to meet
+
+Key improvements:
+- Reads between the lines (infers from context)
+- More generous extraction (better to include than miss)
+- Captures personality and communication style
+- Specific actionable info for matching

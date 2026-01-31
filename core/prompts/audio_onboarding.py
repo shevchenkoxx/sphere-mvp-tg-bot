@@ -44,7 +44,7 @@ AUDIO_GUIDE_PROMPT_RU = """🎤 Запиши голосовое сообщени
 Говори свободно — я использую это чтобы найти лучшие матчи!"""
 
 # Extraction prompt - converts transcription to structured data
-AUDIO_EXTRACTION_PROMPT = """You are a profile data extractor. Extract structured information from this voice message transcription.
+AUDIO_EXTRACTION_PROMPT = """You are an expert profile data extractor for a networking app. Extract MAXIMUM useful information from this voice message.
 
 TRANSCRIPTION:
 {transcription}
@@ -53,41 +53,64 @@ CONTEXT:
 - Event: {event_name}
 - User's UI language preference: {language}
 
-IMPORTANT: Extract information in the SAME LANGUAGE as the transcription (preserve the original language of the transcription). If they spoke in English, extract in English. If they spoke in Russian, extract in Russian.
+IMPORTANT: Extract in the SAME LANGUAGE as the transcription.
 
-Extract the following and return as JSON:
+YOUR TASK: Extract every useful detail. People often don't say things explicitly - READ BETWEEN THE LINES:
+- "I work at Google" → profession: software engineer (likely), company: Google
+- "I'm building an app" → likely: startup founder, interests: tech/startups
+- "I want to find investors" → looking_for: investors, goals: investing
+- "I can help with marketing" → can_help_with: marketing strategy
+- "I've been doing this for 10 years" → experience: senior level
+
+Extract and return as JSON:
 
 {{
-  "display_name": "name if mentioned, null otherwise",
-  "language": "language code (en/ru/es/de/fr/etc)",
+  "display_name": "name if mentioned",
+  "language": "language code (en/ru/etc)",
 
-  "about": "concise summary of who they are, what they do (2-3 sentences max)",
-  "looking_for": "what kind of people/connections they want to meet",
-  "can_help_with": "their expertise, how they can help others",
+  "about": "WHO they are - rich summary capturing personality, background, current focus (3-4 sentences). Include: what they do, their experience level, what makes them unique",
 
-  "interests": ["list of 3-5 relevant interest tags"],
-  "goals": ["list of 1-3 goal tags"],
+  "looking_for": "SPECIFIC types of people/connections they want. Be detailed: 'looking for technical co-founder for AI startup' not just 'co-founder'. Include: type of person, purpose, any specifics mentioned",
 
-  "profession": "their job/role if mentioned",
-  "company": "company name if mentioned",
+  "can_help_with": "SPECIFIC expertise and how they can help. Be detailed: 'UX design, user research, design systems for mobile apps' not just 'design'. Include: skills, experience areas, what problems they solve",
+
+  "interests": ["5-7 relevant tags - be generous, infer from context"],
+  "goals": ["2-4 goal tags - what they want from networking"],
+
+  "profession": "job title/role - be specific (e.g. 'Senior Product Manager' not just 'PM')",
+  "company": "company/organization if mentioned",
+  "industry": "industry/field they work in",
+  "experience_level": "junior/mid/senior/founder/executive - infer from context",
+
+  "skills": ["specific skills mentioned or implied - technical and soft skills"],
+  "expertise_areas": ["areas where they have deep knowledge"],
+
+  "personality_traits": ["2-3 traits that come through - e.g. ambitious, creative, analytical"],
+  "communication_style": "brief description of how they express themselves",
+
   "link": "any URL mentioned (linkedin, website, etc)",
+  "location": "city/country if mentioned",
 
-  "raw_highlights": ["3-5 key quotes or interesting points from their message"],
-  "confidence_score": 0.0-1.0
+  "raw_highlights": ["4-6 memorable quotes or interesting points that show personality"],
+  "unique_value": "one sentence: what makes this person uniquely valuable to meet",
+
+  "confidence_score": 0.0-1.0,
+  "extraction_notes": "any ambiguities or assumptions made"
 }}
 
-INTEREST TAGS (choose from):
-tech, business, startups, crypto, design, art, music, books, travel, sport, wellness, psychology, gaming, ecology, cooking, cinema, science, education, marketing, finance
+INTEREST TAGS (choose from, can add similar):
+tech, AI, ML, product, business, startups, crypto, web3, design, UX, art, music, books, travel, sport, fitness, wellness, psychology, gaming, ecology, cooking, cinema, science, education, marketing, growth, finance, investing, sales, HR, legal, healthcare, real_estate
 
 GOAL TAGS (choose from):
-networking, friends, business, mentorship, cofounders, creative, learning, dating, hiring, investing
+networking, friends, business, mentorship, cofounders, creative, learning, dating, hiring, investing, partnerships, advice, collaboration
 
 RULES:
-- Extract ONLY what was explicitly said or strongly implied
-- Keep "about" concise but capture personality
-- If something wasn't mentioned, use null or empty array
-- confidence_score: how complete/clear the information was (1.0 = very clear, 0.5 = partial)
-- raw_highlights: memorable quotes that show personality
+- Be GENEROUS with extraction - better to include than miss
+- INFER from context when things aren't explicit
+- "about" should be rich enough to understand the person
+- "looking_for" and "can_help_with" should be SPECIFIC and actionable
+- Include personality and communication style - this helps matching
+- confidence_score: 1.0 = very clear, 0.7 = good, 0.5 = partial
 
 Return ONLY valid JSON, no markdown or explanations."""
 
