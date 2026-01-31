@@ -72,6 +72,38 @@ async def start_conversational_onboarding(
     await message.answer(greeting)
 
 
+async def start_conversational_onboarding_from_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    event_name: str = None,
+    event_code: str = None
+):
+    """
+    Start conversational onboarding from a callback.
+
+    Uses callback.from_user (the actual user) instead of callback.message.from_user (the bot).
+    """
+    # Create fresh conversation state with correct user info
+    conv_state = conversation_service.create_onboarding_state(
+        event_name=event_name,
+        user_first_name=callback.from_user.first_name
+    )
+
+    # Store event code if present
+    if event_code:
+        conv_state.context["pending_event"] = event_code
+
+    # Start conversation - get initial greeting
+    conv_state, greeting = await conversation_service.start_conversation(conv_state)
+
+    # Save state to FSM
+    await state.update_data(conversation=serialize_state(conv_state))
+    await state.set_state(ConversationalOnboarding.in_conversation)
+
+    # Send greeting using bot directly since callback.message belongs to bot
+    await bot.send_message(callback.from_user.id, greeting)
+
+
 @router.message(ConversationalOnboarding.in_conversation, F.text)
 async def process_conversation_message(message: Message, state: FSMContext):
     """Process user message in conversation"""

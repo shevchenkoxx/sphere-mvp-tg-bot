@@ -197,7 +197,7 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(AudioOnboarding.waiting_audio, F.data == "switch_to_text")
 async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     """Switch to conversational onboarding"""
-    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding_from_callback
 
     data = await state.get_data()
     await state.clear()
@@ -208,9 +208,9 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     except Exception:
         pass  # Message might be too old to delete
 
-    # Create a fake message object with correct user info for the new flow
-    await start_conversational_onboarding(
-        callback.message,
+    # Use callback-specific function that correctly extracts user info
+    await start_conversational_onboarding_from_callback(
+        callback,
         state,
         event_name=data.get("event_name"),
         event_code=data.get("pending_event")
