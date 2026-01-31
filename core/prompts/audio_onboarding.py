@@ -1,30 +1,47 @@
 """
 Audio Onboarding Prompts - Extract structured profile from voice message.
 User speaks freely for 60 seconds, we extract everything needed.
+
+Language handling: English is the default. Russian supported.
+Language is auto-detected from Telegram settings.
 """
 
-# System prompt for guiding the user what to say
-AUDIO_GUIDE_PROMPT = """Record a 60-second voice message telling us about yourself:
+# LLM prompt to generate personalized intro (replaces static guide)
+AUDIO_INTRO_PROMPT = """You are a friendly networking bot helping someone at a {event_context}.
 
-🎤 **What to include:**
-- Who you are and what you do
-- What you're passionate about
-- Who you'd like to meet here
-- How you can help others
+Generate a SHORT, warm welcome message (3-4 sentences max) that:
+1. Greets them naturally
+2. Explains we'll use their voice intro to find great matches
+3. Tells them what to include in their 60-second voice message:
+   - Who they are & what they do
+   - What kind of people they want to meet
+   - How they can help others / their expertise
+4. Encourages them to speak naturally
 
-Just speak naturally - no need to follow a script!
-"""
+Language: {language_name}
+User's first name: {first_name}
 
-AUDIO_GUIDE_PROMPT_RU = """Запиши голосовое сообщение на 60 секунд о себе:
+Keep it conversational, not like a form. Use 1-2 relevant emojis.
+Return ONLY the message text."""
 
-🎤 **Что рассказать:**
-- Кто ты и чем занимаешься
-- Что тебя вдохновляет
-- Кого хочешь встретить
-- Чем можешь помочь другим
+# Fallback static guides (used if LLM fails)
+AUDIO_GUIDE_PROMPT = """🎤 Record a 60-second voice message about yourself:
 
-Говори свободно - без скриптов!
-"""
+**Please include:**
+• Who you are and what you do
+• What kind of people you'd like to meet here
+• How you can help others (your expertise)
+
+Speak naturally - I'll use this to find your best matches!"""
+
+AUDIO_GUIDE_PROMPT_RU = """🎤 Запиши голосовое сообщение на 60 секунд о себе:
+
+**Расскажи:**
+• Кто ты и чем занимаешься
+• Кого хотел бы встретить здесь
+• Чем можешь помочь другим (твоя экспертиза)
+
+Говори свободно — я использую это чтобы найти лучшие матчи!"""
 
 # Extraction prompt - converts transcription to structured data
 AUDIO_EXTRACTION_PROMPT = """You are a profile data extractor. Extract structured information from this voice message transcription.
@@ -73,18 +90,49 @@ RULES:
 Return ONLY valid JSON, no markdown or explanations."""
 
 
-# Follow-up prompt if we need more info
-AUDIO_FOLLOWUP_PROMPT = """Based on the profile extracted, we're missing some key information.
+# Validation prompt - check what's missing and generate follow-up
+AUDIO_VALIDATION_PROMPT = """Analyze this extracted profile and determine if we have enough info for good matching.
 
-Current profile:
+EXTRACTED PROFILE:
+- Name: {display_name}
 - About: {about}
 - Looking for: {looking_for}
-- Can help: {can_help_with}
+- Can help with: {can_help_with}
+- Interests: {interests}
 
-Missing: {missing_fields}
+REQUIRED FOR GOOD MATCHING:
+1. "about" - who they are (REQUIRED)
+2. "looking_for" - what kind of connections they want (IMPORTANT)
+3. "can_help_with" - their expertise/how they help others (IMPORTANT)
 
-Generate a short, friendly follow-up question (1-2 sentences) to get the missing info.
-The question should feel natural, not like a form.
+Analyze and return JSON:
+{{
+  "is_complete": true/false,
+  "missing_fields": ["looking_for", "can_help_with"],  // list of missing important fields
+  "completeness_score": 0.0-1.0,
+  "follow_up_question": "natural question to get missing info (in {language})" or null
+}}
+
+RULES:
+- is_complete = true if we have "about" AND at least one of (looking_for, can_help_with)
+- If both looking_for AND can_help_with are missing, ask about BOTH in one natural question
+- Keep follow_up_question conversational, not robotic
+- Use the specified language for the question
+
+Return ONLY valid JSON."""
+
+# Legacy follow-up prompt (for simple cases)
+AUDIO_FOLLOWUP_PROMPT = """Generate a natural follow-up question to complete someone's networking profile.
+
+Current info we have:
+- About: {about}
+
+What we're missing: {missing_fields}
+
+Language: {language}
+
+Generate ONE short, friendly question (1-2 sentences) that asks about the missing info naturally.
+Don't sound like a form - be conversational.
 
 Return ONLY the question text."""
 

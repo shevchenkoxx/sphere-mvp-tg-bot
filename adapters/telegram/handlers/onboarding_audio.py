@@ -1,6 +1,14 @@
 """
 Audio Onboarding Handler - 60-second voice message flow.
 User speaks naturally, we extract structured profile data.
+
+Flow:
+1. Detect language from Telegram settings (default: English)
+2. LLM generates personalized intro explaining what to say
+3. User records voice message
+4. AI extracts profile data
+5. Validate completeness - if missing key info, ask follow-up
+6. Show confirmation and save
 """
 
 import json
@@ -17,7 +25,9 @@ from core.domain.models import MessagePlatform
 from core.prompts.audio_onboarding import (
     AUDIO_GUIDE_PROMPT_RU,
     AUDIO_GUIDE_PROMPT,
+    AUDIO_INTRO_PROMPT,
     AUDIO_EXTRACTION_PROMPT,
+    AUDIO_VALIDATION_PROMPT,
     AUDIO_CONFIRMATION_TEMPLATE,
     AUDIO_CONFIRMATION_TEMPLATE_RU,
 )
@@ -30,11 +40,32 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+# === Language Detection ===
+
+def detect_language(message: Message) -> str:
+    """Detect user language from Telegram settings. Default: English."""
+    lang_code = message.from_user.language_code or "en"
+
+    # Map language codes to our supported languages
+    if lang_code.startswith("ru"):
+        return "ru"
+    elif lang_code.startswith("uk"):  # Ukrainian -> use Russian
+        return "ru"
+    else:
+        return "en"  # Default to English for all other languages
+
+
+def get_language_name(lang: str) -> str:
+    """Get full language name for prompts."""
+    return "Russian" if lang == "ru" else "English"
+
+
 # === FSM States ===
 
 class AudioOnboarding(StatesGroup):
     """States for audio onboarding"""
     waiting_audio = State()      # Waiting for voice message
+    waiting_followup = State()   # Waiting for follow-up answer
     confirming = State()         # Confirming extracted profile
 
 
@@ -73,12 +104,16 @@ async def start_audio_onboarding(
     state: FSMContext,
     event_name: str = None,
     event_code: str = None,
-    lang: str = "ru"
+    lang: str = None  # Auto-detect if not provided
 ):
     """
     Start audio onboarding flow.
     Called from start handler.
     """
+    # Auto-detect language from Telegram if not provided
+    if lang is None:
+        lang = detect_language(message)
+
     # Save context
     await state.update_data(
         event_name=event_name,
@@ -87,20 +122,58 @@ async def start_audio_onboarding(
         user_first_name=message.from_user.first_name
     )
 
-    # Choose language
-    guide = AUDIO_GUIDE_PROMPT_RU if lang == "ru" else AUDIO_GUIDE_PROMPT
-
-    # Send guide
-    if event_name:
-        intro = f"👋 Привет! Ты на <b>{event_name}</b>\n\n" if lang == "ru" else f"👋 Hi! You're at <b>{event_name}</b>\n\n"
-    else:
-        intro = "👋 Привет! Давай познакомимся.\n\n" if lang == "ru" else "👋 Hi! Let's get to know each other.\n\n"
+    # Generate personalized intro with LLM
+    intro_text = await generate_onboarding_intro(
+        event_name=event_name,
+        first_name=message.from_user.first_name,
+        lang=lang
+    )
 
     await message.answer(
-        intro + guide,
+        intro_text,
         reply_markup=get_audio_start_keyboard(lang)
     )
     await state.set_state(AudioOnboarding.waiting_audio)
+
+
+async def generate_onboarding_intro(
+    event_name: str = None,
+    first_name: str = None,
+    lang: str = "en"
+) -> str:
+    """Generate personalized intro using LLM."""
+    from openai import AsyncOpenAI
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        event_context = f"event called '{event_name}'" if event_name else "networking event"
+        language_name = get_language_name(lang)
+
+        prompt = AUDIO_INTRO_PROMPT.format(
+            event_context=event_context,
+            language_name=language_name,
+            first_name=first_name or "friend"
+        )
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.7
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        logger.error(f"Failed to generate intro: {e}")
+        # Fallback to static guide
+        if lang == "ru":
+            intro = f"👋 Привет{', ' + first_name if first_name else ''}!\n\n"
+            return intro + AUDIO_GUIDE_PROMPT_RU
+        else:
+            intro = f"👋 Hi{' ' + first_name if first_name else ''}!\n\n"
+            return intro + AUDIO_GUIDE_PROMPT
 
 
 # === Handlers ===
@@ -148,10 +221,10 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
 async def process_audio(message: Message, state: FSMContext):
     """Process voice message and extract profile"""
     data = await state.get_data()
-    lang = data.get("language", "ru")
+    lang = data.get("language", "en")
 
     # Status message
-    status = await message.answer("🎤 Обрабатываю..." if lang == "ru" else "🎤 Processing...")
+    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
 
     try:
         # Get voice file
@@ -163,8 +236,8 @@ async def process_audio(message: Message, state: FSMContext):
 
         if not transcription or len(transcription) < 20:
             await status.edit_text(
-                "Не расслышал 😅 Попробуй ещё раз, говори чётче." if lang == "ru"
-                else "Couldn't hear that clearly 😅 Please try again, speak clearly."
+                "Couldn't hear that clearly 😅 Please try again, speak clearly." if lang == "en"
+                else "Не расслышал 😅 Попробуй ещё раз, говори чётче."
             )
             return
 
@@ -181,16 +254,213 @@ async def process_audio(message: Message, state: FSMContext):
             profile_data=profile_data
         )
 
-        # Show confirmation
         await status.delete()
-        await show_profile_confirmation(message, state, profile_data, lang)
+
+        # Validate profile completeness
+        validation = await validate_profile_completeness(profile_data, lang)
+
+        if validation["is_complete"]:
+            # Profile is complete, show confirmation
+            await show_profile_confirmation(message, state, profile_data, lang)
+        else:
+            # Missing important info, ask follow-up
+            follow_up = validation.get("follow_up_question")
+            if follow_up:
+                await state.update_data(missing_fields=validation["missing_fields"])
+                await message.answer(follow_up)
+                await state.set_state(AudioOnboarding.waiting_followup)
+            else:
+                # No follow-up generated, just show what we have
+                await show_profile_confirmation(message, state, profile_data, lang)
 
     except Exception as e:
         logger.error(f"Audio processing error: {e}")
         await status.edit_text(
-            "Что-то пошло не так. Попробуй ещё раз." if lang == "ru"
-            else "Something went wrong. Please try again."
+            "Something went wrong. Please try again." if lang == "en"
+            else "Что-то пошло не так. Попробуй ещё раз."
         )
+
+
+async def validate_profile_completeness(profile_data: dict, lang: str) -> dict:
+    """Validate if profile has enough info for matching, generate follow-up if needed."""
+    from openai import AsyncOpenAI
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        prompt = AUDIO_VALIDATION_PROMPT.format(
+            display_name=profile_data.get("display_name") or "Not provided",
+            about=profile_data.get("about") or "Not provided",
+            looking_for=profile_data.get("looking_for") or "Not provided",
+            can_help_with=profile_data.get("can_help_with") or "Not provided",
+            interests=", ".join(profile_data.get("interests", [])) or "None",
+            language=get_language_name(lang)
+        )
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.3
+        )
+
+        text = response.choices[0].message.content.strip()
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+
+        return json.loads(text)
+
+    except Exception as e:
+        logger.error(f"Profile validation error: {e}")
+        # Fallback: check manually
+        has_about = bool(profile_data.get("about"))
+        has_looking = bool(profile_data.get("looking_for"))
+        has_help = bool(profile_data.get("can_help_with"))
+
+        if has_about and (has_looking or has_help):
+            return {"is_complete": True, "missing_fields": []}
+
+        missing = []
+        if not has_looking:
+            missing.append("looking_for")
+        if not has_help:
+            missing.append("can_help_with")
+
+        # Generate simple follow-up
+        if lang == "ru":
+            question = "Отлично! А кого ты хотел бы встретить здесь и чем можешь помочь другим?"
+        else:
+            question = "Great intro! Who would you like to meet here, and how can you help others?"
+
+        return {
+            "is_complete": False,
+            "missing_fields": missing,
+            "follow_up_question": question
+        }
+
+
+# === Follow-up Handler ===
+
+@router.message(AudioOnboarding.waiting_followup, F.text)
+async def process_followup_text(message: Message, state: FSMContext):
+    """Process text answer to follow-up question"""
+    data = await state.get_data()
+    profile_data = data.get("profile_data", {})
+    missing_fields = data.get("missing_fields", [])
+    lang = data.get("language", "en")
+
+    # Parse the follow-up answer and merge into profile
+    updated_profile = await merge_followup_into_profile(
+        profile_data,
+        message.text,
+        missing_fields,
+        lang
+    )
+
+    await state.update_data(profile_data=updated_profile)
+    await show_profile_confirmation(message, state, updated_profile, lang)
+
+
+@router.message(AudioOnboarding.waiting_followup, F.voice)
+async def process_followup_voice(message: Message, state: FSMContext):
+    """Process voice answer to follow-up question"""
+    data = await state.get_data()
+    profile_data = data.get("profile_data", {})
+    missing_fields = data.get("missing_fields", [])
+    lang = data.get("language", "en")
+
+    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription:
+            updated_profile = await merge_followup_into_profile(
+                profile_data,
+                transcription,
+                missing_fields,
+                lang
+            )
+            await state.update_data(profile_data=updated_profile)
+            await status.delete()
+            await show_profile_confirmation(message, state, updated_profile, lang)
+        else:
+            await status.edit_text(
+                "Couldn't hear that. Please type your answer." if lang == "en"
+                else "Не расслышал. Напиши текстом."
+            )
+    except Exception as e:
+        logger.error(f"Follow-up voice error: {e}")
+        await status.edit_text(
+            "Please type your answer." if lang == "en"
+            else "Напиши текстом."
+        )
+
+
+async def merge_followup_into_profile(
+    profile_data: dict,
+    answer_text: str,
+    missing_fields: list,
+    lang: str
+) -> dict:
+    """Merge follow-up answer into existing profile data."""
+    from openai import AsyncOpenAI
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        prompt = f"""Update this profile with new information from the user's follow-up answer.
+
+CURRENT PROFILE:
+- About: {profile_data.get("about") or "N/A"}
+- Looking for: {profile_data.get("looking_for") or "N/A"}
+- Can help with: {profile_data.get("can_help_with") or "N/A"}
+
+MISSING FIELDS TO FILL: {", ".join(missing_fields)}
+
+USER'S ANSWER:
+{answer_text}
+
+Extract and return JSON with ONLY the fields that should be updated:
+{{
+  "looking_for": "extracted info about who they want to meet",
+  "can_help_with": "extracted info about their expertise/how they help"
+}}
+
+Return ONLY valid JSON with the fields to update. Keep existing values if not mentioned."""
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.2
+        )
+
+        text = response.choices[0].message.content.strip()
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```\s*', '', text)
+
+        updates = json.loads(text)
+
+        # Merge updates into profile
+        updated = profile_data.copy()
+        for key, value in updates.items():
+            if value and value not in ["N/A", "null", "None", ""]:
+                updated[key] = value
+
+        return updated
+
+    except Exception as e:
+        logger.error(f"Merge followup error: {e}")
+        # Fallback: just add the raw answer
+        updated = profile_data.copy()
+        if "looking_for" in missing_fields:
+            updated["looking_for"] = answer_text[:200]
+        elif "can_help_with" in missing_fields:
+            updated["can_help_with"] = answer_text[:200]
+        return updated
 
 
 @router.message(AudioOnboarding.waiting_audio, F.text)
@@ -401,7 +671,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                 await show_top_matches(message, user, event, lang, tg_username)
         else:
             text = "✓ Профиль сохранён!" if lang == "ru" else "✓ Profile saved!"
-            await message.answer(text, reply_markup=get_main_menu_keyboard())
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
         text = (
             "🎉 <b>Профиль готов!</b>\n\n"
@@ -410,7 +680,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
             "🎉 <b>Profile ready!</b>\n\n"
             "Scan QR codes at events to meet interesting people!"
         )
-        await message.answer(text, reply_markup=get_main_menu_keyboard())
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
     await state.clear()
 
@@ -435,7 +705,7 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
                 "👀 Not enough participants yet.\n"
                 "I'll notify you when matches are found!"
             )
-            await message.answer(text, reply_markup=get_main_menu_keyboard())
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
             return
 
         # Format top matches message
@@ -483,7 +753,7 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
                 else:
                     text += f"\n\n💬 <i>Start with: {first_match.icebreaker}</i>"
 
-        await message.answer(text, reply_markup=get_main_menu_keyboard())
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
     except Exception as e:
         logger.error(f"Error showing top matches: {e}")
@@ -492,7 +762,7 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
         ) if lang == "ru" else (
             "✓ Profile saved! I'll notify you about matches."
         )
-        await message.answer(text, reply_markup=get_main_menu_keyboard())
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
 # === Profile Extraction ===

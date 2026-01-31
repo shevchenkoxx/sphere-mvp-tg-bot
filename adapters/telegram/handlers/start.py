@@ -1,6 +1,7 @@
 """
 Start handler - /start command and main menu.
 Fast, friendly, conversational.
+Multilingual: English default, Russian supported.
 """
 
 from aiogram import Router, F
@@ -22,6 +23,12 @@ from adapters.telegram.config import ONBOARDING_VERSION
 router = Router()
 
 
+def detect_lang(message: Message) -> str:
+    """Detect language from Telegram settings. Default: English."""
+    lang_code = message.from_user.language_code or "en"
+    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+
+
 @router.message(CommandStart(deep_link=True))
 async def start_with_deep_link(message: Message, command: CommandObject, state: FSMContext):
     """Handle /start with deep link (QR code entry)"""
@@ -41,6 +48,7 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         event = await event_service.get_event_by_code(event_code)
 
         if event:
+            lang = detect_lang(message)
             if not user.onboarding_completed:
                 # Start onboarding with event context
                 if ONBOARDING_VERSION == "audio":
@@ -59,22 +67,22 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
                     )
                 else:
                     # Legacy v1 flow
-                    await state.update_data(pending_event=event_code)
-                    await message.answer(
-                        f"👋 Привет! Ты на <b>{event.name}</b>\n\n"
-                        "Давай быстро познакомимся — займёт 1 минуту!\n\n"
-                        "Как тебя зовут?"
-                    )
+                    await state.update_data(pending_event=event_code, language=lang)
+                    if lang == "ru":
+                        text = f"👋 Привет! Ты на <b>{event.name}</b>\n\nДавай познакомимся! Как тебя зовут?"
+                    else:
+                        text = f"👋 Hi! You're at <b>{event.name}</b>\n\nLet's get to know each other! What's your name?"
+                    await message.answer(text)
                     await state.set_state(OnboardingStates.waiting_name)
             else:
-                await message.answer(
-                    f"🎉 <b>{event.name}</b>\n\n"
-                    f"📍 {event.location or ''}\n\n"
-                    "Присоединяйся!",
-                    reply_markup=get_join_event_keyboard(event_code)
-                )
+                if lang == "ru":
+                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nПрисоединяйся!"
+                else:
+                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nJoin the event!"
+                await message.answer(text, reply_markup=get_join_event_keyboard(event_code))
         else:
-            await message.answer("Упс, ивент не найден 😕")
+            lang = detect_lang(message)
+            await message.answer("Event not found 😕" if lang == "en" else "Ивент не найден 😕")
     else:
         await start_command(message, state)
 
@@ -82,6 +90,8 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
 @router.message(CommandStart())
 async def start_command(message: Message, state: FSMContext):
     """Handle regular /start - quick and friendly"""
+    lang = detect_lang(message)
+
     user = await user_service.get_or_create_user(
         platform=MessagePlatform.TELEGRAM,
         platform_user_id=str(message.from_user.id),
@@ -90,12 +100,9 @@ async def start_command(message: Message, state: FSMContext):
     )
 
     if user.onboarding_completed:
-        name = user.display_name or message.from_user.first_name or "друг"
-        await message.answer(
-            f"👋 {name}!\n\n"
-            "Что делаем?",
-            reply_markup=get_main_menu_keyboard()
-        )
+        name = user.display_name or message.from_user.first_name or ("friend" if lang == "en" else "друг")
+        text = f"👋 {name}!\n\n" + ("What would you like to do?" if lang == "en" else "Что делаем?")
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
         # Start onboarding
         if ONBOARDING_VERSION == "audio":
@@ -106,10 +113,12 @@ async def start_command(message: Message, state: FSMContext):
             await start_conversational_onboarding(message, state)
         else:
             # Legacy v1 flow
-            await message.answer(
-                "👋 Привет! Я помогу найти интересных людей.\n\n"
-                "Займёт 1 минуту. Как тебя зовут?"
-            )
+            await state.update_data(language=lang)
+            if lang == "ru":
+                text = "👋 Привет! Я помогу найти интересных людей.\n\nКак тебя зовут?"
+            else:
+                text = "👋 Hi! I help you find interesting people to meet.\n\nWhat's your name?"
+            await message.answer(text)
             await state.set_state(OnboardingStates.waiting_name)
 
 

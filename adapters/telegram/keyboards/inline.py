@@ -150,20 +150,25 @@ def get_chat_keyboard(match_id: str) -> InlineKeyboardMarkup:
 
 # === MAIN MENU ===
 
-def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+def get_main_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     """Main menu keyboard - clean and simple"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="👤 Профиль", callback_data="my_profile")
-    builder.button(text="🎉 Ивенты", callback_data="my_events")
-    builder.button(text="💫 Матчи", callback_data="my_matches")
+    if lang == "ru":
+        builder.button(text="👤 Профиль", callback_data="my_profile")
+        builder.button(text="🎉 Ивенты", callback_data="my_events")
+        builder.button(text="💫 Матчи", callback_data="my_matches")
+    else:
+        builder.button(text="👤 Profile", callback_data="my_profile")
+        builder.button(text="🎉 Events", callback_data="my_events")
+        builder.button(text="💫 Matches", callback_data="my_matches")
     builder.adjust(3)
     return builder.as_markup()
 
 
-def get_back_to_menu_keyboard() -> InlineKeyboardMarkup:
+def get_back_to_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     """Back to menu button"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="← Меню", callback_data="back_to_menu")
+    builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
     return builder.as_markup()
 
 
