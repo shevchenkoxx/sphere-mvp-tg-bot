@@ -1,7 +1,7 @@
 # Sphere Bot - Project Documentation
 
 ## Overview
-Telegram bot for meaningful connections at events. Users scan QR → quick voice onboarding → AI matching → meet top 3 people.
+Telegram bot for meaningful connections at events. Users scan QR → quick voice onboarding → AI matching → meet interesting people.
 
 **Bot:** @Matchd_bot
 **Repo:** https://github.com/shevchenkoxx/sphere-mvp-tg-bot
@@ -9,137 +9,183 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ---
 
-## ⚠️ ВАЖНО для Claude Code
+## IMPORTANT for Claude Code
 
-### Деплой
-- **ВСЕГДА пушить в git** для деплоя на Railway
-- Railway автоматически деплоит из `main` branch
-- После `git push` подождать ~1-2 мин для деплоя
+### Context Management Rules
+1. **After every important change** - update this CLAUDE.md file with current status
+2. **Before 5% context remaining** - MUST update CLAUDE.md with full project state
+3. **Always maintain** super clear and detailed context in this file
+4. **On session start** - read this file first to understand project state
+
+### Deploy
+- **ALWAYS push to git** for Railway deployment
+- Railway auto-deploys from `main` branch
+- After `git push` wait ~1-2 min for deploy
 
 ### Database (Supabase)
-- Можно управлять через REST API (credentials в `.env`)
+- Manage via REST API (credentials in `.env`)
 - URL: `https://cfppunyxxelqutfwqfbi.supabase.co`
-- Использовать `SUPABASE_SERVICE_KEY` для полного доступа
+- Use `SUPABASE_SERVICE_KEY` for full access
 
-### Тестирование
-- Test event: `TEST2024` (10 тестовых профилей)
+### Testing
+- Test event: `TEST2024` (10 test profiles with looking_for/can_help_with)
 - Deep link: `t.me/Matchd_bot?start=event_TEST2024`
-- Reset профиль: `/reset` в боте (нужен DEBUG=true или admin)
+- Reset profile: `/reset` in bot (needs DEBUG=true or admin)
+- Find matches: `/find_matches` - manually trigger AI matching
+
+### Language
+- **English is default** - all prompts and messages
+- Russian supported via auto-detect from Telegram settings
+- User's language detected from `message.from_user.language_code`
 
 ---
 
-## What's Done ✅
+## Current Status (January 2026)
 
-### Core Features
-- **Audio Onboarding** (60 sec) - user records voice, AI extracts structured profile
-- **Conversational Onboarding** (v2) - LLM-driven multilingual chat
-- **Button Onboarding** (v1) - classic flow with inline keyboards
-- **Event System** - QR codes, deep links, participant tracking
-- **AI Matching** - GPT-4o-mini analyzes compatibility
-- **Voice Transcription** - Whisper API
+### Working Features ✅
 
-### Architecture
+1. **Audio Onboarding**
+   - LLM generates personalized intro
+   - Voice transcription via Whisper
+   - AI extracts: about, looking_for, can_help_with, interests, goals
+   - Validation: asks follow-up if key info missing
+   - "Add details" button to incrementally update profile
+
+2. **Profile System**
+   - Fields: display_name, bio, interests, goals, looking_for, can_help_with
+   - Hashtag display (#tech #startups etc)
+   - Structured view via 👤 Profile button
+
+3. **AI Matching**
+   - OpenAI GPT-4o-mini analyzes compatibility
+   - Scores: compatibility_score (0-1), match_type (professional/creative/friendship/romantic)
+   - AI explanation of why matched
+   - Icebreaker suggestion
+   - `/find_matches` command for manual trigger
+
+4. **Event System**
+   - QR codes with deep links
+   - `current_event_id` tracks user's event
+   - Participants visible in event
+
+5. **Matches Display**
+   - 💫 Matches button shows matches with pagination (◀️ ▶️)
+   - Full profile with hashtags, looking_for, can_help_with
+   - AI explanation prominently displayed ("Why this match")
+   - Icebreaker suggestion, contact @username
+   - Back to menu from all screens
+
+### Bot Commands
+```
+/start - Start bot / main menu
+/menu - Show main menu
+/reset - Reset profile (admin/debug only)
+/matches - View your matches
+/find_matches - Trigger AI matching for current event
+/help - Help info
+```
+
+### Main Menu Buttons
+- 👤 Profile - View your profile
+- 🎉 Events - Your events
+- 💫 Matches - View and interact with matches
+
+---
+
+## Architecture
+
 ```
 sphere-bot/
-├── core/                    # Business logic (platform-agnostic)
-│   ├── domain/              # Models, constants
-│   ├── interfaces/          # Abstract repositories & services
-│   ├── services/            # UserService, EventService, MatchingService
-│   └── prompts/             # All AI prompts (easy to modify)
-├── infrastructure/          # External services
-│   ├── database/            # Supabase repositories
-│   └── ai/                  # OpenAI, Whisper, ConversationAI
-├── adapters/                # Platform adapters
-│   └── telegram/            # Bot handlers, keyboards
-├── config/                  # Settings, feature flags
-├── tests/prompts/           # Prompt testing framework
-└── supabase/                # SQL schema & migrations
+├── adapters/telegram/
+│   ├── handlers/
+│   │   ├── start.py           # /start, menu, profile callbacks
+│   │   ├── onboarding_audio.py # Voice onboarding flow
+│   │   ├── onboarding_v2.py    # Text onboarding flow
+│   │   ├── matches.py          # Match display & interaction
+│   │   └── events.py           # Event handlers
+│   ├── keyboards/inline.py     # All inline keyboards
+│   ├── states.py               # FSM states
+│   └── loader.py               # Bot & services init
+├── core/
+│   ├── domain/models.py        # User, Event, Match models
+│   ├── services/
+│   │   ├── user_service.py
+│   │   ├── event_service.py
+│   │   └── matching_service.py # AI matching logic
+│   └── prompts/
+│       ├── audio_onboarding.py # Voice extraction prompts
+│       └── templates.py        # Conversational prompts
+├── infrastructure/
+│   ├── database/               # Supabase repositories
+│   └── ai/
+│       ├── openai_service.py   # GPT-4o-mini (AsyncOpenAI)
+│       └── whisper_service.py  # Voice transcription
+├── config/
+│   ├── settings.py             # Environment config
+│   └── features.py             # Feature flags
+└── scripts/
+    └── create_matches.py       # Manual matching script
 ```
 
-### Database (Supabase)
-Tables: `users`, `events`, `event_participants`, `matches`, `messages`
+---
 
-New columns (migration 002):
-- `current_event_id` - tracks which event user is at
-- `profession`, `company`, `skills` - professional info
-- `looking_for`, `can_help_with` - networking goals
-- `deep_profile` (JSONB) - LLM-generated analysis
-- `audio_transcription` - voice message text
-- `linkedin_url`, `linkedin_data` - social parsing
+## Database Schema
 
-### Feature Flags
+### users
+- id, platform, platform_user_id, username, first_name, display_name
+- interests[], goals[], bio
+- **looking_for** - what connections they want
+- **can_help_with** - their expertise
+- current_event_id - active event
+- ai_summary - LLM-generated summary
+- onboarding_completed
+
+### events
+- id, code, name, description, location
+- is_active, settings
+
+### event_participants
+- event_id, user_id, joined_at
+
+### matches
+- event_id, user_a_id, user_b_id
+- compatibility_score, match_type
+- ai_explanation, icebreaker
+- status (pending/accepted/declined)
+
+---
+
+## Key Files to Know
+
+| File | Purpose |
+|------|---------|
+| `adapters/telegram/handlers/onboarding_audio.py` | Main onboarding flow |
+| `adapters/telegram/handlers/matches.py` | Match display & pagination |
+| `adapters/telegram/handlers/start.py` | Menu & profile display |
+| `adapters/telegram/keyboards/inline.py` | All keyboards |
+| `core/services/matching_service.py` | AI matching algorithm |
+| `infrastructure/ai/openai_service.py` | GPT prompts (AsyncOpenAI!) |
+| `core/prompts/audio_onboarding.py` | Extraction prompts |
+
+---
+
+## Common Tasks
+
+### Add new keyboard button
+1. Edit `adapters/telegram/keyboards/inline.py`
+2. Add callback handler in appropriate handler file
+3. Register callback_data pattern
+
+### Modify AI prompts
+1. Edit `core/prompts/audio_onboarding.py` for voice extraction
+2. Edit `infrastructure/ai/openai_service.py` for matching analysis
+
+### Test matching locally
 ```bash
-ONBOARDING_MODE=audio    # v1, v2, audio
-MATCHING_ENABLED=true
-AUTO_MATCH_ON_JOIN=true
-SHOW_TOP_MATCHES=3
-DEEP_PROFILE_ENABLED=true
-DEBUG=false
+python scripts/create_matches.py 44420077
 ```
 
-### Deployment
-- **Railway** - auto-deploy from GitHub
-- **Graceful error handling** - retries on conflicts, clear error messages
-- Supports both `SUPABASE_KEY` and `SUPABASE_SERVICE_KEY`
-
 ---
-
-## Recently Done ✅
-
-### Current Event Tracking ✅
-When user joins via QR link (`t.me/bot?start=event_CODE`):
-1. Extract event_code from deep link
-2. Save to `current_event_id` on profile completion
-3. Use for matching context
-
-### Top 3 Matches Display ✅
-After onboarding, shows top matches with:
-- Name and bio
-- Why they match (AI explanation)
-- Contact (@username)
-- Icebreaker suggestion
-
----
-
-## Planned 📋
-
-### Phase 1: Enhanced Matching
-- [ ] Multi-factor scoring (interests + goals + skills + AI)
-- [ ] Show top 3 matches immediately after onboarding
-- [ ] Include contact info (username/link)
-- [ ] Icebreaker suggestions
-
-### Phase 2: Deep Profiling
-- [ ] Second LLM pass for personality analysis
-- [ ] Ideal match profile generation
-- [ ] Conversation starters based on shared interests
-- [ ] Confidence scoring
-
-### Phase 3: LinkedIn/Social Parsing
-- [ ] Accept LinkedIn URL during onboarding
-- [ ] Fetch public profile data (Proxycurl API)
-- [ ] Enrich profile with skills, experience
-- [ ] Parse other socials (Twitter, GitHub)
-
-### Phase 4: Multi-Platform
-- [ ] WhatsApp adapter
-- [ ] REST API for PWA
-- [ ] Admin dashboard (event creation, QR codes)
-
----
-
-## Quick Commands
-
-```bash
-# Run locally
-cd sphere-bot && python3 main.py
-
-# Test prompts
-python3 tests/prompts/runner.py
-
-# Apply DB migration
-# Copy supabase/migrations/002_enhanced_profiles.sql to Supabase SQL Editor
-```
 
 ## Environment Variables
 
@@ -152,16 +198,18 @@ OPENAI_API_KEY=sk-xxx
 
 # Optional
 ADMIN_TELEGRAM_IDS=123,456
-ONBOARDING_MODE=audio
-DEBUG=false
+DEBUG=true
+DEFAULT_MATCH_THRESHOLD=0.6
 ```
 
-## Key Files
+---
 
-| File | Purpose |
-|------|---------|
-| `config/features.py` | Feature flags (on/off toggles) |
-| `core/prompts/templates.py` | Conversational prompts |
-| `core/prompts/audio_onboarding.py` | Voice extraction prompts |
-| `adapters/telegram/config.py` | Telegram-specific config |
-| `main.py` | Entry point with error handling |
+## TODO / Next Steps
+
+- [x] Match pagination (next/prev buttons) - DONE
+- [x] Back to menu from all screens - DONE
+- [x] Better match explanations display - DONE
+- [ ] LinkedIn URL parsing
+- [ ] Notifications when new match found
+- [ ] Admin dashboard for events
+- [ ] Multi-match chat forwarding

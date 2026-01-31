@@ -11,8 +11,10 @@ from core.domain.constants import get_interest_display
 from adapters.telegram.loader import matching_service, user_service, event_service, bot
 from adapters.telegram.keyboards import (
     get_match_keyboard,
+    get_chat_keyboard,
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
+    get_profile_view_keyboard,
 )
 from config.features import Features
 
@@ -140,7 +142,7 @@ async def show_new_matches(message: Message, matches: list, event_name: str, lan
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
-async def list_matches_callback(callback: CallbackQuery):
+async def list_matches_callback(callback: CallbackQuery, index: int = 0):
     """Show user's matches via callback"""
     lang = detect_lang(callback)
 
@@ -154,12 +156,12 @@ async def list_matches_callback(callback: CallbackQuery):
         await callback.answer(msg, show_alert=True)
         return
 
-    await show_matches(callback.message, user.id, lang=lang, edit=True)
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index)
     await callback.answer()
 
 
-async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False):
-    """Display user's matches with detailed profiles"""
+async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0):
+    """Display user's matches with detailed profiles and pagination"""
     matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
 
     if not matches:
@@ -182,8 +184,15 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
             await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
         return
 
-    # Show first match with full details
-    match = matches[0]
+    # Ensure index is valid
+    total_matches = len(matches)
+    if index >= total_matches:
+        index = total_matches - 1
+    if index < 0:
+        index = 0
+
+    # Show match at current index
+    match = matches[index]
 
     # Determine partner
     partner_id = match.user_b_id if match.user_a_id == user_id else match.user_a_id
@@ -194,7 +203,8 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
     # Build partner profile display
     name = partner.display_name or partner.first_name or ("Anonymous" if lang == "en" else "Аноним")
-    text = f"<b>{'Match!' if lang == 'en' else 'Матч!'}</b>\n\n"
+    header = "Match" if lang == "en" else "Матч"
+    text = f"<b>💫 {header} {index + 1}/{total_matches}</b>\n\n"
     text += f"👤 <b>{name}</b>\n"
 
     # Hashtag interests
@@ -216,8 +226,9 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         label = "Can help with" if lang == "en" else "Может помочь"
         text += f"\n💪 <b>{label}:</b> {partner.can_help_with[:100]}{'...' if len(partner.can_help_with) > 100 else ''}\n"
 
-    # Why match
-    text += f"\n💡 <i>{match.ai_explanation}</i>\n"
+    # Why match - AI explanation prominently displayed
+    why_label = "Why this match" if lang == "en" else "Почему этот матч"
+    text += f"\n💡 <b>{why_label}:</b>\n<i>{match.ai_explanation}</i>\n"
 
     # Icebreaker
     text += f"\n💬 <b>{'Start with' if lang == 'en' else 'Начни с'}:</b>\n<i>{match.icebreaker}</i>"
@@ -226,15 +237,17 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     if partner.username:
         text += f"\n\n📱 @{partner.username}"
 
-    # More matches count
-    if len(matches) > 1:
-        more = f"And {len(matches) - 1} more matches" if lang == "en" else f"И ещё {len(matches) - 1} матчей"
-        text += f"\n\n<i>{more}</i>"
+    keyboard = get_match_keyboard(
+        match_id=str(match.id),
+        current_index=index,
+        total_matches=total_matches,
+        lang=lang
+    )
 
     if edit:
-        await message.edit_text(text, reply_markup=get_match_keyboard(str(match.id)))
+        await message.edit_text(text, reply_markup=keyboard)
     else:
-        await message.answer(text, reply_markup=get_match_keyboard(str(match.id)))
+        await message.answer(text, reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("chat_match_"))
@@ -253,20 +266,29 @@ async def start_chat_with_match(callback: CallbackQuery):
     if match.status == MatchStatus.PENDING:
         await matching_service.accept_match(match.id)
 
+    # Get partner username for direct contact
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+    partner_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
+    partner = await user_service.get_user(partner_id)
+    partner_mention = f"@{partner.username}" if partner and partner.username else ""
+
     if lang == "ru":
         text = (
-            "<b>Чат открыт!</b>\n\n"
-            "Напиши сообщение, и я передам его твоему матчу.\n"
-            f"Начни с: <i>{match.icebreaker}</i>"
+            "<b>Готово к общению!</b>\n\n"
+            f"Напиши напрямую: {partner_mention}\n\n"
+            f"<b>Начни с:</b> <i>{match.icebreaker}</i>"
         )
     else:
         text = (
-            "<b>Chat started!</b>\n\n"
-            "Send a message and I'll forward it to your match.\n"
-            f"Start with: <i>{match.icebreaker}</i>"
+            "<b>Ready to connect!</b>\n\n"
+            f"Message directly: {partner_mention}\n\n"
+            f"<b>Start with:</b> <i>{match.icebreaker}</i>"
         )
 
-    await callback.message.edit_text(text, reply_markup=get_match_keyboard(match_id))
+    await callback.message.edit_text(text, reply_markup=get_chat_keyboard(match_id, lang))
     await callback.answer()
 
 
@@ -336,7 +358,7 @@ async def view_match_profile(callback: CallbackQuery):
     if partner.username:
         text += f"\n📱 @{partner.username}"
 
-    await callback.message.edit_text(text, reply_markup=get_match_keyboard(match_id))
+    await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
     await callback.answer()
 
 
@@ -344,6 +366,28 @@ async def view_match_profile(callback: CallbackQuery):
 async def back_to_matches(callback: CallbackQuery):
     """Go back to matches list"""
     await list_matches_callback(callback)
+
+
+@router.callback_query(F.data.startswith("match_prev_"))
+async def match_prev(callback: CallbackQuery):
+    """Navigate to previous match"""
+    current_index = int(callback.data.replace("match_prev_", ""))
+    new_index = max(0, current_index - 1)
+    await list_matches_callback(callback, index=new_index)
+
+
+@router.callback_query(F.data.startswith("match_next_"))
+async def match_next(callback: CallbackQuery):
+    """Navigate to next match"""
+    current_index = int(callback.data.replace("match_next_", ""))
+    new_index = current_index + 1
+    await list_matches_callback(callback, index=new_index)
+
+
+@router.callback_query(F.data == "match_counter")
+async def match_counter_click(callback: CallbackQuery):
+    """Handle click on counter (no action)"""
+    await callback.answer()
 
 
 # === NOTIFICATIONS ===

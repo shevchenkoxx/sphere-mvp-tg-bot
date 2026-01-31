@@ -132,19 +132,57 @@ def get_join_event_keyboard(event_code: str) -> InlineKeyboardMarkup:
 
 # === MATCHES ===
 
-def get_match_keyboard(match_id: str) -> InlineKeyboardMarkup:
-    """Match action keyboard"""
+def get_match_keyboard(
+    match_id: str,
+    current_index: int = 0,
+    total_matches: int = 1,
+    lang: str = "en"
+) -> InlineKeyboardMarkup:
+    """Match action keyboard with pagination"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="💬 Написать", callback_data=f"chat_match_{match_id}")
-    builder.button(text="👤 Профиль", callback_data=f"view_profile_{match_id}")
+
+    # Action buttons
+    chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
+    profile_text = "👤 Profile" if lang == "en" else "👤 Профиль"
+    builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
+    builder.button(text=profile_text, callback_data=f"view_profile_{match_id}")
     builder.adjust(2)
+
+    # Pagination buttons (if more than 1 match)
+    if total_matches > 1:
+        nav_row = []
+        if current_index > 0:
+            nav_row.append(InlineKeyboardButton(text="◀️", callback_data=f"match_prev_{current_index}"))
+        nav_row.append(InlineKeyboardButton(text=f"{current_index + 1}/{total_matches}", callback_data="match_counter"))
+        if current_index < total_matches - 1:
+            nav_row.append(InlineKeyboardButton(text="▶️", callback_data=f"match_next_{current_index}"))
+        builder.row(*nav_row)
+
+    # Back to menu button
+    menu_text = "← Menu" if lang == "en" else "← Меню"
+    builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))
+
     return builder.as_markup()
 
 
-def get_chat_keyboard(match_id: str) -> InlineKeyboardMarkup:
+def get_chat_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
     """Chat keyboard"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="← Назад", callback_data="back_to_matches")
+    back_text = "← Back" if lang == "en" else "← Назад"
+    builder.button(text=back_text, callback_data="back_to_matches")
+    return builder.as_markup()
+
+
+def get_profile_view_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for viewing match profile - back to match and menu"""
+    builder = InlineKeyboardBuilder()
+    chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
+    back_text = "← Back" if lang == "en" else "← Назад"
+    menu_text = "← Menu" if lang == "en" else "← Меню"
+    builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
+    builder.button(text=back_text, callback_data="back_to_matches")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))
     return builder.as_markup()
 
 

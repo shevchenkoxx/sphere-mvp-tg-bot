@@ -9,6 +9,7 @@ from adapters.telegram.keyboards.inline import (
     get_join_event_keyboard,
     get_match_keyboard,
     get_chat_keyboard,
+    get_profile_view_keyboard,
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "get_join_event_keyboard",
     "get_match_keyboard",
     "get_chat_keyboard",
+    "get_profile_view_keyboard",
     "get_main_menu_keyboard",
     "get_back_to_menu_keyboard",
 ]
