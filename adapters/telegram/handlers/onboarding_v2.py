@@ -107,13 +107,16 @@ async def start_conversational_onboarding_from_callback(
 @router.message(ConversationalOnboarding.in_conversation, F.text)
 async def process_conversation_message(message: Message, state: FSMContext):
     """Process user message in conversation"""
+    logger.info(f"[TEXT ONBOARDING] Received message from {message.from_user.id}: {message.text[:50]}...")
 
     # Get current state
     data = await state.get_data()
     conv_data = data.get("conversation")
+    logger.info(f"[TEXT ONBOARDING] State data keys: {list(data.keys())}")
 
     if not conv_data:
         # State lost, restart
+        logger.warning(f"[TEXT ONBOARDING] State lost for user {message.from_user.id}, restarting")
         await message.answer("Let's start over. What's your name?")
         conv_state = conversation_service.create_onboarding_state(
             user_first_name=message.from_user.first_name
@@ -123,27 +126,33 @@ async def process_conversation_message(message: Message, state: FSMContext):
 
     # Deserialize state
     conv_state = deserialize_state(conv_data)
+    logger.info(f"[TEXT ONBOARDING] Conversation step: {conv_state.step}, messages: {len(conv_state.messages)}")
 
-    # Process message
-    conv_state, result = await conversation_service.process_message(
-        conv_state,
-        message.text
-    )
-
-    # Save updated state
-    await state.update_data(conversation=serialize_state(conv_state))
-
-    # Send response
-    await message.answer(result.response_text)
-
-    # If complete, finalize onboarding
-    if result.is_complete and result.profile_data:
-        await complete_conversational_onboarding(
-            message,
-            state,
-            result.profile_data,
-            conv_state.context.get("pending_event")
+    try:
+        # Process message
+        conv_state, result = await conversation_service.process_message(
+            conv_state,
+            message.text
         )
+        logger.info(f"[TEXT ONBOARDING] Got response, is_complete: {result.is_complete}")
+
+        # Save updated state
+        await state.update_data(conversation=serialize_state(conv_state))
+
+        # Send response
+        await message.answer(result.response_text)
+
+        # If complete, finalize onboarding
+        if result.is_complete and result.profile_data:
+            await complete_conversational_onboarding(
+                message,
+                state,
+                result.profile_data,
+                conv_state.context.get("pending_event")
+            )
+    except Exception as e:
+        logger.error(f"[TEXT ONBOARDING] Error processing message: {e}", exc_info=True)
+        await message.answer("Sorry, something went wrong. Please try again or type /start to restart.")
 
 
 @router.message(ConversationalOnboarding.in_conversation, F.voice)
