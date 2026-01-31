@@ -37,6 +37,7 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - **English is default** - all prompts and messages
 - Russian supported via auto-detect from Telegram settings
 - User's language detected from `message.from_user.language_code`
+- **ALL buttons and keyboards support lang parameter**
 
 ---
 
@@ -46,31 +47,43 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 1. **Audio Onboarding**
    - LLM generates personalized intro
-   - Voice transcription via Whisper
-   - AI extracts: about, looking_for, can_help_with, interests, goals
+   - Voice transcription via Whisper (run_in_executor for non-blocking)
+   - AI extracts: about, looking_for, can_help_with, interests, goals, skills
    - Validation: asks follow-up if key info missing
    - "Add details" button to incrementally update profile
-   - **Selfie request** after profile - explains it helps matches find you at event
+   - **Selfie request** after profile - explains it helps matches find you
+   - Switch to text mode available
 
-2. **Profile System**
-   - Fields: display_name, bio, interests, goals, looking_for, can_help_with
+2. **Text Onboarding (v2)**
+   - Conversational flow with LLM
+   - Step-by-step questions
+   - Can switch from audio mode
+   - Both routers registered when audio mode enabled
+
+3. **Profile System**
+   - Fields: display_name, bio, interests, goals, looking_for, can_help_with, photo_url
    - Hashtag display (#tech #startups etc)
+   - Photo display in profile view
    - Structured view via 👤 Profile button
+   - `/reset` fully clears all profile fields
 
-3. **AI Matching**
-   - OpenAI GPT-4o-mini analyzes compatibility
+4. **AI Matching**
+   - OpenAI GPT-4o-mini (AsyncOpenAI!) analyzes compatibility
    - Scores: compatibility_score (0-1), match_type (professional/creative/friendship/romantic)
    - AI explanation of why matched
    - Icebreaker suggestion
    - `/find_matches` command for manual trigger
+   - **Notifications** sent to existing users when new match found
 
-4. **Event System**
+5. **Event System**
    - QR codes with deep links
-   - `current_event_id` tracks user's event
+   - `current_event_id` tracks user's event (set on join)
    - Participants visible in event
+   - Admin can create events and run matching
 
-5. **Matches Display**
+6. **Matches Display**
    - 💫 Matches button shows matches with pagination (◀️ ▶️)
+   - **Photo display** of match partner
    - Full profile with hashtags, looking_for, can_help_with
    - AI explanation prominently displayed ("Why this match")
    - Icebreaker suggestion, contact @username
@@ -80,14 +93,14 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 ```
 /start - Start bot / main menu
 /menu - Show main menu
-/reset - Reset profile (admin/debug only)
+/reset - Full profile reset (admin/debug only)
 /matches - View your matches
 /find_matches - Trigger AI matching for current event
 /help - Help info
 ```
 
 ### Main Menu Buttons
-- 👤 Profile - View your profile
+- 👤 Profile - View your profile (with photo)
 - 🎉 Events - Your events
 - 💫 Matches - View and interact with matches
 
@@ -99,31 +112,34 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 sphere-bot/
 ├── adapters/telegram/
 │   ├── handlers/
-│   │   ├── start.py           # /start, menu, profile callbacks
-│   │   ├── onboarding_audio.py # Voice onboarding flow
+│   │   ├── start.py           # /start, menu, profile, reset
+│   │   ├── onboarding_audio.py # Voice onboarding + selfie
 │   │   ├── onboarding_v2.py    # Text onboarding flow
-│   │   ├── matches.py          # Match display & interaction
-│   │   └── events.py           # Event handlers
-│   ├── keyboards/inline.py     # All inline keyboards
+│   │   ├── matches.py          # Match display, pagination, notifications
+│   │   └── events.py           # Event creation & joining
+│   ├── keyboards/inline.py     # All keyboards (with lang support!)
 │   ├── states.py               # FSM states
+│   ├── config.py               # ONBOARDING_VERSION
 │   └── loader.py               # Bot & services init
 ├── core/
-│   ├── domain/models.py        # User, Event, Match models
+│   ├── domain/
+│   │   ├── models.py           # User, Event, Match, MatchResultWithId
+│   │   └── constants.py        # INTERESTS, GOALS, get_goal_display
 │   ├── services/
 │   │   ├── user_service.py
-│   │   ├── event_service.py
-│   │   └── matching_service.py # AI matching logic
+│   │   ├── event_service.py    # join_event sets current_event_id
+│   │   └── matching_service.py # AI matching, returns MatchResultWithId
 │   └── prompts/
-│       ├── audio_onboarding.py # Voice extraction prompts
+│       ├── audio_onboarding.py # Rich extraction prompts
 │       └── templates.py        # Conversational prompts
 ├── infrastructure/
 │   ├── database/               # Supabase repositories
 │   └── ai/
-│       ├── openai_service.py   # GPT-4o-mini (AsyncOpenAI)
-│       └── whisper_service.py  # Voice transcription
+│       ├── openai_service.py   # GPT-4o-mini (AsyncOpenAI!)
+│       └── whisper_service.py  # Voice transcription (run_in_executor)
 ├── config/
 │   ├── settings.py             # Environment config
-│   └── features.py             # Feature flags
+│   └── features.py             # ONBOARDING_MODE, feature flags
 └── scripts/
     └── create_matches.py       # Manual matching script
 ```
@@ -137,6 +153,7 @@ sphere-bot/
 - interests[], goals[], bio
 - **looking_for** - what connections they want
 - **can_help_with** - their expertise
+- **photo_url** - selfie file_id for display
 - current_event_id - active event
 - ai_summary - LLM-generated summary
 - onboarding_completed
@@ -144,6 +161,7 @@ sphere-bot/
 ### events
 - id, code, name, description, location
 - is_active, settings
+- **(TODO: event_info - detailed info for LLM)**
 
 ### event_participants
 - event_id, user_id, joined_at
@@ -160,31 +178,92 @@ sphere-bot/
 
 | File | Purpose |
 |------|---------|
-| `adapters/telegram/handlers/onboarding_audio.py` | Main onboarding flow |
-| `adapters/telegram/handlers/matches.py` | Match display & pagination |
-| `adapters/telegram/handlers/start.py` | Menu & profile display |
-| `adapters/telegram/keyboards/inline.py` | All keyboards |
-| `core/services/matching_service.py` | AI matching algorithm |
+| `adapters/telegram/handlers/onboarding_audio.py` | Main onboarding + selfie flow |
+| `adapters/telegram/handlers/matches.py` | Match display, pagination, photo, notifications |
+| `adapters/telegram/handlers/start.py` | Menu, profile with photo, /reset |
+| `adapters/telegram/keyboards/inline.py` | All keyboards with lang support |
+| `adapters/telegram/handlers/__init__.py` | Router registration (audio + v2) |
+| `core/services/matching_service.py` | AI matching, MatchResultWithId |
+| `core/services/event_service.py` | join_event sets current_event_id |
 | `infrastructure/ai/openai_service.py` | GPT prompts (AsyncOpenAI!) |
-| `core/prompts/audio_onboarding.py` | Extraction prompts |
+| `core/prompts/audio_onboarding.py` | Rich extraction prompts |
 
 ---
 
-## Common Tasks
+## Recent Changes (This Session)
 
-### Add new keyboard button
-1. Edit `adapters/telegram/keyboards/inline.py`
-2. Add callback handler in appropriate handler file
-3. Register callback_data pattern
+1. **Match pagination** - ◀️ ▶️ buttons to scroll through matches
+2. **Back to menu** - all screens have ← Menu button
+3. **Fix current_event_id** - now set when existing user joins event
+4. **Rich extraction prompt** - extracts skills, personality, experience level
+5. **Text onboarding fix** - v2 router now included when audio mode enabled
+6. **Match notifications** - existing users notified when new person matches
+7. **Selfie feature** - photo request after onboarding with explanation
+8. **Full /reset** - clears ALL profile fields (bio, interests, goals, etc.)
+9. **Photo display** - shown in profile, matches, and match profile view
+10. **Multilingual buttons** - all keyboards support lang parameter
+11. **Fix goals language** - uses get_goal_display(g, lang)
 
-### Modify AI prompts
-1. Edit `core/prompts/audio_onboarding.py` for voice extraction
-2. Edit `infrastructure/ai/openai_service.py` for matching analysis
+---
 
-### Test matching locally
-```bash
-python scripts/create_matches.py 44420077
-```
+## TODO / Next Steps
+
+### Completed ✅
+- [x] Match pagination (next/prev buttons)
+- [x] Back to menu from all screens
+- [x] Better match explanations display
+- [x] Fix: current_event_id not set on join_event
+- [x] Improve extraction prompt for richer profiles
+- [x] Fix: text onboarding after switch from audio
+- [x] Notifications when new match found
+- [x] Selfie feature - photo upload after onboarding
+- [x] Full /reset command - clears all profile fields
+- [x] Fix goals display language
+- [x] Show photo in profiles and matches
+- [x] All buttons support multilingual (en/ru)
+
+### High Priority
+- [ ] **Event info system** - upload event details (schedule, speakers, etc.) for LLM to answer questions
+- [ ] LinkedIn URL parsing from voice/text
+- [ ] Edit profile button (change photo, update info)
+
+### Medium Priority
+- [ ] Admin dashboard for events
+- [ ] Event-specific matching settings
+- [ ] Profile editing after onboarding
+
+### Future Ideas
+- [ ] Group matching (find common groups)
+- [ ] Follow-up reminders after event
+- [ ] Event analytics for organizers
+- [ ] AI event assistant (answer questions about event)
+
+---
+
+## Flow: When Users Register
+
+1. **User scans QR** → opens `t.me/Matchd_bot?start=event_EVENTCODE`
+2. **If new user:**
+   - Starts audio onboarding (or switch to text)
+   - Records 60-sec voice message
+   - LLM extracts: about, looking_for, can_help_with, skills, interests
+   - **Asks for selfie** - explains it helps matches find you
+   - Saves profile + sets `current_event_id`
+   - Joins event automatically
+3. **If existing user:**
+   - Clicks "Join Event" button
+   - Added to event_participants
+   - `current_event_id` updated
+4. **Matching triggers:**
+   - Manual: user runs `/find_matches`
+   - Auto: admin runs event matching
+   - OpenAI analyzes all pairs → creates matches above threshold
+   - **Existing users notified** about new matches
+5. **User sees matches:**
+   - 💫 Matches button shows paginated list with photos
+   - AI explanation of why matched
+   - Icebreaker to start conversation
+   - Direct @username link
 
 ---
 
@@ -201,82 +280,35 @@ OPENAI_API_KEY=sk-xxx
 ADMIN_TELEGRAM_IDS=123,456
 DEBUG=true
 DEFAULT_MATCH_THRESHOLD=0.6
+ONBOARDING_MODE=audio  # audio, v2, v1
 ```
 
 ---
 
-## TODO / Next Steps
+## Critical Implementation Notes
 
-### Completed
-- [x] Match pagination (next/prev buttons)
-- [x] Back to menu from all screens
-- [x] Better match explanations display
-- [x] Fix: current_event_id not set on join_event
-- [x] Improve extraction prompt for richer profiles
-- [x] Fix: text onboarding after switch from audio
-- [x] Notifications when new match found
-- [x] **Selfie feature** - photo upload after onboarding
-- [x] Full /reset command - clears all profile fields
-- [x] Fix goals display language
-- [x] **Show photo in profiles and matches**
-- [x] **All buttons support multilingual (en/ru)**
+### AsyncOpenAI
+```python
+from openai import AsyncOpenAI
+client = AsyncOpenAI(api_key=settings.openai_api_key)
+response = await client.chat.completions.create(...)
+```
 
-### High Priority
-- [ ] LinkedIn URL parsing from voice/text
-- [ ] Edit profile button (change photo, update info)
+### Whisper (non-blocking)
+```python
+loop = asyncio.get_event_loop()
+return await loop.run_in_executor(None, self._transcribe_sync, ...)
+```
 
-### Medium Priority
-- [ ] Admin dashboard for events
-- [ ] Multi-match chat forwarding
-- [ ] Profile editing after onboarding
-- [ ] Event-specific matching settings
+### Router Registration (handlers/__init__.py)
+```python
+if ONBOARDING_VERSION == "audio":
+    # Include BOTH routers - users can switch to text
+    onboarding_routers = [onboarding_audio.router, onboarding_v2.router]
+```
 
-### Future Ideas
-- [ ] Group matching (find common groups)
-- [ ] Follow-up reminders after event
-- [ ] Event analytics for organizers
-
----
-
-## Flow: When 5 Real People Register
-
-1. **User scans QR** → opens `t.me/Matchd_bot?start=event_EVENTCODE`
-2. **If new user:**
-   - Starts audio onboarding
-   - Records 60-sec voice message
-   - LLM extracts: about, looking_for, can_help_with, skills, interests
-   - Saves profile + sets `current_event_id`
-3. **If existing user:**
-   - Clicks "Join Event" button
-   - Added to event_participants + `current_event_id` updated
-4. **Matching triggers:**
-   - Manual: user runs `/find_matches`
-   - Auto: admin runs event matching
-   - OpenAI analyzes all pairs → creates matches above threshold
-5. **User sees matches:**
-   - 💫 Matches button shows paginated list
-   - AI explanation of why matched
-   - Icebreaker to start conversation
-   - Direct @username link
-
----
-
-## Extraction Prompt (Improved)
-
-Located in `core/prompts/audio_onboarding.py`
-
-Now extracts:
-- **about** - rich 3-4 sentence summary with personality
-- **looking_for** - SPECIFIC people/connections wanted
-- **can_help_with** - SPECIFIC expertise and skills
-- **profession** - detailed job title (Senior PM, not just PM)
-- **experience_level** - junior/mid/senior/founder
-- **skills** - technical and soft skills
-- **personality_traits** - how they come across
-- **unique_value** - what makes them special to meet
-
-Key improvements:
-- Reads between the lines (infers from context)
-- More generous extraction (better to include than miss)
-- Captures personality and communication style
-- Specific actionable info for matching
+### MatchResultWithId
+```python
+class MatchResultWithId(MatchResult):
+    match_id: UUID  # For notifications
+```
