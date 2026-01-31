@@ -4,11 +4,15 @@ OpenAI Whisper service for voice transcription.
 
 import os
 import tempfile
+import asyncio
 import aiohttp
 import aiofiles
+import logging
 from openai import OpenAI
 from core.interfaces.ai import IVoiceService
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class WhisperVoiceService(IVoiceService):
@@ -30,18 +34,19 @@ class WhisperVoiceService(IVoiceService):
                     return path
         return None
 
-    async def transcribe(self, audio_file_path: str, language: str = "ru") -> str:
-        """Transcribe audio file to text"""
+    async def transcribe(self, audio_file_path: str, language: str = None) -> str:
+        """Transcribe audio file to text. Language=None for auto-detection."""
         try:
-            with open(audio_file_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language=language
-                )
-            return transcript.text
+            # Run sync OpenAI call in executor to not block event loop
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None,
+                self._transcribe_sync,
+                audio_file_path,
+                language
+            )
         except Exception as e:
-            print(f"Transcription error: {e}")
+            logger.error(f"Transcription error: {e}")
             return None
         finally:
             # Clean up temp file
@@ -51,8 +56,21 @@ class WhisperVoiceService(IVoiceService):
                 except OSError:
                     pass
 
-    async def download_and_transcribe(self, file_url: str, language: str = "ru") -> str:
-        """Download audio from URL and transcribe"""
+    def _transcribe_sync(self, audio_file_path: str, language: str = None) -> str:
+        """Synchronous transcription - runs in executor"""
+        with open(audio_file_path, "rb") as audio_file:
+            params = {
+                "model": "whisper-1",
+                "file": audio_file,
+            }
+            if language:
+                params["language"] = language
+
+            transcript = self.client.audio.transcriptions.create(**params)
+            return transcript.text
+
+    async def download_and_transcribe(self, file_url: str, language: str = None) -> str:
+        """Download audio from URL and transcribe. Language=None for auto-detect."""
         file_path = await self.download_file(file_url)
         if file_path:
             return await self.transcribe(file_path, language)

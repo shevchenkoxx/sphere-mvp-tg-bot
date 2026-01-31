@@ -51,7 +51,9 @@ TRANSCRIPTION:
 
 CONTEXT:
 - Event: {event_name}
-- Language detected: {language}
+- User's UI language preference: {language}
+
+IMPORTANT: Extract information in the SAME LANGUAGE as the transcription (preserve the original language of the transcription). If they spoke in English, extract in English. If they spoke in Russian, extract in Russian.
 
 Extract the following and return as JSON:
 

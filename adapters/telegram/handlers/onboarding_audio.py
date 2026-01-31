@@ -611,7 +611,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
     bio = " | ".join(bio_parts)[:500] if bio_parts else ""
 
-    # Update user
+    # Update user with all extracted data
     await user_service.update_user(
         MessagePlatform.TELEGRAM,
         user_id,
@@ -619,6 +619,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         interests=profile_data.get("interests", [])[:5],
         goals=profile_data.get("goals", [])[:3],
         bio=bio,
+        looking_for=profile_data.get("looking_for", "")[:300] or None,
+        can_help_with=profile_data.get("can_help_with", "")[:300] or None,
         onboarding_completed=True
     )
 

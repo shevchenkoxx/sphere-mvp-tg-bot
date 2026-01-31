@@ -31,6 +31,8 @@ class SupabaseUserRepository(IUserRepository):
             interests=data.get("interests") or [],
             goals=data.get("goals") or [],
             bio=data.get("bio"),
+            looking_for=data.get("looking_for"),
+            can_help_with=data.get("can_help_with"),
             photo_url=data.get("photo_url"),
             voice_intro_url=data.get("voice_intro_url"),
             social_links=data.get("social_links") or {},

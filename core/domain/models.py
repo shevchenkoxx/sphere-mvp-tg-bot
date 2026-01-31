@@ -43,6 +43,8 @@ class UserBase(BaseModel):
     interests: List[str] = Field(default_factory=list)
     goals: List[str] = Field(default_factory=list)
     bio: Optional[str] = None
+    looking_for: Optional[str] = None  # What connections they want
+    can_help_with: Optional[str] = None  # Their expertise/how they help
 
 
 class UserCreate(UserBase):
@@ -82,6 +84,8 @@ class UserUpdate(BaseModel):
     interests: Optional[List[str]] = None
     goals: Optional[List[str]] = None
     bio: Optional[str] = None
+    looking_for: Optional[str] = None
+    can_help_with: Optional[str] = None
     photo_url: Optional[str] = None
     voice_intro_url: Optional[str] = None
     social_links: Optional[Dict[str, str]] = None

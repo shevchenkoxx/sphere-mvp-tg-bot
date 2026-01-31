@@ -6,7 +6,7 @@ Handles user analysis and match compatibility using GPT-4.
 import json
 import re
 from typing import Dict, Any
-from openai import OpenAI
+from openai import AsyncOpenAI
 from core.domain.models import MatchResult, MatchType
 from core.interfaces.ai import IAIService
 from config.settings import settings
@@ -16,30 +16,39 @@ class OpenAIService(IAIService):
     """OpenAI GPT-based AI service for user analysis and matching"""
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = "gpt-4o-mini"  # Fast and cheap, good for MVP
 
     async def generate_user_summary(self, user_data: Dict[str, Any]) -> str:
-        """Generate AI summary of user profile"""
+        """Generate AI summary of user profile for matching system"""
 
-        prompt = f"""Проанализируй профиль пользователя и создай краткое, но информативное описание для системы матчинга.
+        # Build context
+        name = user_data.get('display_name') or 'Not specified'
+        interests = ', '.join(user_data.get('interests', [])) or 'None'
+        goals = ', '.join(user_data.get('goals', [])) or 'None'
+        bio = user_data.get('bio') or 'Not specified'
+        looking_for = user_data.get('looking_for') or ''
+        can_help_with = user_data.get('can_help_with') or ''
 
-Данные пользователя:
-- Имя: {user_data.get('display_name', 'Не указано')}
-- Родной город: {user_data.get('city_born', 'Не указано')}
-- Текущий город: {user_data.get('city_current', 'Не указано')}
-- Интересы: {', '.join(user_data.get('interests', []))}
-- Цели: {', '.join(user_data.get('goals', []))}
-- О себе: {user_data.get('bio', 'Не указано')}
+        prompt = f"""Create a brief, informative profile summary for a networking matching system.
 
-Создай summary в 2-3 предложениях, выделяя:
-1. Ключевые характеристики личности (на основе интересов)
-2. Что человек ищет (на основе целей)
-3. Потенциальные точки соприкосновения с другими
+User data:
+- Name: {name}
+- Interests: {interests}
+- Goals: {goals}
+- Bio: {bio}
+- Looking for: {looking_for}
+- Can help with: {can_help_with}
 
-Пиши от третьего лица, тепло но информативно. Без эмодзи."""
+Create a 2-3 sentence summary highlighting:
+1. Key personality traits (based on interests)
+2. What they're looking for (based on goals)
+3. Potential connection points with others
 
-        response = self.client.chat.completions.create(
+Write in third person, warm but informative. No emojis.
+Keep the response in the same language as the bio (detect from bio text)."""
+
+        response = await self.client.chat.completions.create(
             model=self.model,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]
@@ -55,36 +64,42 @@ class OpenAIService(IAIService):
     ) -> MatchResult:
         """Analyze compatibility between two users"""
 
-        prompt = f"""Проанализируй совместимость двух людей для потенциального знакомства.
+        # Build profiles
+        name_a = user_a.get('display_name') or user_a.get('first_name') or 'Anonymous'
+        name_b = user_b.get('display_name') or user_b.get('first_name') or 'Anonymous'
 
-=== ЧЕЛОВЕК А ===
-Имя: {user_a.get('display_name', user_a.get('first_name', 'Аноним'))}
-Город: {user_a.get('city_current', 'Не указан')}
-Интересы: {', '.join(user_a.get('interests', []))}
-Цели: {', '.join(user_a.get('goals', []))}
-О себе: {user_a.get('bio', 'Не указано')}
-AI-профиль: {user_a.get('ai_summary', 'Нет данных')}
+        prompt = f"""Analyze compatibility between two people for potential networking connection.
 
-=== ЧЕЛОВЕК Б ===
-Имя: {user_b.get('display_name', user_b.get('first_name', 'Аноним'))}
-Город: {user_b.get('city_current', 'Не указан')}
-Интересы: {', '.join(user_b.get('interests', []))}
-Цели: {', '.join(user_b.get('goals', []))}
-О себе: {user_b.get('bio', 'Не указано')}
-AI-профиль: {user_b.get('ai_summary', 'Нет данных')}
+=== PERSON A ===
+Name: {name_a}
+Interests: {', '.join(user_a.get('interests', []))}
+Goals: {', '.join(user_a.get('goals', []))}
+Bio: {user_a.get('bio', 'Not specified')}
+Looking for: {user_a.get('looking_for', '')}
+Can help with: {user_a.get('can_help_with', '')}
+AI profile: {user_a.get('ai_summary', 'No data')}
 
-{f'Контекст: оба находятся на ивенте "{event_context}"' if event_context else ''}
+=== PERSON B ===
+Name: {name_b}
+Interests: {', '.join(user_b.get('interests', []))}
+Goals: {', '.join(user_b.get('goals', []))}
+Bio: {user_b.get('bio', 'Not specified')}
+Looking for: {user_b.get('looking_for', '')}
+Can help with: {user_b.get('can_help_with', '')}
+AI profile: {user_b.get('ai_summary', 'No data')}
 
-Определи:
-1. compatibility_score (0.0-1.0) — насколько они могут быть интересны друг другу
-2. match_type — один из: "friendship" (дружба), "professional" (деловое), "romantic" (романтика), "creative" (творческое партнёрство)
-3. explanation — почему они могут быть интересны друг другу (2-3 предложения, тепло и по-человечески, БЕЗ упоминания имён)
-4. icebreaker — один хороший вопрос для начала разговора
+{f'Context: both are at event "{event_context}"' if event_context else ''}
 
-ВАЖНО: Отвечай ТОЛЬКО валидным JSON без markdown-форматирования:
+Determine:
+1. compatibility_score (0.0-1.0) — how interesting they could be to each other
+2. match_type — one of: "friendship", "professional", "romantic", "creative"
+3. explanation — why they might be interesting to each other (2-3 sentences, warm and human, WITHOUT mentioning names)
+4. icebreaker — one good question to start a conversation
+
+IMPORTANT: Respond with valid JSON only, no markdown:
 {{"compatibility_score": 0.75, "match_type": "friendship", "explanation": "...", "icebreaker": "..."}}"""
 
-        response = self.client.chat.completions.create(
+        response = await self.client.chat.completions.create(
             model=self.model,
             max_tokens=800,
             messages=[{"role": "user", "content": prompt}]
@@ -123,21 +138,21 @@ AI-профиль: {user_b.get('ai_summary', 'Нет данных')}
     ) -> str:
         """Generate conversation starter"""
 
-        prompt = f"""Сгенерируй один интересный вопрос для начала разговора между двумя людьми.
+        prompt = f"""Generate one interesting question to start a conversation between two people.
 
-Человек А интересуется: {', '.join(user_a.get('interests', []))}
-Человек Б интересуется: {', '.join(user_b.get('interests', []))}
-Тип знакомства: {match_type}
+Person A is interested in: {', '.join(user_a.get('interests', []))}
+Person B is interested in: {', '.join(user_b.get('interests', []))}
+Type of connection: {match_type}
 
-Вопрос должен быть:
-- Открытым (не да/нет)
-- Связанным с общими интересами
-- Легким и дружелюбным
-- Без клише типа "расскажи о себе"
+The question should be:
+- Open-ended (not yes/no)
+- Related to shared interests
+- Light and friendly
+- No clichés like "tell me about yourself"
 
-Отвечай ТОЛЬКО вопросом, без преамбулы."""
+Respond with ONLY the question, no preamble."""
 
-        response = self.client.chat.completions.create(
+        response = await self.client.chat.completions.create(
             model=self.model,
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}]
