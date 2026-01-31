@@ -203,6 +203,14 @@ sphere-bot/
 9. **Photo display** - shown in profile, matches, and match profile view
 10. **Multilingual buttons** - all keyboards support lang parameter
 11. **Fix goals language** - uses get_goal_display(g, lang)
+12. **Fix text onboarding state** - better state handling after switch from audio
+13. **Bug fixes batch** - multiple fixes from code review:
+    - Silent failures now show error messages (matches.py)
+    - Photo send failures logged for debugging
+    - Infinite loop fix - message recorded BEFORE LLM call
+    - FSM state fully cleared on error recovery
+    - Fallback profile has valid looking_for/can_help_with defaults
+    - Improved matching prompt with weighted criteria
 
 ---
 
@@ -224,6 +232,7 @@ sphere-bot/
 
 ### High Priority
 - [ ] **Event info system** - upload event details (schedule, speakers, etc.) for LLM to answer questions
+- [ ] **Language preference storage** - add `language_preference` field to User model, save during onboarding
 - [ ] LinkedIn URL parsing from voice/text
 - [ ] Edit profile button (change photo, update info)
 
