@@ -50,6 +50,7 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - AI extracts: about, looking_for, can_help_with, interests, goals
    - Validation: asks follow-up if key info missing
    - "Add details" button to incrementally update profile
+   - **Selfie request** after profile - explains it helps matches find you at event
 
 2. **Profile System**
    - Fields: display_name, bio, interests, goals, looking_for, can_help_with
@@ -213,11 +214,14 @@ DEFAULT_MATCH_THRESHOLD=0.6
 - [x] Fix: current_event_id not set on join_event - DONE
 - [x] Improve extraction prompt for richer profiles - DONE
 - [x] Fix: text onboarding after switch from audio - DONE
-- [x] Notifications when new match found - DONE (notifies existing users when new person matches with them)
+- [x] Notifications when new match found - DONE
+- [x] **Selfie feature** - photo upload after onboarding, explains it helps matches find you
+- [x] Full /reset command - clears all profile fields
+- [x] Fix goals display language
 
 ### High Priority
-- [ ] **Selfie feature** - photo upload to find people at event
 - [ ] LinkedIn URL parsing from voice/text
+- [ ] Show selfie in match profile
 
 ### Medium Priority
 - [ ] Admin dashboard for events
