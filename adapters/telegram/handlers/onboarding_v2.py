@@ -285,8 +285,9 @@ async def complete_conversational_onboarding(
 
 
 async def show_top_matches_v2(message: Message, user, event, tg_username: str = None):
-    """Show top matches after onboarding (v2 version)"""
+    """Show top matches after onboarding (v2 version) and notify matched users"""
     from adapters.telegram.loader import matching_service
+    from adapters.telegram.handlers.matches import notify_about_match
     from config.features import Features
 
     try:
@@ -303,6 +304,23 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
                 reply_markup=get_main_menu_keyboard()
             )
             return
+
+        # Notify matched users about new match
+        new_user_name = user.display_name or user.first_name or "Someone"
+        for matched_user, match_result in matches:
+            if matched_user.platform_user_id:
+                try:
+                    await notify_about_match(
+                        user_telegram_id=int(matched_user.platform_user_id),
+                        partner_name=new_user_name,
+                        explanation=match_result.explanation,
+                        icebreaker=match_result.icebreaker,
+                        match_id=str(match_result.match_id),
+                        lang="en"  # Default to English for v2
+                    )
+                    logger.info(f"Notified user {matched_user.platform_user_id} about new match")
+                except Exception as e:
+                    logger.error(f"Failed to notify user {matched_user.platform_user_id}: {e}")
 
         # Format matches
         header = f"🎯 <b>Top {len(matches)} people to meet at {event.name}:</b>\n\n"

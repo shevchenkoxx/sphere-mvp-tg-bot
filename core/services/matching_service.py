@@ -6,7 +6,7 @@ Core business logic for finding compatible people.
 from typing import List, Tuple, Optional
 from uuid import UUID
 from core.domain.models import (
-    User, Match, MatchCreate, MatchResult, MatchType, MatchStatus
+    User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchType, MatchStatus
 )
 from core.interfaces.repositories import IMatchRepository, IEventRepository
 from core.interfaces.ai import IAIService
@@ -209,10 +209,10 @@ class MatchingService:
         user: User,
         event_id: UUID,
         limit: int = 3
-    ) -> List[Tuple[User, MatchResult]]:
+    ) -> List[Tuple[User, "MatchResultWithId"]]:
         """
         Find matches for a specific user within an event.
-        Creates match records and returns top matches.
+        Creates match records and returns top matches with match IDs.
         """
         participants = await self.event_repo.get_participants(event_id)
         event = await self.event_repo.get_by_id(event_id)
@@ -243,8 +243,17 @@ class MatchingService:
                     ai_explanation=result.explanation,
                     icebreaker=result.icebreaker
                 )
-                await self.match_repo.create(match_create)
-                matches.append((other, result))
+                created_match = await self.match_repo.create(match_create)
+
+                # Create result with match_id for notifications
+                result_with_id = MatchResultWithId(
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    match_id=created_match.id
+                )
+                matches.append((other, result_with_id))
 
         # Sort by score and return top N
         matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)

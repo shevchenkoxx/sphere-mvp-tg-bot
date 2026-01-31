@@ -831,8 +831,9 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
 
 async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
-    """Show top 3 matches after onboarding"""
+    """Show top 3 matches after onboarding and notify matched users"""
     from config.features import Features
+    from adapters.telegram.handlers.matches import notify_about_match
 
     try:
         # Find matches for this user
@@ -852,6 +853,26 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
             )
             await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
             return
+
+        # Notify matched users about new match (the other person)
+        new_user_name = user.display_name or user.first_name or "Someone"
+        for matched_user, match_result in matches:
+            if matched_user.platform_user_id:
+                try:
+                    # Detect matched user's language (default to ru for now)
+                    matched_lang = "ru"
+
+                    await notify_about_match(
+                        user_telegram_id=int(matched_user.platform_user_id),
+                        partner_name=new_user_name,
+                        explanation=match_result.explanation,
+                        icebreaker=match_result.icebreaker,
+                        match_id=str(match_result.match_id),
+                        lang=matched_lang
+                    )
+                    logger.info(f"Notified user {matched_user.platform_user_id} about new match with {user.id}")
+                except Exception as e:
+                    logger.error(f"Failed to notify user {matched_user.platform_user_id}: {e}")
 
         # Format top matches message
         if lang == "ru":

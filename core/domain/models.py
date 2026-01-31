@@ -138,6 +138,11 @@ class MatchResult(BaseModel):
     icebreaker: str
 
 
+class MatchResultWithId(MatchResult):
+    """MatchResult with match ID for notifications"""
+    match_id: UUID
+
+
 class MatchCreate(BaseModel):
     """Data for creating a match"""
     event_id: Optional[UUID] = None
