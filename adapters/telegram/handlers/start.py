@@ -228,10 +228,19 @@ async def show_matches_menu(callback: CallbackQuery):
 
 
 # === FALLBACK FOR OLD/STALE CALLBACKS ===
+# Note: Audio callbacks (audio_ready, audio_confirm, etc.) are handled by onboarding_audio.py
+# Only catch them here if user is NOT in any onboarding state
 
 @router.callback_query(F.data.in_(["audio_ready", "audio_confirm", "audio_retry", "switch_to_text"]))
 async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
-    """Handle clicks on old audio onboarding buttons"""
+    """Handle clicks on old audio onboarding buttons - only when NOT in onboarding"""
+    current_state = await state.get_state()
+
+    # If user is in any onboarding state, don't handle here - let onboarding handlers do it
+    if current_state and ("AudioOnboarding" in current_state or "Onboarding" in current_state):
+        return  # Let the actual onboarding handler process this
+
+    # Otherwise it's a stale button
     await callback.answer("Эта кнопка устарела. Напиши /start", show_alert=True)
     try:
         await callback.message.delete()

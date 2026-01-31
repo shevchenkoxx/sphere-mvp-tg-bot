@@ -169,6 +169,7 @@ async def complete_conversational_onboarding(
     """Complete onboarding with extracted profile data"""
 
     user_id = str(message.from_user.id)
+    tg_username = message.from_user.username
 
     # Convert to OnboardingData
     onboarding_data = conversation_service.convert_to_onboarding_data(
@@ -208,23 +209,95 @@ async def complete_conversational_onboarding(
         )
 
         if success and event:
-            text = (
-                f"🎉 You're in! Welcome to <b>{event.name}</b>\n\n"
-                "I'm already finding interesting people for you. I'll message you when I find matches!"
+            # Save current_event_id to user profile
+            await user_service.update_user(
+                MessagePlatform.TELEGRAM,
+                user_id,
+                current_event_id=event.id
             )
+
+            # Re-fetch user with updated current_event_id
+            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+            await message.answer(
+                f"🎉 You're in! Welcome to <b>{event.name}</b>\n\n"
+                "Finding interesting people for you..."
+            )
+
+            # Show top matches
+            if user:
+                await show_top_matches_v2(message, user, event, tg_username)
         else:
             text = (
                 "✓ Profile saved!\n\n"
                 "The event is no longer available, but you can join other events."
             )
+            await message.answer(text, reply_markup=get_main_menu_keyboard())
     else:
         text = (
             "🎉 <b>Profile complete!</b>\n\n"
             "Scan QR codes at events to start meeting interesting people!"
         )
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
 
-    await message.answer(text, reply_markup=get_main_menu_keyboard())
     await state.clear()
+
+
+async def show_top_matches_v2(message: Message, user, event, tg_username: str = None):
+    """Show top matches after onboarding (v2 version)"""
+    from adapters.telegram.loader import matching_service
+    from config.features import Features
+
+    try:
+        matches = await matching_service.find_and_create_matches_for_user(
+            user=user,
+            event_id=event.id,
+            limit=Features.SHOW_TOP_MATCHES
+        )
+
+        if not matches:
+            await message.answer(
+                "👀 Not enough participants yet.\n"
+                "I'll notify you when matches are found!",
+                reply_markup=get_main_menu_keyboard()
+            )
+            return
+
+        # Format matches
+        header = f"🎯 <b>Top {len(matches)} people to meet at {event.name}:</b>\n\n"
+        lines = []
+        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+        for i, (matched_user, match_result) in enumerate(matches):
+            emoji = emojis[i] if i < len(emojis) else f"{i+1}."
+            name = matched_user.display_name or matched_user.first_name or "Unknown"
+            role_line = matched_user.bio[:50] if matched_user.bio else ""
+            why = match_result.explanation[:100] if match_result.explanation else ""
+            contact = f"📱 @{matched_user.username}" if matched_user.username else ""
+
+            line = f"{emoji} <b>{name}</b>"
+            if role_line:
+                line += f"\n   {role_line}"
+            if why:
+                line += f"\n   💡 {why}"
+            if contact:
+                line += f"\n   {contact}"
+            lines.append(line)
+
+        text = header + "\n\n".join(lines)
+
+        # Add icebreaker
+        if matches and matches[0][1].icebreaker:
+            text += f"\n\n💬 <i>Start with: {matches[0][1].icebreaker}</i>"
+
+        await message.answer(text, reply_markup=get_main_menu_keyboard())
+
+    except Exception as e:
+        logger.error(f"Error showing top matches v2: {e}")
+        await message.answer(
+            "✓ Profile saved! I'll notify you about matches.",
+            reply_markup=get_main_menu_keyboard()
+        )
 
 
 # === Reset/Cancel ===

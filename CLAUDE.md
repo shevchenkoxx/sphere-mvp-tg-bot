@@ -9,6 +9,25 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ---
 
+## ⚠️ ВАЖНО для Claude Code
+
+### Деплой
+- **ВСЕГДА пушить в git** для деплоя на Railway
+- Railway автоматически деплоит из `main` branch
+- После `git push` подождать ~1-2 мин для деплоя
+
+### Database (Supabase)
+- Можно управлять через REST API (credentials в `.env`)
+- URL: `https://cfppunyxxelqutfwqfbi.supabase.co`
+- Использовать `SUPABASE_SERVICE_KEY` для полного доступа
+
+### Тестирование
+- Test event: `TEST2024` (10 тестовых профилей)
+- Deep link: `t.me/Matchd_bot?start=event_TEST2024`
+- Reset профиль: `/reset` в боте (нужен DEBUG=true или admin)
+
+---
+
 ## What's Done ✅
 
 ### Core Features
@@ -65,27 +84,20 @@ DEBUG=false
 
 ---
 
-## In Progress 🔄
+## Recently Done ✅
 
-### Current Event Tracking
+### Current Event Tracking ✅
 When user joins via QR link (`t.me/bot?start=event_CODE`):
 1. Extract event_code from deep link
 2. Save to `current_event_id` on profile completion
 3. Use for matching context
 
-### Top 3 Matches Display
-After onboarding, show:
-```
-🎯 Meet these people at [Event]:
-
-1️⃣ Anna - Product Designer
-   💡 You both love AI, she needs a technical co-founder
-   📱 @anna_design
-
-2️⃣ Mike - ML Engineer
-   💡 He's looking to join a startup, you're hiring
-   📱 @mike_ml
-```
+### Top 3 Matches Display ✅
+After onboarding, shows top matches with:
+- Name and bio
+- Why they match (AI explanation)
+- Contact (@username)
+- Icebreaker suggestion
 
 ---
 

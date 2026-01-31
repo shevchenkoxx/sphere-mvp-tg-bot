@@ -9,9 +9,11 @@ elif ONBOARDING_VERSION == "audio":
 else:  # v2 (default)
     onboarding_router = onboarding_v2.router
 
+# IMPORTANT: Onboarding router must be BEFORE start router
+# because start.py has fallback handlers that would catch onboarding callbacks
 routers = [
+    onboarding_router,  # Must be first to handle state-specific callbacks
     start.router,
-    onboarding_router,
     events.router,
     matches.router,
 ]
