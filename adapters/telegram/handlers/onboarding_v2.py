@@ -21,7 +21,7 @@ from adapters.telegram.keyboards import get_main_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
-router = Router()
+router = Router(name="onboarding_v2")
 
 
 # === FSM States ===
@@ -83,6 +83,8 @@ async def start_conversational_onboarding_from_callback(
 
     Uses callback.from_user (the actual user) instead of callback.message.from_user (the bot).
     """
+    logger.info(f"[TEXT ONBOARDING] Starting conversational onboarding from callback for user {callback.from_user.id}")
+
     # Create fresh conversation state with correct user info
     conv_state = conversation_service.create_onboarding_state(
         event_name=event_name,
@@ -96,9 +98,19 @@ async def start_conversational_onboarding_from_callback(
     # Start conversation - get initial greeting
     conv_state, greeting = await conversation_service.start_conversation(conv_state)
 
-    # Save state to FSM
-    await state.update_data(conversation=serialize_state(conv_state))
+    logger.info(f"[TEXT ONBOARDING] Generated greeting, conv_state messages: {len(conv_state.messages)}")
+
+    # Save state to FSM - store both conversation and metadata
+    await state.update_data(
+        conversation=serialize_state(conv_state),
+        event_name=event_name,
+        pending_event=event_code
+    )
     await state.set_state(ConversationalOnboarding.in_conversation)
+
+    # Verify state was set
+    current_state = await state.get_state()
+    logger.info(f"[TEXT ONBOARDING] State set to: {current_state}")
 
     # Send greeting using bot directly since callback.message belongs to bot
     await bot.send_message(callback.from_user.id, greeting)
@@ -107,21 +119,49 @@ async def start_conversational_onboarding_from_callback(
 @router.message(ConversationalOnboarding.in_conversation, F.text)
 async def process_conversation_message(message: Message, state: FSMContext):
     """Process user message in conversation"""
+    logger.info(f"[TEXT ONBOARDING] ========================================")
     logger.info(f"[TEXT ONBOARDING] Received message from {message.from_user.id}: {message.text[:50]}...")
+
+    # Check for reset/restart commands first
+    text_lower = message.text.lower().strip()
+    if text_lower in ["reset", "start over", "заново", "/start", "/reset"]:
+        logger.info(f"[TEXT ONBOARDING] User requested reset")
+        await state.clear()
+        await message.answer(
+            "Let's start fresh! Send /start to begin again.",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return
+
+    # Check current FSM state
+    current_fsm_state = await state.get_state()
+    logger.info(f"[TEXT ONBOARDING] Current FSM state: {current_fsm_state}")
 
     # Get current state
     data = await state.get_data()
     conv_data = data.get("conversation")
     logger.info(f"[TEXT ONBOARDING] State data keys: {list(data.keys())}")
+    logger.info(f"[TEXT ONBOARDING] conv_data exists: {conv_data is not None}")
 
     if not conv_data:
-        # State lost, restart
+        # State lost, restart with fresh conversation
         logger.warning(f"[TEXT ONBOARDING] State lost for user {message.from_user.id}, restarting")
-        await message.answer("Let's start over. What's your name?")
+
+        # Get event info from state if available
+        event_name = data.get("event_name")
+        pending_event = data.get("pending_event")
+
         conv_state = conversation_service.create_onboarding_state(
+            event_name=event_name,
             user_first_name=message.from_user.first_name
         )
+        if pending_event:
+            conv_state.context["pending_event"] = pending_event
+
+        # Start fresh conversation
+        conv_state, greeting = await conversation_service.start_conversation(conv_state)
         await state.update_data(conversation=serialize_state(conv_state))
+        await message.answer(greeting)
         return
 
     # Deserialize state
@@ -152,7 +192,21 @@ async def process_conversation_message(message: Message, state: FSMContext):
             )
     except Exception as e:
         logger.error(f"[TEXT ONBOARDING] Error processing message: {e}", exc_info=True)
-        await message.answer("Sorry, something went wrong. Please try again or type /start to restart.")
+        # Try to restart the conversation
+        try:
+            await message.answer(
+                "Sorry, something went wrong. Let me start over.\n\n"
+                "What's your name and what do you do?"
+            )
+            # Reset to fresh state
+            conv_state = conversation_service.create_onboarding_state(
+                event_name=data.get("event_name") if data else None,
+                user_first_name=message.from_user.first_name
+            )
+            await state.update_data(conversation=serialize_state(conv_state))
+        except Exception as e2:
+            logger.error(f"[TEXT ONBOARDING] Failed to recover: {e2}", exc_info=True)
+            await message.answer("Please type /start to restart.")
 
 
 @router.message(ConversationalOnboarding.in_conversation, F.voice)
@@ -361,13 +415,4 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
         )
 
 
-# === Reset/Cancel ===
-
-@router.message(ConversationalOnboarding.in_conversation, F.text.lower().in_(["reset", "start over", "заново", "/start"]))
-async def reset_conversation(message: Message, state: FSMContext):
-    """Reset conversation if user is stuck"""
-    await state.clear()
-    await message.answer(
-        "Let's start fresh! Send /start to begin again.",
-        reply_markup=get_main_menu_keyboard()
-    )
+# Note: Reset/Cancel is now handled inside process_conversation_message to ensure proper priority

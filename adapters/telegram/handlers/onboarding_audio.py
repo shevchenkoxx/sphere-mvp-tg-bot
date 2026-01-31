@@ -37,7 +37,7 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-router = Router()
+router = Router(name="onboarding_audio")
 
 
 # === Language Detection ===
@@ -208,10 +208,19 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(AudioOnboarding.waiting_audio, F.data == "switch_to_text")
 async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     """Switch to conversational onboarding"""
-    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding_from_callback
+    from adapters.telegram.handlers.onboarding_v2 import (
+        ConversationalOnboarding,
+        conversation_service,
+        serialize_state,
+    )
 
+    logger.info(f"[SWITCH TO TEXT] User {callback.from_user.id} switching to text onboarding")
+
+    # Get data before clearing
     data = await state.get_data()
-    await state.clear()
+    event_name = data.get("event_name")
+    pending_event = data.get("pending_event")
+    lang = data.get("language", "en")
 
     # Delete old message with buttons to avoid confusion
     try:
@@ -219,13 +228,35 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     except Exception:
         pass  # Message might be too old to delete
 
-    # Use callback-specific function that correctly extracts user info
-    await start_conversational_onboarding_from_callback(
-        callback,
-        state,
-        event_name=data.get("event_name"),
-        event_code=data.get("pending_event")
+    # Create fresh conversation state
+    conv_state = conversation_service.create_onboarding_state(
+        event_name=event_name,
+        user_first_name=callback.from_user.first_name
     )
+
+    # Store event code if present
+    if pending_event:
+        conv_state.context["pending_event"] = pending_event
+
+    # Start conversation - get initial greeting
+    conv_state, greeting = await conversation_service.start_conversation(conv_state)
+
+    # Clear old state and set new one - DO NOT separate these calls
+    await state.clear()
+
+    # Set new data and state immediately after clear
+    await state.update_data(
+        conversation=serialize_state(conv_state),
+        event_name=event_name,
+        pending_event=pending_event,
+        language=lang
+    )
+    await state.set_state(ConversationalOnboarding.in_conversation)
+
+    logger.info(f"[SWITCH TO TEXT] State set to ConversationalOnboarding.in_conversation for user {callback.from_user.id}")
+
+    # Send greeting
+    await bot.send_message(callback.from_user.id, greeting)
     await callback.answer()
 
 
