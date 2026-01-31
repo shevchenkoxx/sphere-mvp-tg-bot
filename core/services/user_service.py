@@ -98,25 +98,25 @@ class UserService:
         """Validate display name"""
         name = name.strip()
         if len(name) < MIN_NAME_LENGTH:
-            return False, f"Имя должно быть минимум {MIN_NAME_LENGTH} символа"
+            return False, f"Name must be at least {MIN_NAME_LENGTH} characters"
         if len(name) > MAX_NAME_LENGTH:
-            return False, f"Имя должно быть максимум {MAX_NAME_LENGTH} символов"
+            return False, f"Name must be at most {MAX_NAME_LENGTH} characters"
         return True, ""
 
     def validate_interests(self, interests: list) -> tuple[bool, str]:
         """Validate interests selection"""
         if not interests:
-            return False, "Выбери хотя бы один интерес"
+            return False, "Select at least one interest"
         if len(interests) > MAX_INTERESTS:
-            return False, f"Максимум {MAX_INTERESTS} интересов"
+            return False, f"Maximum {MAX_INTERESTS} interests"
         return True, ""
 
     def validate_goals(self, goals: list) -> tuple[bool, str]:
         """Validate goals selection"""
         if not goals:
-            return False, "Выбери хотя бы одну цель"
+            return False, "Select at least one goal"
         if len(goals) > MAX_GOALS:
-            return False, f"Максимум {MAX_GOALS} цели"
+            return False, f"Maximum {MAX_GOALS} goals"
         return True, ""
 
     async def is_onboarding_completed(

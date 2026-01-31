@@ -197,12 +197,12 @@ LINKEDIN_PARSE_PROMPT = """Извлеки ключевую информацию 
 
 def format_prompt(template: str, **kwargs) -> str:
     """Format prompt template with given values"""
-    # Replace None with empty strings
+    # Replace None with placeholder
     for key, value in kwargs.items():
         if value is None:
-            kwargs[key] = "Не указано"
+            kwargs[key] = "Not specified"
         elif isinstance(value, list):
-            kwargs[key] = ", ".join(value) if value else "Не указано"
+            kwargs[key] = ", ".join(value) if value else "Not specified"
     return template.format(**kwargs)
 
 

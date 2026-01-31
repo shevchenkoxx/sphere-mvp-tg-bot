@@ -19,8 +19,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS skills TEXT[] DEFAULT '{}';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS looking_for TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS can_help_with TEXT;
 
--- Language
-ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'ru';
+-- Language (default English)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en';
 
 -- ============================================
 -- DEEP PROFILE (LLM-generated analysis)

@@ -94,14 +94,18 @@ class SupabaseMatchRepository(IMatchRepository):
     @run_sync
     def _exists_sync(self, event_id: UUID, user_a_id: UUID, user_b_id: UUID) -> bool:
         # Check both directions (A-B and B-A)
-        response = supabase.table("matches")\
-            .select("id")\
-            .eq("event_id", str(event_id))\
-            .or_(
-                f"and(user_a_id.eq.{user_a_id},user_b_id.eq.{user_b_id}),"
-                f"and(user_a_id.eq.{user_b_id},user_b_id.eq.{user_a_id})"
-            )\
-            .execute()
+        query = supabase.table("matches").select("id")
+
+        # Handle NULL event_id properly
+        if event_id:
+            query = query.eq("event_id", str(event_id))
+        else:
+            query = query.is_("event_id", "null")
+
+        response = query.or_(
+            f"and(user_a_id.eq.{user_a_id},user_b_id.eq.{user_b_id}),"
+            f"and(user_a_id.eq.{user_b_id},user_b_id.eq.{user_a_id})"
+        ).execute()
         return len(response.data) > 0 if response.data else False
 
     async def exists(self, event_id: UUID, user_a_id: UUID, user_b_id: UUID) -> bool:

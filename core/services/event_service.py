@@ -61,23 +61,23 @@ class EventService:
         # Get event
         event = await self.event_repo.get_by_code(event_code)
         if not event:
-            return False, "Ивент не найден или уже завершился", None
+            return False, "Event not found or ended", None
 
         # Get user
         user = await self.user_repo.get_by_platform_id(platform, platform_user_id)
         if not user:
-            return False, "Пользователь не найден", None
+            return False, "User not found", None
 
         if not user.onboarding_completed:
-            return False, "Сначала заполни профиль", None
+            return False, "Complete your profile first", None
 
         # Check if already participant
         if await self.event_repo.is_participant(event.id, user.id):
-            return True, "Ты уже участник этого ивента", event
+            return True, "Already a participant", event
 
         # Add to event
         await self.event_repo.add_participant(event.id, user.id)
-        return True, "Успешно присоединился к ивенту!", event
+        return True, "Successfully joined!", event
 
     async def get_event_participants(self, event_id: UUID) -> List[User]:
         """Get all participants of an event"""

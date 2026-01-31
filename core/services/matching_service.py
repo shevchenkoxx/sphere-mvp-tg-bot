@@ -172,14 +172,16 @@ class MatchingService:
         self,
         user_id: UUID,
         event_id: Optional[UUID] = None,
-        limit: int = 3
+        limit: int = 3,
+        user_repo=None
     ) -> List[Tuple[User, Match]]:
         """
         Get top N matches for a user, optionally filtered by event.
         Returns list of (matched_user, match) tuples sorted by score.
         """
-        from infrastructure.database.user_repository import SupabaseUserRepository
-        user_repo = SupabaseUserRepository()
+        if user_repo is None:
+            from infrastructure.database.user_repository import SupabaseUserRepository
+            user_repo = SupabaseUserRepository()
 
         # Get all matches for user
         matches = await self.match_repo.get_user_matches(user_id)
