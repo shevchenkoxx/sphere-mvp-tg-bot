@@ -212,11 +212,12 @@ DEFAULT_MATCH_THRESHOLD=0.6
 - [x] Better match explanations display - DONE
 - [x] Fix: current_event_id not set on join_event - DONE
 - [x] Improve extraction prompt for richer profiles - DONE
+- [x] Fix: text onboarding after switch from audio - DONE
+- [x] Notifications when new match found - DONE (notifies existing users when new person matches with them)
 
 ### High Priority
 - [ ] **Selfie feature** - photo upload to find people at event
 - [ ] LinkedIn URL parsing from voice/text
-- [ ] Notifications when new match found
 
 ### Medium Priority
 - [ ] Admin dashboard for events
