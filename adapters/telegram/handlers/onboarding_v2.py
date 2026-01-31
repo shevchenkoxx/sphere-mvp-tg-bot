@@ -310,13 +310,15 @@ async def show_top_matches_v2(message: Message, user, event, tg_username: str = 
         for matched_user, match_result in matches:
             if matched_user.platform_user_id:
                 try:
+                    # Use Russian for ru/uk users, English for others
+                    matched_lang = "en"  # Default, could be stored in user profile later
                     await notify_about_match(
                         user_telegram_id=int(matched_user.platform_user_id),
                         partner_name=new_user_name,
                         explanation=match_result.explanation,
                         icebreaker=match_result.icebreaker,
                         match_id=str(match_result.match_id),
-                        lang="en"  # Default to English for v2
+                        lang=matched_lang
                     )
                     logger.info(f"Notified user {matched_user.platform_user_id} about new match")
                 except Exception as e:

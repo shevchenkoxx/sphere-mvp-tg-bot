@@ -7,7 +7,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 
 from core.domain.models import MessagePlatform, MatchStatus
-from core.domain.constants import get_interest_display
+from core.domain.constants import get_interest_display, get_goal_display
 from adapters.telegram.loader import matching_service, user_service, event_service, bot
 from adapters.telegram.keyboards import (
     get_match_keyboard,
@@ -244,6 +244,17 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         lang=lang
     )
 
+    # Send photo if partner has one
+    if partner.photo_url and not edit:
+        try:
+            await bot.send_photo(
+                chat_id=message.chat.id,
+                photo=partner.photo_url,
+                caption=f"📸 {name}"
+            )
+        except Exception as e:
+            pass  # Photo might be expired or invalid
+
     if edit:
         await message.edit_text(text, reply_markup=keyboard)
     else:
@@ -351,14 +362,34 @@ async def view_match_profile(callback: CallbackQuery):
     # Goals
     if partner.goals:
         label = "Goals" if lang == "en" else "Цели"
-        goals_display = ", ".join([get_interest_display(g) for g in partner.goals[:3]])
+        goals_display = ", ".join([get_goal_display(g, lang) for g in partner.goals[:3]])
         text += f"\n🎯 <b>{label}:</b> {goals_display}\n"
 
     # Contact
     if partner.username:
         text += f"\n📱 @{partner.username}"
 
-    await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
+    # Send photo if partner has one, then text
+    if partner.photo_url:
+        try:
+            # Delete old message and send new with photo
+            await callback.message.delete()
+            await bot.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=partner.photo_url,
+                caption=f"📸 {name}"
+            )
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                text=text,
+                reply_markup=get_profile_view_keyboard(match_id, lang)
+            )
+        except Exception:
+            # Fallback to just text
+            await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
+    else:
+        await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
+
     await callback.answer()
 
 

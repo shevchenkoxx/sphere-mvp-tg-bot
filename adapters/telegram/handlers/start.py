@@ -236,7 +236,31 @@ async def show_profile(callback: CallbackQuery):
     if user.username:
         text += f"\n📱 @{user.username}"
 
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    # Photo indicator
+    if user.photo_url:
+        text += f"\n\n📸 {'Photo added' if lang == 'en' else 'Фото добавлено'} ✓"
+    else:
+        text += f"\n\n📸 {'No photo yet' if lang == 'en' else 'Фото не добавлено'}"
+
+    # Show photo if available
+    if user.photo_url:
+        try:
+            await callback.message.delete()
+            await bot.send_photo(
+                chat_id=callback.message.chat.id,
+                photo=user.photo_url,
+                caption=f"👤 {name}"
+            )
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                text=text,
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    else:
+        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+
     await callback.answer()
 
 
