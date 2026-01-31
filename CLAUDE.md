@@ -208,20 +208,22 @@ DEFAULT_MATCH_THRESHOLD=0.6
 ## TODO / Next Steps
 
 ### Completed
-- [x] Match pagination (next/prev buttons) - DONE
-- [x] Back to menu from all screens - DONE
-- [x] Better match explanations display - DONE
-- [x] Fix: current_event_id not set on join_event - DONE
-- [x] Improve extraction prompt for richer profiles - DONE
-- [x] Fix: text onboarding after switch from audio - DONE
-- [x] Notifications when new match found - DONE
-- [x] **Selfie feature** - photo upload after onboarding, explains it helps matches find you
+- [x] Match pagination (next/prev buttons)
+- [x] Back to menu from all screens
+- [x] Better match explanations display
+- [x] Fix: current_event_id not set on join_event
+- [x] Improve extraction prompt for richer profiles
+- [x] Fix: text onboarding after switch from audio
+- [x] Notifications when new match found
+- [x] **Selfie feature** - photo upload after onboarding
 - [x] Full /reset command - clears all profile fields
 - [x] Fix goals display language
+- [x] **Show photo in profiles and matches**
+- [x] **All buttons support multilingual (en/ru)**
 
 ### High Priority
 - [ ] LinkedIn URL parsing from voice/text
-- [ ] Show selfie in match profile
+- [ ] Edit profile button (change photo, update info)
 
 ### Medium Priority
 - [ ] Admin dashboard for events
