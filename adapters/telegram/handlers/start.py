@@ -142,7 +142,7 @@ async def help_command(message: Message):
 
 @router.message(Command("reset"))
 async def reset_command(message: Message, state: FSMContext):
-    """Reset user profile for testing"""
+    """Full reset of user profile for testing"""
     from config.settings import settings
 
     user_id = str(message.from_user.id)
@@ -155,10 +155,19 @@ async def reset_command(message: Message, state: FSMContext):
         await message.answer("⛔ Команда доступна только админам")
         return
 
-    # Reset user onboarding status
+    # FULL profile reset - clear all fields
     await user_service.update_user(
         MessagePlatform.TELEGRAM,
         user_id,
+        display_name=None,
+        bio=None,
+        interests=[],
+        goals=[],
+        looking_for=None,
+        can_help_with=None,
+        ai_summary=None,
+        photo_url=None,
+        current_event_id=None,
         onboarding_completed=False
     )
 
@@ -166,8 +175,8 @@ async def reset_command(message: Message, state: FSMContext):
     await state.clear()
 
     await message.answer(
-        "🔄 Профиль сброшен!\n\n"
-        "Напиши /start чтобы начать заново."
+        "🔄 Профиль полностью очищен!\n\n"
+        "Все данные удалены. Напиши /start чтобы начать заново."
     )
 
 
@@ -220,7 +229,7 @@ async def show_profile(callback: CallbackQuery):
 
     # Goals
     if user.goals:
-        goals_display = ", ".join([get_goal_display(g) for g in user.goals[:3]])
+        goals_display = ", ".join([get_goal_display(g, lang) for g in user.goals[:3]])
         text += f"\n🎯 <b>{'Goals' if lang == 'en' else 'Цели'}:</b> {goals_display}\n"
 
     # Contact

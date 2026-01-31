@@ -68,6 +68,7 @@ class AudioOnboarding(StatesGroup):
     waiting_followup = State()   # Waiting for follow-up answer
     confirming = State()         # Confirming extracted profile
     adding_details = State()     # Adding more details to profile
+    waiting_selfie = State()     # Waiting for selfie photo
 
 
 # === Keyboards ===
@@ -95,6 +96,16 @@ def get_audio_confirm_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         builder.button(text="✅ Looks good!", callback_data="audio_confirm")
         builder.button(text="➕ Add details", callback_data="audio_add_details")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_selfie_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Keyboard for selfie request"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="⏩ Пропустить", callback_data="skip_selfie")
+    else:
+        builder.button(text="⏩ Skip", callback_data="skip_selfie")
     return builder.as_markup()
 
 
@@ -799,35 +810,28 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                 current_event_id=event.id
             )
 
-            # Re-fetch user with updated current_event_id
-            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+    # Ask for selfie before showing matches
+    await state.update_data(
+        pending_event=pending_event,
+        event_id=str(event.id) if event else None,
+        event_name=event.name if event else None
+    )
 
-            text = (
-                f"🎉 Ты в ивенте <b>{event.name}</b>!\n\n"
-                "Ищу для тебя интересных людей..."
-            ) if lang == "ru" else (
-                f"🎉 You're in <b>{event.name}</b>!\n\n"
-                "Finding interesting people for you..."
-            )
-            await message.answer(text)
-
-            # Find and show top matches
-            if user:
-                await show_top_matches(message, user, event, lang, tg_username)
-        else:
-            text = "✓ Профиль сохранён!" if lang == "ru" else "✓ Profile saved!"
-            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
-    else:
-        text = (
-            "🎉 <b>Профиль готов!</b>\n\n"
-            "Сканируй QR-коды на ивентах, чтобы находить интересных людей!"
-        ) if lang == "ru" else (
-            "🎉 <b>Profile ready!</b>\n\n"
-            "Scan QR codes at events to meet interesting people!"
+    if lang == "ru":
+        selfie_text = (
+            "📸 <b>Последний шаг!</b>\n\n"
+            "Отправь своё фото, чтобы твои матчи могли легко найти тебя на ивенте.\n\n"
+            "<i>Это поможет быстрее узнать друг друга в толпе!</i>"
         )
-        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+    else:
+        selfie_text = (
+            "📸 <b>One last thing!</b>\n\n"
+            "Send a photo of yourself so your matches can easily find you at the event.\n\n"
+            "<i>This helps you recognize each other in the crowd!</i>"
+        )
 
-    await state.clear()
+    await message.answer(selfie_text, reply_markup=get_selfie_keyboard(lang))
+    await state.set_state(AudioOnboarding.waiting_selfie)
 
 
 async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
@@ -929,6 +933,121 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
             "✓ Profile saved! I'll notify you about matches."
         )
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+
+# === Selfie Handlers ===
+
+@router.message(AudioOnboarding.waiting_selfie, F.photo)
+async def handle_selfie_photo(message: Message, state: FSMContext):
+    """Handle selfie photo upload"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    user_id = str(message.from_user.id)
+
+    # Get the largest photo
+    photo = message.photo[-1]
+
+    # Save photo URL (Telegram file_id can be used to retrieve later)
+    await user_service.update_user(
+        MessagePlatform.TELEGRAM,
+        user_id,
+        photo_url=photo.file_id  # Store file_id for later retrieval
+    )
+
+    if lang == "ru":
+        text = "✅ Фото сохранено! Теперь тебя легко найти на ивенте."
+    else:
+        text = "✅ Photo saved! Now you're easy to spot at the event."
+
+    await message.answer(text)
+
+    # Continue to show matches
+    await finish_onboarding_after_selfie(message, state)
+
+
+@router.callback_query(AudioOnboarding.waiting_selfie, F.data == "skip_selfie")
+async def skip_selfie(callback: CallbackQuery, state: FSMContext):
+    """Skip selfie upload"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+
+    if lang == "ru":
+        text = "👌 Хорошо, можешь добавить фото позже в профиле."
+    else:
+        text = "👌 No problem, you can add a photo later in your profile."
+
+    await callback.message.edit_text(text)
+    await callback.answer()
+
+    # Continue to show matches
+    await finish_onboarding_after_selfie(callback.message, state, callback.from_user.id)
+
+
+@router.message(AudioOnboarding.waiting_selfie, F.text)
+async def handle_selfie_text(message: Message, state: FSMContext):
+    """Handle text when expecting selfie"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+
+    text_lower = message.text.lower()
+    if text_lower in ["skip", "пропустить", "нет", "no", "позже", "later"]:
+        # Skip selfie
+        if lang == "ru":
+            text = "👌 Хорошо, можешь добавить фото позже в профиле."
+        else:
+            text = "👌 No problem, you can add a photo later in your profile."
+        await message.answer(text)
+        await finish_onboarding_after_selfie(message, state)
+    else:
+        if lang == "ru":
+            text = "📸 Отправь фото или нажми 'Пропустить'"
+        else:
+            text = "📸 Send a photo or tap 'Skip'"
+        await message.answer(text, reply_markup=get_selfie_keyboard(lang))
+
+
+async def finish_onboarding_after_selfie(message: Message, state: FSMContext, user_tg_id: int = None):
+    """Complete onboarding after selfie step"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    event_id = data.get("event_id")
+    event_name = data.get("event_name")
+
+    # Get user
+    tg_id = user_tg_id or message.from_user.id
+    user_id = str(tg_id)
+    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+    if event_id and user:
+        from uuid import UUID
+        text = (
+            f"🎉 Ты в ивенте <b>{event_name}</b>!\n\n"
+            "Ищу для тебя интересных людей..."
+        ) if lang == "ru" else (
+            f"🎉 You're in <b>{event_name}</b>!\n\n"
+            "Finding interesting people for you..."
+        )
+        await message.answer(text)
+
+        # Create fake event object for show_top_matches
+        class EventWrapper:
+            def __init__(self, id, name):
+                self.id = UUID(id)
+                self.name = name
+
+        event = EventWrapper(event_id, event_name)
+        await show_top_matches(message, user, event, lang, user.username)
+    else:
+        text = (
+            "🎉 <b>Профиль готов!</b>\n\n"
+            "Сканируй QR-коды на ивентах, чтобы находить интересных людей!"
+        ) if lang == "ru" else (
+            "🎉 <b>Profile ready!</b>\n\n"
+            "Scan QR codes at events to meet interesting people!"
+        )
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+    await state.clear()
 
 
 # === Profile Extraction ===
