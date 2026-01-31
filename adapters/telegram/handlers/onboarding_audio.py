@@ -1120,15 +1120,18 @@ async def extract_profile_from_transcription(
 
     except Exception as e:
         logger.error(f"Profile extraction error: {e}")
-        # Return minimal fallback
+        # Return minimal fallback with safe defaults
+        # Note: display_name will be set from user's first_name during save
         return {
-            "display_name": None,
+            "display_name": "",  # Will use first_name as fallback during save
             "about": transcription[:200],
-            "looking_for": "",
-            "can_help_with": "",
+            "looking_for": "Networking and meeting new people",
+            "can_help_with": "Open to connecting and sharing experiences",
             "interests": ["networking"],
             "goals": ["networking"],
-            "confidence_score": 0.3
+            "profession": None,
+            "company": None,
+            "confidence_score": 0.3  # Low confidence due to extraction failure
         }
 
 

@@ -64,40 +64,54 @@ Keep the response in the same language as the bio (detect from bio text)."""
     ) -> MatchResult:
         """Analyze compatibility between two users"""
 
-        # Build profiles
+        # Build profiles with safe defaults
         name_a = user_a.get('display_name') or user_a.get('first_name') or 'Anonymous'
         name_b = user_b.get('display_name') or user_b.get('first_name') or 'Anonymous'
+
+        # Extract critical matching fields with defaults
+        looking_for_a = user_a.get('looking_for') or "Not specified"
+        can_help_a = user_a.get('can_help_with') or "Not specified"
+        looking_for_b = user_b.get('looking_for') or "Not specified"
+        can_help_b = user_b.get('can_help_with') or "Not specified"
+        ai_summary_a = user_a.get('ai_summary') or "No AI summary available"
+        ai_summary_b = user_b.get('ai_summary') or "No AI summary available"
 
         prompt = f"""Analyze compatibility between two people for potential networking connection.
 
 === PERSON A ===
 Name: {name_a}
-Interests: {', '.join(user_a.get('interests', []))}
-Goals: {', '.join(user_a.get('goals', []))}
+Interests: {', '.join(user_a.get('interests', [])) or 'Not specified'}
+Goals: {', '.join(user_a.get('goals', [])) or 'Not specified'}
 Bio: {user_a.get('bio', 'Not specified')}
-Looking for: {user_a.get('looking_for', '')}
-Can help with: {user_a.get('can_help_with', '')}
-AI profile: {user_a.get('ai_summary', 'No data')}
+Looking for: {looking_for_a}
+Can help with: {can_help_a}
+AI Profile: {ai_summary_a}
 
 === PERSON B ===
 Name: {name_b}
-Interests: {', '.join(user_b.get('interests', []))}
-Goals: {', '.join(user_b.get('goals', []))}
+Interests: {', '.join(user_b.get('interests', [])) or 'Not specified'}
+Goals: {', '.join(user_b.get('goals', [])) or 'Not specified'}
 Bio: {user_b.get('bio', 'Not specified')}
-Looking for: {user_b.get('looking_for', '')}
-Can help with: {user_b.get('can_help_with', '')}
-AI profile: {user_b.get('ai_summary', 'No data')}
+Looking for: {looking_for_b}
+Can help with: {can_help_b}
+AI Profile: {ai_summary_b}
 
 {f'Context: both are at event "{event_context}"' if event_context else ''}
 
+MATCHING CRITERIA (in order of importance):
+1. COMPLEMENTARY NEEDS: Does what Person A can help with match what Person B is looking for, and vice versa?
+2. SHARED INTERESTS: Do they have overlapping interests that could create natural conversation?
+3. GOAL ALIGNMENT: Are their professional or personal goals compatible?
+4. AI PROFILE COMPATIBILITY: Do their AI-generated personality profiles suggest good chemistry?
+
 Determine:
-1. compatibility_score (0.0-1.0) — how interesting they could be to each other
+1. compatibility_score (0.0-1.0) — higher weight for complementary "looking_for"/"can_help_with" matches
 2. match_type — one of: "friendship", "professional", "romantic", "creative"
 3. explanation — why they might be interesting to each other (2-3 sentences, warm and human, WITHOUT mentioning names)
 4. icebreaker — one good question to start a conversation
 
 IMPORTANT: Respond with valid JSON only, no markdown:
-{{"compatibility_score": 0.75, "match_type": "friendship", "explanation": "...", "icebreaker": "..."}}"""
+{{"compatibility_score": 0.75, "match_type": "professional", "explanation": "...", "icebreaker": "..."}}"""
 
         response = await self.client.chat.completions.create(
             model=self.model,

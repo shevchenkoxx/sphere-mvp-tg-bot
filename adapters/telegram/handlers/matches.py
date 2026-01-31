@@ -199,6 +199,11 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     partner = await user_service.get_user(partner_id)
 
     if not partner:
+        error_msg = "Match partner profile not found" if lang == "en" else "Профиль партнёра не найден"
+        if edit:
+            await message.edit_text(error_msg, reply_markup=get_back_to_menu_keyboard(lang))
+        else:
+            await message.answer(error_msg, reply_markup=get_main_menu_keyboard(lang))
         return
 
     # Build partner profile display
@@ -253,7 +258,10 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
                 caption=f"📸 {name}"
             )
         except Exception as e:
-            pass  # Photo might be expired or invalid
+            # Log photo send failure for debugging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to send match partner photo for user {user_id}: {type(e).__name__}: {str(e)[:100]}")
 
     if edit:
         await message.edit_text(text, reply_markup=keyboard)

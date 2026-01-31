@@ -81,11 +81,18 @@ class ConversationService:
             Tuple of (updated state, result)
         """
         try:
+            # CRITICAL: Add user message BEFORE LLM call
+            # This ensures message is recorded even if LLM fails,
+            # preventing infinite retry loops with identical state
+            state.add_user_message(user_message)
+            logger.debug(f"Added user message to history. Step will advance: {state.step} → {state.step + 1}")
+
             # Generate response
             response = await self.conversation_ai.generate_response(state, user_message)
 
-            # Increment step
+            # Increment step (guaranteed to happen since message already added)
             state.step += 1
+            logger.debug(f"Incremented conversation step to {state.step}")
 
             # If complete, extract profile
             profile_data = None
@@ -93,6 +100,7 @@ class ConversationService:
                 state.is_complete = True
                 profile_data = await self.conversation_ai.extract_profile_data(state)
                 state.extracted_data = profile_data
+                logger.info(f"Onboarding conversation complete. Extracted profile fields: {list(profile_data.keys())}")
 
             result = OnboardingResult(
                 response_text=response.message,
@@ -104,12 +112,14 @@ class ConversationService:
 
         except Exception as e:
             logger.error(f"Conversation processing error: {e}")
+            # NOTE: State is already updated with user message added and step will be consistent
+            # on next call. This prevents infinite retry loops where same error occurs repeatedly.
             result = OnboardingResult(
                 response_text="Sorry, something went wrong. Let's try again.",
                 is_complete=False,
                 error=str(e)
             )
-            return state, result
+            return state, result  # State already modified - message recorded, step consistent
 
     async def start_conversation(
         self,

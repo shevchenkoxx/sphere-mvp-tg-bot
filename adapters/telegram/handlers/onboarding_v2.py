@@ -194,18 +194,38 @@ async def process_conversation_message(message: Message, state: FSMContext):
         logger.error(f"[TEXT ONBOARDING] Error processing message: {e}", exc_info=True)
         # Try to restart the conversation
         try:
+            # CRITICAL: Clear ALL state first to prevent corruption
+            # Old state with error condition must not persist
+            await state.clear()
+            logger.info(f"[TEXT ONBOARDING] Cleared corrupted FSM state for user {message.from_user.id}")
+
             await message.answer(
                 "Sorry, something went wrong. Let me start over.\n\n"
                 "What's your name and what do you do?"
             )
-            # Reset to fresh state
+
+            # Create fresh state WITHOUT any pending context
+            # This ensures clean recovery, not continued with old event context
             conv_state = conversation_service.create_onboarding_state(
-                event_name=data.get("event_name") if data else None,
+                event_name=None,  # Fresh recovery - no pending event
                 user_first_name=message.from_user.first_name
             )
+            logger.debug(f"[TEXT ONBOARDING] Created fresh onboarding state after error")
+
+            # Initialize fresh conversation to get proper greeting
+            conv_state, greeting = await conversation_service.start_conversation(conv_state)
+            logger.info(f"[TEXT ONBOARDING] Started fresh conversation after error recovery")
+
+            # Save only clean state
             await state.update_data(conversation=serialize_state(conv_state))
+            await state.set_state(ConversationalOnboarding.in_conversation)
+            logger.info(f"[TEXT ONBOARDING] Recovery complete - fresh conversation ready")
+
         except Exception as e2:
-            logger.error(f"[TEXT ONBOARDING] Failed to recover: {e2}", exc_info=True)
+            logger.error(f"[TEXT ONBOARDING] Failed to recover from error: {e2}", exc_info=True)
+            # Also clear state on recovery failure to prevent cascading corruption
+            await state.clear()
+            logger.warning(f"[TEXT ONBOARDING] Cleared state due to recovery failure")
             await message.answer("Please type /start to restart.")
 
 
