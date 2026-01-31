@@ -11,23 +11,28 @@ from core.domain.constants import INTERESTS, GOALS
 
 # === ONBOARDING ===
 
-def get_skip_or_voice_keyboard() -> InlineKeyboardMarkup:
+def get_skip_or_voice_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     """Keyboard for bio step - skip or encourage voice"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="Пропустить →", callback_data="skip_bio")
+    text = "Skip →" if lang == "en" else "Пропустить →"
+    builder.button(text=text, callback_data="skip_bio")
     return builder.as_markup()
 
 
-def get_quick_confirm_keyboard() -> InlineKeyboardMarkup:
+def get_quick_confirm_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     """Quick confirmation keyboard"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="✓ Всё ок!", callback_data="confirm_profile")
-    builder.button(text="Изменить", callback_data="edit_profile")
+    if lang == "ru":
+        builder.button(text="✓ Всё ок!", callback_data="confirm_profile")
+        builder.button(text="Изменить", callback_data="edit_profile")
+    else:
+        builder.button(text="✓ Looks good!", callback_data="confirm_profile")
+        builder.button(text="Edit", callback_data="edit_profile")
     builder.adjust(2)
     return builder.as_markup()
 
 
-def get_interests_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
+def get_interests_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKeyboardMarkup:
     """Keyboard for selecting interests - compact and visual"""
     if selected is None:
         selected = []
@@ -41,11 +46,12 @@ def get_interests_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
     }
 
     builder = InlineKeyboardBuilder()
+    label_key = "label_ru" if lang == "ru" else "label_en"
 
     for key, data in INTERESTS.items():
         is_selected = key in selected
         emoji = emoji_map.get(key, "•")
-        label = data.get("label_ru", key)
+        label = data.get(label_key, data.get("label_en", key))
 
         # Short label for compact buttons
         short_label = label[:12] if len(label) > 12 else label
@@ -62,9 +68,10 @@ def get_interests_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
     # Done button - always visible, shows count
     count = len(selected)
     if count >= 1:
+        done_text = f"Done ({count}) →" if lang == "en" else f"Готово ({count}) →"
         builder.row(
             InlineKeyboardButton(
-                text=f"Готово ({count}) →",
+                text=done_text,
                 callback_data="interests_done"
             )
         )
@@ -72,7 +79,7 @@ def get_interests_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_goals_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
+def get_goals_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKeyboardMarkup:
     """Keyboard for selecting goals - compact"""
     if selected is None:
         selected = []
@@ -84,11 +91,12 @@ def get_goals_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
     }
 
     builder = InlineKeyboardBuilder()
+    label_key = "label_ru" if lang == "ru" else "label_en"
 
     for key, data in GOALS.items():
         is_selected = key in selected
         emoji = emoji_map.get(key, "•")
-        label = data.get("label_ru", key)
+        label = data.get(label_key, data.get("label_en", key))
 
         if is_selected:
             display_text = f"✓ {emoji} {label}"
@@ -101,9 +109,10 @@ def get_goals_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
 
     count = len(selected)
     if count >= 1:
+        done_text = f"Done ({count}) →" if lang == "en" else f"Готово ({count}) →"
         builder.row(
             InlineKeyboardButton(
-                text=f"Готово ({count}) →",
+                text=done_text,
                 callback_data="goals_done"
             )
         )
@@ -113,20 +122,26 @@ def get_goals_keyboard(selected: List[str] = None) -> InlineKeyboardMarkup:
 
 # === EVENTS ===
 
-def get_event_actions_keyboard(event_code: str) -> InlineKeyboardMarkup:
+def get_event_actions_keyboard(event_code: str, lang: str = "en") -> InlineKeyboardMarkup:
     """Event management keyboard (for admins)"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="👥 Участники", callback_data=f"event_participants_{event_code}")
-    builder.button(text="🔄 Матчинг", callback_data=f"event_match_{event_code}")
-    builder.button(text="📊 Стата", callback_data=f"event_stats_{event_code}")
+    if lang == "ru":
+        builder.button(text="👥 Участники", callback_data=f"event_participants_{event_code}")
+        builder.button(text="🔄 Матчинг", callback_data=f"event_match_{event_code}")
+        builder.button(text="📊 Стата", callback_data=f"event_stats_{event_code}")
+    else:
+        builder.button(text="👥 Participants", callback_data=f"event_participants_{event_code}")
+        builder.button(text="🔄 Matching", callback_data=f"event_match_{event_code}")
+        builder.button(text="📊 Stats", callback_data=f"event_stats_{event_code}")
     builder.adjust(3)
     return builder.as_markup()
 
 
-def get_join_event_keyboard(event_code: str) -> InlineKeyboardMarkup:
+def get_join_event_keyboard(event_code: str, lang: str = "en") -> InlineKeyboardMarkup:
     """Join event keyboard"""
     builder = InlineKeyboardBuilder()
-    builder.button(text="✓ Присоединиться", callback_data=f"join_event_{event_code}")
+    text = "✓ Join" if lang == "en" else "✓ Присоединиться"
+    builder.button(text=text, callback_data=f"join_event_{event_code}")
     return builder.as_markup()
 
 
