@@ -79,11 +79,22 @@ async def find_matches_command(message: Message):
     )
 
     try:
-        matches = await matching_service.find_and_create_matches_for_user(
-            user=user,
-            event_id=event.id,
-            limit=Features.SHOW_TOP_MATCHES
-        )
+        # Use vector matching if user has embeddings (faster, more efficient)
+        user_has_embeddings = user.profile_embedding is not None
+
+        if user_has_embeddings:
+            matches = await matching_service.find_matches_vector(
+                user=user,
+                event_id=event.id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
+        else:
+            # Fallback to old O(n²) method if no embeddings
+            matches = await matching_service.find_and_create_matches_for_user(
+                user=user,
+                event_id=event.id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
 
         await status.delete()
 

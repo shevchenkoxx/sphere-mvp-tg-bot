@@ -2,7 +2,7 @@
 Supabase implementation of User repository.
 """
 
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 from core.domain.models import User, UserCreate, UserUpdate, MessagePlatform
 from core.interfaces.repositories import IUserRepository
@@ -42,6 +42,9 @@ class SupabaseUserRepository(IUserRepository):
             current_event_id=data.get("current_event_id"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
+            profile_embedding=data.get("profile_embedding"),
+            interests_embedding=data.get("interests_embedding"),
+            expertise_embedding=data.get("expertise_embedding"),
         )
 
     @run_sync
@@ -138,3 +141,24 @@ class SupabaseUserRepository(IUserRepository):
             return existing
         # Create new user
         return await self.create(user_data)
+
+    @run_sync
+    def _update_embeddings_sync(self, user_id: UUID, embeddings: dict) -> Optional[dict]:
+        """Update user embeddings in database"""
+        response = supabase.table("users").update(embeddings).eq("id", str(user_id)).execute()
+        return response.data[0] if response.data else None
+
+    async def update_embeddings(
+        self,
+        user_id: UUID,
+        profile_embedding: List[float],
+        interests_embedding: List[float],
+        expertise_embedding: List[float]
+    ) -> Optional[User]:
+        """Update user's vector embeddings"""
+        data = await self._update_embeddings_sync(user_id, {
+            "profile_embedding": profile_embedding,
+            "interests_embedding": interests_embedding,
+            "expertise_embedding": expertise_embedding
+        })
+        return self._to_model(data) if data else None

@@ -14,6 +14,7 @@ from infrastructure.database import (
     SupabaseMatchRepository,
 )
 from infrastructure.ai import OpenAIService, WhisperVoiceService
+from infrastructure.ai.embedding_service import EmbeddingService
 
 # Core services
 from core.services import UserService, EventService, MatchingService
@@ -34,6 +35,7 @@ match_repo = SupabaseMatchRepository()
 # === AI SERVICES ===
 ai_service = OpenAIService()
 voice_service = WhisperVoiceService()
+embedding_service = EmbeddingService()
 
 
 # === BUSINESS SERVICES ===

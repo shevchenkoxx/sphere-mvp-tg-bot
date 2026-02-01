@@ -5,12 +5,15 @@ Core business logic for finding compatible people.
 
 from typing import List, Tuple, Optional
 from uuid import UUID
+import logging
 from core.domain.models import (
     User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchType, MatchStatus
 )
 from core.interfaces.repositories import IMatchRepository, IEventRepository
 from core.interfaces.ai import IAIService
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class MatchingService:
@@ -81,6 +84,145 @@ class MatchingService:
             return result
 
         return None
+
+    async def find_vector_candidates(
+        self,
+        user: User,
+        event_id: UUID,
+        limit: int = 10,
+        similarity_threshold: float = 0.65
+    ) -> List[Tuple[User, float]]:
+        """
+        Find candidate matches using vector similarity search.
+        Uses pgvector function match_candidates for fast similarity lookup.
+        """
+        from infrastructure.database.supabase_client import supabase
+        from infrastructure.database.user_repository import SupabaseUserRepository
+
+        user_repo = SupabaseUserRepository()
+
+        try:
+            # Call pgvector function via RPC
+            response = supabase.rpc('match_candidates', {
+                'query_user_id': str(user.id),
+                'query_event_id': str(event_id),
+                'similarity_threshold': similarity_threshold,
+                'limit_count': limit
+            }).execute()
+
+            if not response.data:
+                logger.info(f"Vector search found 0 candidates for user {user.id}")
+                return []
+
+            # Fetch full user objects for candidates
+            candidates = []
+            for row in response.data:
+                candidate = await user_repo.get_by_id(UUID(row['user_id']))
+                if candidate:
+                    candidates.append((candidate, row['similarity_score']))
+
+            logger.info(f"Vector search found {len(candidates)} candidates for {user.display_name or user.id}")
+            return candidates
+
+        except Exception as e:
+            logger.warning(f"Vector search failed, will use fallback: {e}")
+            return []
+
+    async def _fallback_base_score_candidates(
+        self,
+        user: User,
+        event_id: UUID,
+        limit: int = 10
+    ) -> List[Tuple[User, float]]:
+        """
+        Fallback candidate selection using base score (interests/goals overlap).
+        Used when vector search is not available.
+        """
+        participants = await self.event_repo.get_participants(event_id)
+        others = [p for p in participants if p.id != user.id]
+
+        if not others:
+            return []
+
+        # Calculate base scores and sort
+        scored = []
+        for other in others:
+            score = self.calculate_base_score(user, other)
+            if score >= self.threshold * 0.7:
+                scored.append((other, score))
+
+        # Sort by score and return top candidates
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return scored[:limit]
+
+    async def find_matches_vector(
+        self,
+        user: User,
+        event_id: UUID,
+        limit: int = 3
+    ) -> List[Tuple[User, MatchResultWithId]]:
+        """
+        Two-stage matching: vector similarity search + LLM re-ranking.
+
+        Stage 1: Fast vector similarity to get top N candidates
+        Stage 2: Deep LLM analysis of top candidates
+
+        Returns list of (User, MatchResultWithId) tuples.
+        """
+        event = await self.event_repo.get_by_id(event_id)
+        event_name = event.name if event else None
+
+        # Stage 1: Vector similarity search (fast)
+        # Check if user has embeddings
+        if user.profile_embedding is not None:
+            candidates = await self.find_vector_candidates(user, event_id, limit=10)
+        else:
+            # Fallback to base score if no embeddings
+            logger.info(f"User {user.id} has no embeddings, using base score fallback")
+            candidates = await self._fallback_base_score_candidates(user, event_id, limit=10)
+
+        if not candidates:
+            logger.info(f"No candidates found for {user.display_name or user.id}")
+            return []
+
+        logger.info(f"Found {len(candidates)} candidates for LLM re-ranking")
+
+        # Stage 2: LLM deep analysis (thorough)
+        matches = []
+        for candidate, vector_score in candidates:
+            # Skip if already matched
+            if await self.match_repo.exists(event_id, user.id, candidate.id):
+                continue
+
+            # Deep LLM analysis
+            result = await self.analyze_pair(user, candidate, event_name)
+
+            if result and result.compatibility_score >= self.threshold:
+                # Create match record
+                match_create = MatchCreate(
+                    event_id=event_id,
+                    user_a_id=user.id,
+                    user_b_id=candidate.id,
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    ai_explanation=result.explanation,
+                    icebreaker=result.icebreaker
+                )
+                created_match = await self.match_repo.create(match_create)
+
+                # Create result with match_id for notifications
+                result_with_id = MatchResultWithId(
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    match_id=created_match.id
+                )
+                matches.append((candidate, result_with_id))
+
+        # Sort by LLM score and return top N
+        matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
+        return matches[:limit]
 
     async def find_matches_for_event(
         self,

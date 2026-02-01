@@ -71,6 +71,10 @@ class User(UserBase):
     current_event_id: Optional[UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Vector embeddings for similarity matching
+    profile_embedding: Optional[List[float]] = None
+    interests_embedding: Optional[List[float]] = None
+    expertise_embedding: Optional[List[float]] = None
 
     class Config:
         from_attributes = True

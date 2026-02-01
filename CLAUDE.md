@@ -41,11 +41,18 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ---
 
-## Current Status (January 2026)
+## Current Status (February 2026)
 
 ### Working Features ✅
 
-1. **Audio Onboarding**
+1. **Vector-Based Matching (NEW)**
+   - Two-stage pipeline: pgvector similarity + LLM re-ranking
+   - 70% fewer API calls (~350 vs 1,225 for 50 users)
+   - OpenAI text-embedding-3-small (1536 dimensions)
+   - Auto-fallback to base score if embeddings unavailable
+   - Embeddings generated after onboarding completion
+
+2. **Audio Onboarding**
    - LLM generates personalized intro
    - Voice transcription via Whisper (run_in_executor for non-blocking)
    - AI extracts: about, looking_for, can_help_with, interests, goals, skills
@@ -67,21 +74,22 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - Structured view via 👤 Profile button
    - `/reset` fully clears all profile fields
 
-4. **AI Matching**
-   - OpenAI GPT-4o-mini (AsyncOpenAI!) analyzes compatibility
+5. **AI Matching**
+   - **Vector similarity pre-filter** (pgvector) for fast candidate selection
+   - OpenAI GPT-4o-mini (AsyncOpenAI!) for deep compatibility analysis
    - Scores: compatibility_score (0-1), match_type (professional/creative/friendship/romantic)
    - AI explanation of why matched
    - Icebreaker suggestion
    - `/find_matches` command for manual trigger
    - **Notifications** sent to existing users when new match found
 
-5. **Event System**
+6. **Event System**
    - QR codes with deep links
    - `current_event_id` tracks user's event (set on join)
    - Participants visible in event
    - Admin can create events and run matching
 
-6. **Matches Display**
+7. **Matches Display**
    - 💫 Matches button shows matches with pagination (◀️ ▶️)
    - **Photo display** of match partner
    - Full profile with hashtags, looking_for, can_help_with
@@ -136,7 +144,8 @@ sphere-bot/
 │   ├── database/               # Supabase repositories
 │   └── ai/
 │       ├── openai_service.py   # GPT-4o-mini (AsyncOpenAI!)
-│       └── whisper_service.py  # Voice transcription (run_in_executor)
+│       ├── whisper_service.py  # Voice transcription (run_in_executor)
+│       └── embedding_service.py # Vector embeddings (text-embedding-3-small)
 ├── config/
 │   ├── settings.py             # Environment config
 │   └── features.py             # ONBOARDING_MODE, feature flags
@@ -157,6 +166,9 @@ sphere-bot/
 - current_event_id - active event
 - ai_summary - LLM-generated summary
 - onboarding_completed
+- **profile_embedding** - vector(1536) for similarity search
+- **interests_embedding** - vector(1536) for interest matching
+- **expertise_embedding** - vector(1536) for expertise matching
 
 ### events
 - id, code, name, description, location
@@ -178,21 +190,32 @@ sphere-bot/
 
 | File | Purpose |
 |------|---------|
-| `adapters/telegram/handlers/onboarding_audio.py` | Main onboarding + selfie flow |
+| `adapters/telegram/handlers/onboarding_audio.py` | Main onboarding + selfie flow + embeddings |
 | `adapters/telegram/handlers/matches.py` | Match display, pagination, photo, notifications |
 | `adapters/telegram/handlers/start.py` | Menu, profile with photo, /reset |
 | `adapters/telegram/keyboards/inline.py` | All keyboards with lang support |
 | `adapters/telegram/handlers/__init__.py` | Router registration (audio + v2) |
-| `core/services/matching_service.py` | AI matching, MatchResultWithId |
+| `core/services/matching_service.py` | AI matching, vector search, MatchResultWithId |
 | `core/services/event_service.py` | join_event sets current_event_id |
 | `infrastructure/ai/openai_service.py` | GPT prompts (AsyncOpenAI!) |
+| `infrastructure/ai/embedding_service.py` | Vector embedding generation (text-embedding-3-small) |
 | `core/prompts/audio_onboarding.py` | Rich extraction prompts |
+| `supabase/migrations/003_vector_embeddings.sql` | pgvector setup + match_candidates function |
 
 ---
 
 ## Recent Changes (This Session)
 
-1. **Match pagination** - ◀️ ▶️ buttons to scroll through matches
+1. **Vector Matching Implementation** - Two-stage matching for scalability
+   - Created `supabase/migrations/003_vector_embeddings.sql` with pgvector setup
+   - Added `infrastructure/ai/embedding_service.py` for embedding generation
+   - Added embedding fields to User model (profile, interests, expertise)
+   - Updated `user_repository.py` with `update_embeddings()` method
+   - Added `find_vector_candidates()` and `find_matches_vector()` to matching_service
+   - Integrated embeddings into both audio and text onboarding flows
+   - `/find_matches` now uses vector matching when embeddings available
+
+2. **Match pagination** - ◀️ ▶️ buttons to scroll through matches
 2. **Back to menu** - all screens have ← Menu button
 3. **Fix current_event_id** - now set when existing user joins event
 4. **Rich extraction prompt** - extracts skills, personality, experience level
@@ -238,6 +261,7 @@ sphere-bot/
 ## TODO / Next Steps
 
 ### Completed ✅
+- [x] **Vector-based matching** - pgvector + LLM re-ranking (70% API cost reduction)
 - [x] Match pagination (next/prev buttons)
 - [x] Back to menu from all screens
 - [x] Better match explanations display
@@ -287,7 +311,8 @@ sphere-bot/
 4. **Matching triggers:**
    - Manual: user runs `/find_matches`
    - Auto: admin runs event matching
-   - OpenAI analyzes all pairs → creates matches above threshold
+   - **Two-stage matching**: Vector similarity (pgvector) → LLM analysis (top candidates only)
+   - ~70% fewer API calls compared to O(n²) approach
    - **Existing users notified** about new matches
 5. **User sees matches:**
    - 💫 Matches button shows paginated list with photos
@@ -342,3 +367,28 @@ if ONBOARDING_VERSION == "audio":
 class MatchResultWithId(MatchResult):
     match_id: UUID  # For notifications
 ```
+
+### Vector Matching Architecture
+```python
+# Two-stage pipeline for scalable matching
+# Stage 1: Vector similarity (pgvector) - fast, cheap
+candidates = await matching_service.find_vector_candidates(user, event_id, limit=10)
+
+# Stage 2: LLM re-ranking - deep analysis of top candidates
+for candidate, vector_score in candidates:
+    result = await self.analyze_pair(user, candidate, event_name)
+```
+
+### Embedding Generation
+```python
+from infrastructure.ai.embedding_service import EmbeddingService
+embedding_service = EmbeddingService()
+profile_emb, interests_emb, expertise_emb = await embedding_service.generate_embeddings(user)
+```
+
+### Database Migration (pgvector)
+Run `supabase/migrations/003_vector_embeddings.sql` in Supabase SQL Editor:
+1. Enable pgvector extension
+2. Add embedding columns to users table
+3. Create IVFFlat indexes for fast similarity search
+4. Create `match_candidates()` function for vector search

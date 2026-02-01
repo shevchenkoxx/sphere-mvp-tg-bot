@@ -31,7 +31,8 @@ from core.prompts.audio_onboarding import (
     AUDIO_CONFIRMATION_TEMPLATE,
     AUDIO_CONFIRMATION_TEMPLATE_RU,
 )
-from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot
+from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot, embedding_service
+from infrastructure.database.user_repository import SupabaseUserRepository
 from adapters.telegram.keyboards import get_main_menu_keyboard
 from config.settings import settings
 
@@ -821,6 +822,21 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
             ai_summary=summary
         )
 
+        # Generate vector embeddings for matching
+        try:
+            profile_emb, interests_emb, expertise_emb = await embedding_service.generate_embeddings(user)
+            user_repo = SupabaseUserRepository()
+            await user_repo.update_embeddings(
+                user.id,
+                profile_embedding=profile_emb,
+                interests_embedding=interests_emb,
+                expertise_embedding=expertise_emb
+            )
+            logger.info(f"Generated embeddings for user {user.id}")
+        except Exception as e:
+            logger.error(f"Failed to generate embeddings for user {user.id}: {e}")
+            # Non-blocking - matching will fallback to base score
+
     # Handle event join
     pending_event = data.get("pending_event")
     event = None
@@ -871,12 +887,22 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
     from adapters.telegram.handlers.matches import notify_about_match
 
     try:
-        # Find matches for this user
-        matches = await matching_service.find_and_create_matches_for_user(
-            user=user,
-            event_id=event.id,
-            limit=Features.SHOW_TOP_MATCHES
-        )
+        # Use vector matching if user has embeddings (faster, more efficient)
+        user_has_embeddings = user.profile_embedding is not None
+
+        if user_has_embeddings:
+            matches = await matching_service.find_matches_vector(
+                user=user,
+                event_id=event.id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
+        else:
+            # Fallback to old method if no embeddings
+            matches = await matching_service.find_and_create_matches_for_user(
+                user=user,
+                event_id=event.id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
 
         if not matches:
             text = (
