@@ -1,5 +1,5 @@
 from adapters.telegram.config import ONBOARDING_VERSION
-from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches
+from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit
 
 # Build list of onboarding routers based on config
 # Audio mode includes v2 router because users can switch to text mode
@@ -17,6 +17,7 @@ else:  # v2 (default)
 # because start.py has fallback handlers that would catch onboarding callbacks
 routers = [
     *onboarding_routers,  # Must be first to handle state-specific callbacks
+    profile_edit.router,  # Profile editing - before start.py
     start.router,
     events.router,
     matches.router,

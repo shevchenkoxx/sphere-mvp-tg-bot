@@ -225,6 +225,85 @@ def get_back_to_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+# === PROFILE EDITING ===
+
+def get_profile_with_edit_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Profile view with edit button"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="✏️ Редактировать", callback_data="edit_my_profile")
+        builder.button(text="← Меню", callback_data="back_to_menu")
+    else:
+        builder.button(text="✏️ Edit", callback_data="edit_my_profile")
+        builder.button(text="← Menu", callback_data="back_to_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_edit_mode_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Choose edit mode: quick or conversational"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="📝 Выбрать поле", callback_data="edit_mode_quick")
+        builder.button(text="💬 Описать изменения", callback_data="edit_mode_chat")
+        builder.button(text="← Назад", callback_data="my_profile")
+    else:
+        builder.button(text="📝 Edit field", callback_data="edit_mode_quick")
+        builder.button(text="💬 Describe changes", callback_data="edit_mode_chat")
+        builder.button(text="← Back", callback_data="my_profile")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_edit_field_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Choose which field to edit"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="📝 О себе", callback_data="edit_field_bio")
+        builder.button(text="🔍 Ищу", callback_data="edit_field_looking_for")
+        builder.button(text="💡 Могу помочь", callback_data="edit_field_can_help")
+        builder.button(text="#️⃣ Интересы", callback_data="edit_field_interests")
+        builder.button(text="🎯 Цели", callback_data="edit_field_goals")
+        builder.button(text="📸 Фото", callback_data="edit_field_photo")
+        builder.button(text="← Назад", callback_data="edit_my_profile")
+    else:
+        builder.button(text="📝 About me", callback_data="edit_field_bio")
+        builder.button(text="🔍 Looking for", callback_data="edit_field_looking_for")
+        builder.button(text="💡 Can help with", callback_data="edit_field_can_help")
+        builder.button(text="#️⃣ Interests", callback_data="edit_field_interests")
+        builder.button(text="🎯 Goals", callback_data="edit_field_goals")
+        builder.button(text="📸 Photo", callback_data="edit_field_photo")
+        builder.button(text="← Back", callback_data="edit_my_profile")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_edit_confirm_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Confirm or cancel edit"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="✅ Подтвердить", callback_data="edit_confirm")
+        builder.button(text="❌ Отмена", callback_data="edit_cancel")
+    else:
+        builder.button(text="✅ Confirm", callback_data="edit_confirm")
+        builder.button(text="❌ Cancel", callback_data="edit_cancel")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_edit_continue_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Continue editing or finish"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="✏️ Продолжить", callback_data="edit_my_profile")
+        builder.button(text="✅ Готово", callback_data="my_profile")
+    else:
+        builder.button(text="✏️ Continue editing", callback_data="edit_my_profile")
+        builder.button(text="✅ Done", callback_data="my_profile")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

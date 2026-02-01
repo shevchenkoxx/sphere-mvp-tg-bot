@@ -12,6 +12,11 @@ from adapters.telegram.keyboards.inline import (
     get_profile_view_keyboard,
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
+    get_profile_with_edit_keyboard,
+    get_edit_mode_keyboard,
+    get_edit_field_keyboard,
+    get_edit_confirm_keyboard,
+    get_edit_continue_keyboard,
 )
 
 __all__ = [
@@ -28,4 +33,9 @@ __all__ = [
     "get_profile_view_keyboard",
     "get_main_menu_keyboard",
     "get_back_to_menu_keyboard",
+    "get_profile_with_edit_keyboard",
+    "get_edit_mode_keyboard",
+    "get_edit_field_keyboard",
+    "get_edit_confirm_keyboard",
+    "get_edit_continue_keyboard",
 ]

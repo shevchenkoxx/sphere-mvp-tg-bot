@@ -71,31 +71,38 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - Photo display in profile view
    - `/reset` fully clears all profile fields
 
-5. **AI Matching**
+5. **Profile Editing** (NEW)
+   - Two modes: Quick Edit + Conversational (LLM)
+   - Quick Edit: Select field → Type/voice value → Preview → Confirm
+   - Conversational: "Add crypto to interests" → LLM interprets → Preview → Confirm
+   - Supports text and voice input
+   - Auto-regenerates embeddings after changes
+   - FSM states: ProfileEditStates in states/onboarding.py
+
+6. **AI Matching**
    - Vector similarity pre-filter (pgvector)
    - GPT-4o-mini for deep compatibility analysis
    - Scores: compatibility_score (0-1), match_type
    - AI explanation + icebreaker
    - Notifications to matched users
 
-6. **Event System**
+7. **Event System**
    - QR codes with deep links
    - Admin can create events and run matching
    - `current_event_id` tracks user's event
 
-7. **Matches Display**
+8. **Matches Display**
    - Pagination (◀️ ▶️)
    - Photo display, hashtags, AI explanation
    - Icebreaker suggestion, contact @username
 
 ### Known Issues / Gaps ❌
 
-1. **No profile editing** - users can't update after onboarding
-2. **No in-app messaging** - must leave bot to contact match
-3. **No match actions** - can't say "met them" or "not interested"
-4. **No event discovery** - only via QR codes
-5. **Language not saved** - detected but not persisted
-6. **Unused DB fields** - profession, skills, linkedin_data never populated
+1. **No in-app messaging** - must leave bot to contact match
+2. **No match actions** - can't say "met them" or "not interested"
+3. **No event discovery** - only via QR codes
+4. **Language not saved** - detected but not persisted
+5. **Unused DB fields** - profession, skills, linkedin_data never populated
 
 ---
 
@@ -106,12 +113,13 @@ sphere-bot/
 ├── adapters/telegram/
 │   ├── handlers/
 │   │   ├── start.py           # /start, menu, profile, reset
+│   │   ├── profile_edit.py    # Profile editing (quick + conversational)
 │   │   ├── onboarding_audio.py # Voice onboarding + selfie + embeddings
 │   │   ├── onboarding_v2.py    # Text onboarding flow
 │   │   ├── matches.py          # Match display, pagination, notifications
 │   │   └── events.py           # Event creation & joining
 │   ├── keyboards/inline.py     # All keyboards (with lang support)
-│   ├── states.py               # FSM states
+│   ├── states/onboarding.py    # FSM states (includes ProfileEditStates)
 │   └── loader.py               # Bot & services init (includes embedding_service)
 ├── core/
 │   ├── domain/
@@ -218,12 +226,12 @@ async def finish_onboarding_after_selfie(...):
 
 ### 🔴 Phase 1: Critical (Next)
 
-| Feature | Description | Time |
-|---------|-------------|------|
-| **Profile Editing** | Hybrid: manual fields + LLM conversational | 4h |
-| **In-app Messaging** | Chat within bot, DB ready | 4h |
-| **Match Actions** | Accept/Decline/Met buttons | 2h |
-| **Auto-join Event** | After onboarding, auto-join pending event | 1h |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| ~~Profile Editing~~ | Hybrid: manual fields + LLM conversational | ✅ Done |
+| **In-app Messaging** | Chat within bot, DB ready | TODO |
+| **Match Actions** | Accept/Decline/Met buttons | TODO |
+| **Auto-join Event** | After onboarding, auto-join pending event | TODO |
 
 ### 🟡 Phase 2: Quality
 
@@ -253,23 +261,30 @@ async def finish_onboarding_after_selfie(...):
 
 ---
 
-## Profile Editing Design (TODO)
+## Profile Editing (Implemented)
 
 **Two modes:**
-1. **Quick Edit** - Select field → Type new value → Confirm
+1. **Quick Edit** - Select field → Type/voice new value → Preview → Confirm
 2. **Conversational** - "Add crypto to my interests" → LLM interprets → Preview → Confirm
 
 **Flow:**
 ```
 👤 Profile → ✏️ Edit →
   ├── 📝 Edit field (bio/interests/goals/looking_for/can_help_with/photo)
-  └── 💬 Describe changes (text or voice → LLM → preview → confirm)
+  │     └── Enter new value (text or voice) → Preview → Confirm
+  └── 💬 Describe changes
+        └── LLM parses request → Preview → Confirm
 ```
 
+**Key files:**
+- `adapters/telegram/handlers/profile_edit.py` - Main handler
+- `adapters/telegram/states/onboarding.py` - ProfileEditStates
+- `adapters/telegram/keyboards/inline.py` - Edit keyboards
+
 **After edit:**
-- Update DB
-- Regenerate embeddings (background)
-- Show updated profile
+- Update DB via user_service.update_user()
+- Regenerate embeddings in background (asyncio.create_task)
+- Show "Continue editing" or "Done" options
 
 ---
 
@@ -290,12 +305,19 @@ ONBOARDING_MODE=audio
 
 ## Recent Session Changes
 
-1. **Vector Matching** - pgvector + LLM two-stage pipeline
-2. **Background Embeddings** - asyncio.create_task (non-blocking)
-3. **Embedding Timeout** - 15s timeout on API calls
-4. **Error Handling** - Selfie handlers now always clear state
-5. **Migration** - 003_vector_embeddings.sql executed
-6. **Credentials** - Moved to `.credentials/keys.md`
+1. **Profile Editing Feature** (NEW)
+   - Quick edit: select field → type/voice → preview → confirm
+   - Conversational: describe changes → LLM parses → preview → confirm
+   - Auto-regenerates embeddings in background after edit
+   - New FSM states: ProfileEditStates
+   - New handler: profile_edit.py
+   - New keyboards: edit mode, field selection, confirm
+2. **OpenAI chat() method** - Added generic chat method to OpenAIService
+3. **Vector Matching** - pgvector + LLM two-stage pipeline
+4. **Background Embeddings** - asyncio.create_task (non-blocking)
+5. **Embedding Timeout** - 15s timeout on API calls
+6. **Error Handling** - Selfie handlers now always clear state
+7. **Migration** - 003_vector_embeddings.sql executed
 
 ---
 

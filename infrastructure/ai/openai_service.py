@@ -176,3 +176,17 @@ Respond with ONLY the question, no preamble."""
         )
 
         return response.choices[0].message.content.strip()
+
+    async def chat(
+        self,
+        prompt: str,
+        model: str = None,
+        max_tokens: int = 1000
+    ) -> str:
+        """Generic chat completion for any prompt"""
+        response = await self.client.chat.completions.create(
+            model=model or self.model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content

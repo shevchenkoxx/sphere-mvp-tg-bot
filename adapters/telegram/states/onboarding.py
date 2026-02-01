@@ -27,3 +27,12 @@ class EventStates(StatesGroup):
 class ChatStates(StatesGroup):
     """FSM states for chat"""
     chatting = State()
+
+
+class ProfileEditStates(StatesGroup):
+    """FSM states for profile editing"""
+    choosing_mode = State()           # Quick edit vs conversational
+    choosing_field = State()          # Which field to edit
+    entering_value = State()          # Entering new value (text or voice)
+    confirming_changes = State()      # Preview and confirm
+    conversational = State()          # LLM conversation mode

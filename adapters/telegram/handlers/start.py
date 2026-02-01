@@ -16,6 +16,7 @@ from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
     get_join_event_keyboard,
     get_back_to_menu_keyboard,
+    get_profile_with_edit_keyboard,
 )
 from adapters.telegram.states import OnboardingStates
 from adapters.telegram.config import ONBOARDING_VERSION
@@ -273,12 +274,12 @@ async def show_profile(callback: CallbackQuery):
             await bot.send_message(
                 chat_id=callback.message.chat.id,
                 text=text,
-                reply_markup=get_back_to_menu_keyboard(lang)
+                reply_markup=get_profile_with_edit_keyboard(lang)
             )
         except Exception:
-            await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+            await callback.message.edit_text(text, reply_markup=get_profile_with_edit_keyboard(lang))
     else:
-        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+        await callback.message.edit_text(text, reply_markup=get_profile_with_edit_keyboard(lang))
 
     await callback.answer()
 
