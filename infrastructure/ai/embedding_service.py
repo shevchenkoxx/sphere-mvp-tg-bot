@@ -3,6 +3,7 @@ Embedding service for generating user profile vectors.
 Uses OpenAI text-embedding-3-small (1536 dimensions).
 """
 
+import asyncio
 from typing import List, Tuple, Optional
 from openai import AsyncOpenAI
 from core.domain.models import User
@@ -10,6 +11,9 @@ from config.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Timeout for embedding API calls (seconds)
+EMBEDDING_TIMEOUT = 15
 
 
 class EmbeddingService:
@@ -59,12 +63,13 @@ class EmbeddingService:
 
     async def generate_embeddings(
         self, user: User
-    ) -> Tuple[List[float], List[float], List[float]]:
+    ) -> Optional[Tuple[List[float], List[float], List[float]]]:
         """
         Generate all three embeddings in a single API call.
 
         Returns:
             Tuple of (profile_embedding, interests_embedding, expertise_embedding)
+            or None if generation fails (non-blocking - matching will use fallback)
         """
         texts = [
             self._build_profile_text(user),
@@ -73,9 +78,13 @@ class EmbeddingService:
         ]
 
         try:
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=texts
+            # Add timeout to prevent hanging
+            response = await asyncio.wait_for(
+                self.client.embeddings.create(
+                    model=self.model,
+                    input=texts
+                ),
+                timeout=EMBEDDING_TIMEOUT
             )
 
             return (
@@ -83,9 +92,12 @@ class EmbeddingService:
                 response.data[1].embedding,  # interests
                 response.data[2].embedding,  # expertise
             )
+        except asyncio.TimeoutError:
+            logger.warning(f"Embedding generation timed out for user {user.id}")
+            return None
         except Exception as e:
             logger.error(f"Embedding generation failed for user {user.id}: {e}")
-            raise
+            return None  # Don't raise - let matching use fallback
 
     async def generate_single_embedding(self, text: str) -> List[float]:
         """Generate embedding for a single text."""

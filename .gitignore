@@ -9,3 +9,5 @@ venv/
 .DS_Store
 *.sqlite
 temp/
+# Credentials - DO NOT COMMIT
+.credentials/

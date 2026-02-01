@@ -331,20 +331,28 @@ async def complete_conversational_onboarding(
             ai_summary=summary
         )
 
-        # Generate vector embeddings for matching
-        try:
-            profile_emb, interests_emb, expertise_emb = await embedding_service.generate_embeddings(user)
-            user_repo = SupabaseUserRepository()
-            await user_repo.update_embeddings(
-                user.id,
-                profile_embedding=profile_emb,
-                interests_embedding=interests_emb,
-                expertise_embedding=expertise_emb
-            )
-            logger.info(f"Generated embeddings for user {user.id}")
-        except Exception as e:
-            logger.error(f"Failed to generate embeddings for user {user.id}: {e}")
-            # Non-blocking - matching will fallback to base score
+        # Generate vector embeddings in background (non-blocking)
+        async def generate_embeddings_background(user_obj):
+            try:
+                result = await embedding_service.generate_embeddings(user_obj)
+                if result:
+                    profile_emb, interests_emb, expertise_emb = result
+                    user_repo = SupabaseUserRepository()
+                    await user_repo.update_embeddings(
+                        user_obj.id,
+                        profile_embedding=profile_emb,
+                        interests_embedding=interests_emb,
+                        expertise_embedding=expertise_emb
+                    )
+                    logger.info(f"Generated embeddings for user {user_obj.id}")
+                else:
+                    logger.warning(f"Embeddings returned None for user {user_obj.id}")
+            except Exception as e:
+                logger.error(f"Background embedding generation failed for user {user_obj.id}: {e}")
+
+        # Fire and forget - don't block the flow
+        import asyncio
+        asyncio.create_task(generate_embeddings_background(user))
 
     # Detect language
     lang_code = message.from_user.language_code or "en"
@@ -497,28 +505,36 @@ async def handle_selfie_photo_v2(message: Message, state: FSMContext):
     lang = data.get("language", "en")
     user_id = str(message.from_user.id)
 
-    # Get the largest photo
-    photo = message.photo[-1]
+    try:
+        # Get the largest photo
+        photo = message.photo[-1]
 
-    # Save photo URL
-    await user_service.update_user(
-        MessagePlatform.TELEGRAM,
-        user_id,
-        photo_url=photo.file_id
-    )
+        # Save photo URL
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            user_id,
+            photo_url=photo.file_id
+        )
 
-    if lang == "ru":
-        text = "✅ Фото сохранено! Теперь тебя легко найти на ивенте."
-    else:
-        text = "✅ Photo saved! Now you're easy to spot at the event."
+        if lang == "ru":
+            text = "✅ Фото сохранено! Теперь тебя легко найти на ивенте."
+        else:
+            text = "✅ Photo saved! Now you're easy to spot at the event."
 
-    await message.answer(text)
+        await message.answer(text)
+    except Exception as e:
+        logger.error(f"Failed to save photo for user {user_id}: {e}")
+        # Continue anyway - photo is optional
+
     await finish_onboarding_v2(message, state)
 
 
 @router.callback_query(ConversationalOnboarding.waiting_selfie, F.data == "skip_selfie_v2")
 async def skip_selfie_v2(callback: CallbackQuery, state: FSMContext):
     """Skip selfie upload"""
+    # Answer callback immediately to prevent Telegram retry
+    await callback.answer()
+
     data = await state.get_data()
     lang = data.get("language", "en")
 
@@ -527,8 +543,11 @@ async def skip_selfie_v2(callback: CallbackQuery, state: FSMContext):
     else:
         text = "👌 No problem, you can add a photo later in your profile."
 
-    await callback.message.edit_text(text)
-    await callback.answer()
+    try:
+        await callback.message.edit_text(text)
+    except Exception as e:
+        logger.warning(f"Failed to edit message: {e}")
+
     await finish_onboarding_v2(callback.message, state, callback.from_user.id)
 
 
@@ -556,40 +575,60 @@ async def handle_selfie_text_v2(message: Message, state: FSMContext):
 
 async def finish_onboarding_v2(message: Message, state: FSMContext, user_tg_id: int = None):
     """Complete onboarding after selfie step"""
-    data = await state.get_data()
-    lang = data.get("language", "en")
-    event_id = data.get("event_id")
-    event_name = data.get("event_name")
+    lang = "en"  # Default
+    try:
+        data = await state.get_data()
+        lang = data.get("language", "en")
+        event_id = data.get("event_id")
+        event_name = data.get("event_name")
 
-    # Get user
-    tg_id = user_tg_id or message.from_user.id
-    user_id = str(tg_id)
-    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+        # Get user
+        tg_id = user_tg_id or message.from_user.id
+        user_id = str(tg_id)
+        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
 
-    if event_id and user:
-        from uuid import UUID
-        if lang == "ru":
-            text = f"🎉 Ты в ивенте <b>{event_name}</b>!\n\nИщу для тебя интересных людей..."
+        if event_id and user:
+            from uuid import UUID
+            if lang == "ru":
+                text = f"🎉 Ты в ивенте <b>{event_name}</b>!\n\nИщу для тебя интересных людей..."
+            else:
+                text = f"🎉 You're in <b>{event_name}</b>!\n\nFinding interesting people for you..."
+            await message.answer(text)
+
+            try:
+                # Create fake event object for show_top_matches_v2
+                class EventWrapper:
+                    def __init__(self, id, name):
+                        self.id = UUID(id)
+                        self.name = name
+
+                event = EventWrapper(event_id, event_name)
+                await show_top_matches_v2(message, user, event, user.username, lang)
+            except Exception as e:
+                logger.error(f"Failed to show matches v2: {e}")
+                # Show fallback message
+                fallback = (
+                    "✓ Профиль сохранён! Напишу когда найду матчи."
+                ) if lang == "ru" else (
+                    "✓ Profile saved! I'll notify you about matches."
+                )
+                await message.answer(fallback, reply_markup=get_main_menu_keyboard(lang))
         else:
-            text = f"🎉 You're in <b>{event_name}</b>!\n\nFinding interesting people for you..."
-        await message.answer(text)
-
-        # Create fake event object for show_top_matches_v2
-        class EventWrapper:
-            def __init__(self, id, name):
-                self.id = UUID(id)
-                self.name = name
-
-        event = EventWrapper(event_id, event_name)
-        await show_top_matches_v2(message, user, event, user.username, lang)
-    else:
-        if lang == "ru":
-            text = "🎉 <b>Профиль готов!</b>\n\nСканируй QR-коды на ивентах, чтобы находить интересных людей!"
-        else:
-            text = "🎉 <b>Profile ready!</b>\n\nScan QR codes at events to meet interesting people!"
-        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
-
-    await state.clear()
+            if lang == "ru":
+                text = "🎉 <b>Профиль готов!</b>\n\nСканируй QR-коды на ивентах, чтобы находить интересных людей!"
+            else:
+                text = "🎉 <b>Profile ready!</b>\n\nScan QR codes at events to meet interesting people!"
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+    except Exception as e:
+        logger.error(f"Error in finish_onboarding_v2: {e}")
+        # Always show menu on error
+        await message.answer(
+            "✓ Profile ready!" if lang == "en" else "✓ Профиль готов!",
+            reply_markup=get_main_menu_keyboard(lang)
+        )
+    finally:
+        # Always clear state
+        await state.clear()
 
 
 # Note: Reset/Cancel is now handled inside process_conversation_message to ensure proper priority
