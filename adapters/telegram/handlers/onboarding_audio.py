@@ -1120,18 +1120,18 @@ async def extract_profile_from_transcription(
 
     except Exception as e:
         logger.error(f"Profile extraction error: {e}")
-        # Return minimal fallback with safe defaults
-        # Note: display_name will be set from user's first_name during save
+        # Return minimal fallback - do NOT add fake looking_for/can_help_with
+        # Better to have empty fields than fabricated ones that cause bad matches
         return {
             "display_name": "",  # Will use first_name as fallback during save
-            "about": transcription[:200],
-            "looking_for": "Networking and meeting new people",
-            "can_help_with": "Open to connecting and sharing experiences",
-            "interests": ["networking"],
-            "goals": ["networking"],
+            "about": transcription[:200] if transcription else "",
+            "looking_for": "",  # Empty - let matching handle this properly
+            "can_help_with": "",  # Empty - better than fake data
+            "interests": [],  # Empty - don't assume interests
+            "goals": ["networking"],  # Only networking is safe to assume
             "profession": None,
             "company": None,
-            "confidence_score": 0.3  # Low confidence due to extraction failure
+            "confidence_score": 0.1  # Very low - extraction failed
         }
 
 

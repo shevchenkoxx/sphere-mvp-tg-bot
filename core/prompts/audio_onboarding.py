@@ -55,12 +55,12 @@ CONTEXT:
 
 IMPORTANT: Extract in the SAME LANGUAGE as the transcription.
 
-YOUR TASK: Extract every useful detail. People often don't say things explicitly - READ BETWEEN THE LINES:
-- "I work at Google" → profession: software engineer (likely), company: Google
-- "I'm building an app" → likely: startup founder, interests: tech/startups
-- "I want to find investors" → looking_for: investors, goals: investing
-- "I can help with marketing" → can_help_with: marketing strategy
-- "I've been doing this for 10 years" → experience: senior level
+YOUR TASK: Extract useful details, but ONLY what is stated or very clearly implied:
+- "I work at Google" → company: Google, profession: from what they describe
+- "I'm building an app" → interests: tech, profession: founder/developer (if they say so)
+- "I want to find investors" → looking_for: investors
+- "I can help with marketing" → can_help_with: marketing
+- Do NOT infer interests that weren't mentioned (e.g., "tech" does NOT imply crypto)
 
 Extract and return as JSON:
 
@@ -74,7 +74,7 @@ Extract and return as JSON:
 
   "can_help_with": "SPECIFIC expertise and how they can help. Be detailed: 'UX design, user research, design systems for mobile apps' not just 'design'. Include: skills, experience areas, what problems they solve",
 
-  "interests": ["5-7 relevant tags - be generous, infer from context"],
+  "interests": ["3-5 tags ONLY if explicitly mentioned or very clearly implied"],
   "goals": ["2-4 goal tags - what they want from networking"],
 
   "profession": "job title/role - be specific (e.g. 'Senior Product Manager' not just 'PM')",
@@ -98,19 +98,21 @@ Extract and return as JSON:
   "extraction_notes": "any ambiguities or assumptions made"
 }}
 
-INTEREST TAGS (choose from, can add similar):
+INTEREST TAGS (choose ONLY if explicitly mentioned or very clearly implied):
 tech, AI, ML, product, business, startups, crypto, web3, design, UX, art, music, books, travel, sport, fitness, wellness, psychology, gaming, ecology, cooking, cinema, science, education, marketing, growth, finance, investing, sales, HR, legal, healthcare, real_estate
 
 GOAL TAGS (choose from):
 networking, friends, business, mentorship, cofounders, creative, learning, dating, hiring, investing, partnerships, advice, collaboration
 
-RULES:
-- Be GENEROUS with extraction - better to include than miss
-- INFER from context when things aren't explicit
-- "about" should be rich enough to understand the person
-- "looking_for" and "can_help_with" should be SPECIFIC and actionable
-- Include personality and communication style - this helps matching
-- confidence_score: 1.0 = very clear, 0.7 = good, 0.5 = partial
+CRITICAL RULES:
+- ONLY include interests that are EXPLICITLY mentioned or VERY clearly implied (90%+ confidence)
+- Do NOT assume crypto/web3 interest unless explicitly stated
+- Do NOT assume finance/investing unless explicitly stated
+- "tech" alone does NOT imply crypto, web3, or finance
+- "startups" alone does NOT imply crypto or investing
+- "about" should capture what they SAID, not what you assume
+- "looking_for" and "can_help_with" must be from their actual words
+- confidence_score: 1.0 = explicitly stated, 0.7 = clearly implied, 0.5 = inferred (risky)
 
 Return ONLY valid JSON, no markdown or explanations."""
 

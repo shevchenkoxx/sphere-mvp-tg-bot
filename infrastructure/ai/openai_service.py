@@ -22,35 +22,37 @@ class OpenAIService(IAIService):
     async def generate_user_summary(self, user_data: Dict[str, Any]) -> str:
         """Generate AI summary of user profile for matching system"""
 
-        # Build context
-        name = user_data.get('display_name') or 'Not specified'
-        interests = ', '.join(user_data.get('interests', [])) or 'None'
-        goals = ', '.join(user_data.get('goals', [])) or 'None'
-        bio = user_data.get('bio') or 'Not specified'
+        # Build context from ACTUAL user data only
+        name = user_data.get('display_name') or 'Someone'
+        bio = user_data.get('bio') or ''
         looking_for = user_data.get('looking_for') or ''
         can_help_with = user_data.get('can_help_with') or ''
 
-        prompt = f"""Create a brief, informative profile summary for a networking matching system.
+        # Only include interests that were explicitly set
+        interests = user_data.get('interests', [])
+        interests_str = ', '.join(interests) if interests else ''
 
-User data:
-- Name: {name}
-- Interests: {interests}
-- Goals: {goals}
-- Bio: {bio}
-- Looking for: {looking_for}
-- Can help with: {can_help_with}
+        prompt = f"""Create a brief profile summary based ONLY on what the user actually stated.
 
-Create a 2-3 sentence summary highlighting:
-1. Key personality traits (based on interests)
-2. What they're looking for (based on goals)
-3. Potential connection points with others
+ACTUAL USER DATA:
+- Bio: {bio if bio else 'Not provided'}
+- Looking for: {looking_for if looking_for else 'Not specified'}
+- Can help with: {can_help_with if can_help_with else 'Not specified'}
+- Interests: {interests_str if interests_str else 'None listed'}
 
-Write in third person, warm but informative. No emojis.
-Keep the response in the same language as the bio (detect from bio text)."""
+RULES:
+1. ONLY summarize information that is explicitly stated above
+2. Do NOT infer or add interests/skills not mentioned
+3. If bio mentions "AI creator", do NOT assume crypto/web3 interests
+4. Keep it factual - describe what they said, not what you think
+5. If data is minimal, keep summary short
+
+Create a 1-2 sentence summary. Third person, no emojis.
+Language: same as bio text."""
 
         response = await self.client.chat.completions.create(
             model=self.model,
-            max_tokens=500,
+            max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -68,50 +70,51 @@ Keep the response in the same language as the bio (detect from bio text)."""
         name_a = user_a.get('display_name') or user_a.get('first_name') or 'Anonymous'
         name_b = user_b.get('display_name') or user_b.get('first_name') or 'Anonymous'
 
-        # Extract critical matching fields with defaults
-        looking_for_a = user_a.get('looking_for') or "Not specified"
-        can_help_a = user_a.get('can_help_with') or "Not specified"
-        looking_for_b = user_b.get('looking_for') or "Not specified"
-        can_help_b = user_b.get('can_help_with') or "Not specified"
-        ai_summary_a = user_a.get('ai_summary') or "No AI summary available"
-        ai_summary_b = user_b.get('ai_summary') or "No AI summary available"
+        # Extract ACTUAL user-stated data - these are PRIMARY for matching
+        bio_a = user_a.get('bio') or ""
+        bio_b = user_b.get('bio') or ""
+        looking_for_a = user_a.get('looking_for') or ""
+        can_help_a = user_a.get('can_help_with') or ""
+        looking_for_b = user_b.get('looking_for') or ""
+        can_help_b = user_b.get('can_help_with') or ""
+        interests_a = user_a.get('interests', [])
+        interests_b = user_b.get('interests', [])
 
-        prompt = f"""Analyze compatibility between two people for potential networking connection.
+        prompt = f"""Analyze compatibility between two people for networking.
 
-=== PERSON A ===
-Name: {name_a}
-Interests: {', '.join(user_a.get('interests', [])) or 'Not specified'}
-Goals: {', '.join(user_a.get('goals', [])) or 'Not specified'}
-Bio: {user_a.get('bio', 'Not specified')}
-Looking for: {looking_for_a}
-Can help with: {can_help_a}
-AI Profile: {ai_summary_a}
+CRITICAL: Base your analysis ONLY on what users ACTUALLY stated. Do NOT invent or assume interests/skills not mentioned.
 
-=== PERSON B ===
-Name: {name_b}
-Interests: {', '.join(user_b.get('interests', [])) or 'Not specified'}
-Goals: {', '.join(user_b.get('goals', [])) or 'Not specified'}
-Bio: {user_b.get('bio', 'Not specified')}
-Looking for: {looking_for_b}
-Can help with: {can_help_b}
-AI Profile: {ai_summary_b}
+=== PERSON A: {name_a} ===
+Bio (their words): {bio_a or 'Not provided'}
+Looking for: {looking_for_a or 'Not specified'}
+Can help with: {can_help_a or 'Not specified'}
+Interests: {', '.join(interests_a) if interests_a else 'None listed'}
 
-{f'Context: both are at event "{event_context}"' if event_context else ''}
+=== PERSON B: {name_b} ===
+Bio (their words): {bio_b or 'Not provided'}
+Looking for: {looking_for_b or 'Not specified'}
+Can help with: {can_help_b or 'Not specified'}
+Interests: {', '.join(interests_b) if interests_b else 'None listed'}
 
-MATCHING CRITERIA (in order of importance):
-1. COMPLEMENTARY NEEDS: Does what Person A can help with match what Person B is looking for, and vice versa?
-2. SHARED INTERESTS: Do they have overlapping interests that could create natural conversation?
-3. GOAL ALIGNMENT: Are their professional or personal goals compatible?
-4. AI PROFILE COMPATIBILITY: Do their AI-generated personality profiles suggest good chemistry?
+{f'Event context: "{event_context}"' if event_context else ''}
 
-Determine:
-1. compatibility_score (0.0-1.0) — higher weight for complementary "looking_for"/"can_help_with" matches
-2. match_type — one of: "friendship", "professional", "romantic", "creative"
-3. explanation — why they might be interesting to each other (2-3 sentences, warm and human, WITHOUT mentioning names)
-4. icebreaker — one good question to start a conversation
+MATCHING RULES:
+1. PRIMARY: Match "can_help_with" of one person to "looking_for" of another (mutual value exchange)
+2. SECONDARY: Shared interests ONLY if explicitly listed by BOTH users
+3. Use ONLY information explicitly stated in bio/looking_for/can_help_with
+4. Do NOT mention interests that only one person has
+5. If data is sparse, focus on general networking potential at the event
 
-IMPORTANT: Respond with valid JSON only, no markdown:
-{{"compatibility_score": 0.75, "match_type": "professional", "explanation": "...", "icebreaker": "..."}}"""
+Return JSON:
+{{
+  "compatibility_score": 0.0-1.0,
+  "match_type": "friendship" | "professional" | "creative" | "romantic",
+  "explanation": "2-3 sentences about why they could benefit from meeting. Reference ONLY what they actually stated. Do NOT use names.",
+  "icebreaker": "One conversation starter based on their actual shared interests or complementary needs"
+}}
+
+IMPORTANT: If someone's bio mentions 'AI' but NOT 'crypto', do NOT mention crypto in explanation.
+Respond with valid JSON only, no markdown."""
 
         response = await self.client.chat.completions.create(
             model=self.model,
