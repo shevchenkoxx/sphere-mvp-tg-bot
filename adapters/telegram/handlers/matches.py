@@ -106,38 +106,42 @@ async def find_matches_command(message: Message):
 
 
 async def show_new_matches(message: Message, matches: list, event_name: str, lang: str):
-    """Show newly created matches"""
+    """Show newly created matches - clean card style"""
     header = (
-        f"🎯 <b>Found {len(matches)} matches at {event_name}:</b>\n\n"
+        f"🎯 <b>Found {len(matches)} matches at {event_name}</b>\n"
         if lang == "en" else
-        f"🎯 <b>Найдено {len(matches)} матчей на {event_name}:</b>\n\n"
+        f"🎯 <b>Найдено {len(matches)} матчей на {event_name}</b>\n"
     )
+    header += "─" * 20 + "\n"
 
     lines = []
-    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
 
     for i, (matched_user, match_result) in enumerate(matches):
-        emoji = emojis[i] if i < len(emojis) else f"{i+1}."
         name = matched_user.display_name or matched_user.first_name or "Anonymous"
 
-        # Hashtags
-        hashtags = " ".join([f"#{x}" for x in matched_user.interests[:3]]) if matched_user.interests else ""
-
-        line = f"{emoji} <b>{name}</b>"
-        if hashtags:
-            line += f"\n   {hashtags}"
-        line += f"\n   💡 {match_result.explanation[:80]}..."
+        # Build clean card for each match
+        line = f"\n<b>{i+1}. {name}</b>"
         if matched_user.username:
-            line += f"\n   📱 @{matched_user.username}"
+            line += f"  •  @{matched_user.username}"
+
+        # Hashtags - compact
+        if matched_user.interests:
+            hashtags = " ".join([f"#{x}" for x in matched_user.interests[:3]])
+            line += f"\n{hashtags}"
+
+        # Why matched - brief
+        line += f"\n<i>✨ {match_result.explanation[:70]}...</i>"
 
         lines.append(line)
 
-    text = header + "\n\n".join(lines)
+    text = header + "\n".join(lines)
 
     # Add icebreaker from first match
     if matches:
+        text += "\n\n" + "─" * 20
         icebreaker = matches[0][1].icebreaker
-        text += f"\n\n💬 <b>{'Start with' if lang == 'en' else 'Начни с'}:</b>\n<i>{icebreaker}</i>"
+        icebreaker_label = "💬 Start with" if lang == "en" else "💬 Начни с"
+        text += f"\n<b>{icebreaker_label}</b>\n<i>{icebreaker}</i>"
 
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
@@ -206,41 +210,54 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
             await message.answer(error_msg, reply_markup=get_main_menu_keyboard(lang))
         return
 
-    # Build partner profile display
+    # Build partner profile display - clean card style
     name = partner.display_name or partner.first_name or ("Anonymous" if lang == "en" else "Аноним")
     header = "Match" if lang == "en" else "Матч"
+
+    # Header with match counter
     text = f"<b>💫 {header} {index + 1}/{total_matches}</b>\n\n"
-    text += f"👤 <b>{name}</b>\n"
 
-    # Hashtag interests
-    if partner.interests:
-        hashtags = " ".join([f"#{i}" for i in partner.interests[:4]])
-        text += f"{hashtags}\n"
+    # Name with username
+    text += f"<b>{name}</b>"
+    if partner.username:
+        text += f"  •  @{partner.username}"
+    text += "\n"
 
-    # Bio
+    # Bio - main description
     if partner.bio:
-        text += f"\n{partner.bio[:120]}{'...' if len(partner.bio) > 120 else ''}\n"
+        bio_text = partner.bio[:150] + ('...' if len(partner.bio) > 150 else '')
+        text += f"\n{bio_text}\n"
+
+    # Interests as hashtags
+    if partner.interests:
+        hashtags = " ".join([f"#{i}" for i in partner.interests[:5]])
+        text += f"\n{hashtags}\n"
+
+    # Divider
+    text += "\n" + "─" * 20 + "\n"
 
     # Looking for
     if partner.looking_for:
-        label = "Looking for" if lang == "en" else "Ищет"
-        text += f"\n🔍 <b>{label}:</b> {partner.looking_for[:100]}{'...' if len(partner.looking_for) > 100 else ''}\n"
+        label = "🔍 Looking for" if lang == "en" else "🔍 Ищет"
+        looking_text = partner.looking_for[:100] + ('...' if len(partner.looking_for) > 100 else '')
+        text += f"\n<b>{label}</b>\n{looking_text}\n"
 
     # Can help with
     if partner.can_help_with:
-        label = "Can help with" if lang == "en" else "Может помочь"
-        text += f"\n💪 <b>{label}:</b> {partner.can_help_with[:100]}{'...' if len(partner.can_help_with) > 100 else ''}\n"
+        label = "💡 Can help with" if lang == "en" else "💡 Может помочь"
+        help_text = partner.can_help_with[:100] + ('...' if len(partner.can_help_with) > 100 else '')
+        text += f"\n<b>{label}</b>\n{help_text}\n"
+
+    # Divider before match insights
+    text += "\n" + "─" * 20 + "\n"
 
     # Why match - AI explanation prominently displayed
-    why_label = "Why this match" if lang == "en" else "Почему этот матч"
-    text += f"\n💡 <b>{why_label}:</b>\n<i>{match.ai_explanation}</i>\n"
+    why_label = "✨ Why this match" if lang == "en" else "✨ Почему этот матч"
+    text += f"\n<b>{why_label}</b>\n<i>{match.ai_explanation}</i>\n"
 
     # Icebreaker
-    text += f"\n💬 <b>{'Start with' if lang == 'en' else 'Начни с'}:</b>\n<i>{match.icebreaker}</i>"
-
-    # Contact
-    if partner.username:
-        text += f"\n\n📱 @{partner.username}"
+    icebreaker_label = "💬 Start with" if lang == "en" else "💬 Начни с"
+    text += f"\n<b>{icebreaker_label}</b>\n<i>{match.icebreaker}</i>"
 
     keyboard = get_match_keyboard(
         match_id=str(match.id),
@@ -343,39 +360,44 @@ async def view_match_profile(callback: CallbackQuery):
         await callback.answer(msg, show_alert=True)
         return
 
-    # Build detailed profile
+    # Build detailed profile - clean card style
     name = partner.display_name or partner.first_name or ("Anonymous" if lang == "en" else "Аноним")
-    text = f"👤 <b>{name}</b>\n"
 
-    # Hashtags
+    # Header with name and contact
+    text = f"<b>{name}</b>"
+    if partner.username:
+        text += f"  •  @{partner.username}"
+    text += "\n"
+
+    # Bio - the main description
+    if partner.bio:
+        bio_text = partner.bio[:200] + ('...' if len(partner.bio) > 200 else '')
+        text += f"\n{bio_text}\n"
+
+    # Interests as hashtags
     if partner.interests:
         hashtags = " ".join([f"#{i}" for i in partner.interests[:5]])
         text += f"\n{hashtags}\n"
 
-    # Bio
-    if partner.bio:
-        label = "About" if lang == "en" else "О себе"
-        text += f"\n📝 <b>{label}:</b>\n{partner.bio[:250]}{'...' if len(partner.bio) > 250 else ''}\n"
+    # Divider
+    text += "\n" + "─" * 20 + "\n"
 
     # Looking for
     if partner.looking_for:
-        label = "Looking for" if lang == "en" else "Ищет"
-        text += f"\n🔍 <b>{label}:</b>\n{partner.looking_for[:200]}{'...' if len(partner.looking_for) > 200 else ''}\n"
+        label = "🔍 Looking for" if lang == "en" else "🔍 Ищет"
+        looking_text = partner.looking_for[:150] + ('...' if len(partner.looking_for) > 150 else '')
+        text += f"\n<b>{label}</b>\n{looking_text}\n"
 
     # Can help with
     if partner.can_help_with:
-        label = "Can help with" if lang == "en" else "Может помочь"
-        text += f"\n💪 <b>{label}:</b>\n{partner.can_help_with[:200]}{'...' if len(partner.can_help_with) > 200 else ''}\n"
+        label = "💡 Can help with" if lang == "en" else "💡 Может помочь"
+        help_text = partner.can_help_with[:150] + ('...' if len(partner.can_help_with) > 150 else '')
+        text += f"\n<b>{label}</b>\n{help_text}\n"
 
-    # Goals
+    # Goals - compact at bottom
     if partner.goals:
-        label = "Goals" if lang == "en" else "Цели"
-        goals_display = ", ".join([get_goal_display(g, lang) for g in partner.goals[:3]])
-        text += f"\n🎯 <b>{label}:</b> {goals_display}\n"
-
-    # Contact
-    if partner.username:
-        text += f"\n📱 @{partner.username}"
+        goals_display = " • ".join([get_goal_display(g, lang) for g in partner.goals[:3]])
+        text += f"\n🎯 {goals_display}\n"
 
     # Send photo if partner has one, then text
     if partner.photo_url:

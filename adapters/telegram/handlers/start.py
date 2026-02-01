@@ -217,41 +217,49 @@ async def show_profile(callback: CallbackQuery):
         await callback.answer("Profile not found" if lang == "en" else "Профиль не найден", show_alert=True)
         return
 
-    # Build structured profile display
+    # Build beautiful profile display
     name = user.display_name or user.first_name or ("Anonymous" if lang == "en" else "Аноним")
-    text = f"👤 <b>{name}</b>\n"
 
-    # Hashtag interests
+    # Header with name and contact
+    text = f"<b>{name}</b>"
+    if user.username:
+        text += f"  •  @{user.username}"
+    text += "\n"
+
+    # Bio - the main description
+    if user.bio:
+        bio_text = user.bio[:180] + ('...' if len(user.bio) > 180 else '')
+        text += f"\n{bio_text}\n"
+
+    # Interests as hashtags - compact
     if user.interests:
         hashtags = " ".join([f"#{i}" for i in user.interests[:5]])
         text += f"\n{hashtags}\n"
 
-    # Bio / About
-    if user.bio:
-        text += f"\n📝 <b>{'About' if lang == 'en' else 'О себе'}:</b>\n{user.bio[:200]}{'...' if len(user.bio) > 200 else ''}\n"
+    # Divider
+    text += "\n" + "─" * 20 + "\n"
 
-    # Looking for
+    # Looking for - what they want (key for matching!)
     if user.looking_for:
-        text += f"\n🔍 <b>{'Looking for' if lang == 'en' else 'Ищу'}:</b>\n{user.looking_for[:150]}{'...' if len(user.looking_for) > 150 else ''}\n"
+        label = "🔍 Looking for" if lang == "en" else "🔍 Ищу"
+        looking_text = user.looking_for[:120] + ('...' if len(user.looking_for) > 120 else '')
+        text += f"\n<b>{label}</b>\n{looking_text}\n"
 
-    # Can help with
+    # Can help with - their value prop
     if user.can_help_with:
-        text += f"\n💪 <b>{'Can help with' if lang == 'en' else 'Могу помочь'}:</b>\n{user.can_help_with[:150]}{'...' if len(user.can_help_with) > 150 else ''}\n"
+        label = "💡 Can help with" if lang == "en" else "💡 Могу помочь"
+        help_text = user.can_help_with[:120] + ('...' if len(user.can_help_with) > 120 else '')
+        text += f"\n<b>{label}</b>\n{help_text}\n"
 
-    # Goals
+    # Goals - compact at bottom
     if user.goals:
-        goals_display = ", ".join([get_goal_display(g, lang) for g in user.goals[:3]])
-        text += f"\n🎯 <b>{'Goals' if lang == 'en' else 'Цели'}:</b> {goals_display}\n"
+        goals_display = " • ".join([get_goal_display(g, lang) for g in user.goals[:3]])
+        text += f"\n🎯 {goals_display}\n"
 
-    # Contact
-    if user.username:
-        text += f"\n📱 @{user.username}"
-
-    # Photo indicator
-    if user.photo_url:
-        text += f"\n\n📸 {'Photo added' if lang == 'en' else 'Фото добавлено'} ✓"
-    else:
-        text += f"\n\n📸 {'No photo yet' if lang == 'en' else 'Фото не добавлено'}"
+    # Photo status - subtle
+    if not user.photo_url:
+        add_photo = "📸 Add photo to help matches find you" if lang == "en" else "📸 Добавь фото, чтобы тебя узнали"
+        text += f"\n<i>{add_photo}</i>"
 
     # Show photo if available
     if user.photo_url:

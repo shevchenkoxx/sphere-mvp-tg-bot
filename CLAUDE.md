@@ -221,6 +221,17 @@ sphere-bot/
 16. **Selfie request for text onboarding** - v2 now asks for photo too
     - Added waiting_selfie state
     - Photo upload, skip button, text fallback handlers
+17. **Profile fields separation** - looking_for and can_help_with saved separately
+    - Fixed _build_bio_from_extracted() merging all fields into bio
+    - Now correctly saves each field to its own DB column
+18. **Profile UI redesign** - clean card-style layout
+    - Name • @username header
+    - Bio as main description
+    - Hashtags for interests
+    - Visual divider line
+    - Looking for / Can help with sections
+    - Goals at bottom
+    - Consistent style across profile, matches, and match details
 
 ---
 
