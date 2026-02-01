@@ -305,14 +305,16 @@ async def complete_conversational_onboarding(
         pending_event_code=pending_event
     )
 
-    # Update user with extracted data
+    # Update user with extracted data - save each field separately
     await user_service.update_user(
         MessagePlatform.TELEGRAM,
         user_id,
         display_name=profile_data.get("display_name") or message.from_user.first_name,
         interests=profile_data.get("interests", []),
         goals=profile_data.get("goals", []),
-        bio=conversation_service._build_bio_from_extracted(profile_data),
+        bio=profile_data.get("about", ""),  # Only use "about" for bio
+        looking_for=profile_data.get("looking_for", ""),
+        can_help_with=profile_data.get("can_help_with", ""),
         onboarding_completed=True
     )
 
