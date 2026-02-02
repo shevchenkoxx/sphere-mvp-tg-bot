@@ -400,3 +400,122 @@ class MatchingService:
         # Sort by score and return top N
         matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
         return matches[:limit]
+
+    # === SPHERE CITY - City-based Matching ===
+
+    async def get_city_matches(
+        self,
+        user_id: UUID,
+        city: str
+    ) -> List[Match]:
+        """Get existing city matches for a user"""
+        return await self.match_repo.get_city_matches(user_id, city)
+
+    async def find_city_candidates(
+        self,
+        user: User,
+        limit: int = 20
+    ) -> List[User]:
+        """Find users in the same city as potential matches"""
+        from infrastructure.database.user_repository import SupabaseUserRepository
+
+        if not user.city_current:
+            return []
+
+        user_repo = SupabaseUserRepository()
+
+        try:
+            # Get users in the same city
+            candidates = await user_repo.get_users_by_city(
+                city=user.city_current,
+                exclude_user_id=user.id,
+                limit=limit
+            )
+            return candidates
+        except Exception as e:
+            logger.warning(f"Failed to get city candidates: {e}")
+            return []
+
+    async def find_city_matches(
+        self,
+        user: User,
+        limit: int = 5
+    ) -> List[Tuple[User, MatchResultWithId]]:
+        """
+        Find matches for a user based on city (Sphere City feature).
+        Creates match records with city set, event_id is NULL.
+        """
+        if not user.city_current:
+            logger.warning(f"User {user.id} has no city_current set")
+            return []
+
+        # First check for existing matches
+        existing = await self.match_repo.get_city_matches(user.id, user.city_current)
+        if existing:
+            # Return existing matches with user objects
+            from infrastructure.database.user_repository import SupabaseUserRepository
+            user_repo = SupabaseUserRepository()
+
+            results = []
+            for match in existing[:limit]:
+                other_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
+                other_user = await user_repo.get_by_id(other_id)
+                if other_user:
+                    result_with_id = MatchResultWithId(
+                        compatibility_score=match.compatibility_score,
+                        match_type=match.match_type,
+                        explanation=match.ai_explanation,
+                        icebreaker=match.icebreaker,
+                        match_id=match.id
+                    )
+                    results.append((other_user, result_with_id))
+            return results
+
+        # Find new candidates
+        candidates = await self.find_city_candidates(user, limit=20)
+
+        if not candidates:
+            logger.info(f"No city candidates found for {user.display_name or user.id} in {user.city_current}")
+            return []
+
+        logger.info(f"Found {len(candidates)} city candidates for {user.display_name or user.id}")
+
+        # Analyze pairs and create matches
+        matches = []
+        for candidate in candidates:
+            # Skip if already matched (city or event)
+            if await self.match_repo.exists_any(user.id, candidate.id):
+                continue
+
+            # Deep AI analysis
+            result = await self.analyze_pair(user, candidate, f"Sphere City - {user.city_current}")
+
+            if result and result.compatibility_score >= self.threshold:
+                # Create city match (event_id is None)
+                match_create = MatchCreate(
+                    event_id=None,  # City match, no event
+                    user_a_id=user.id,
+                    user_b_id=candidate.id,
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    ai_explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    city=user.city_current  # Store city for filtering
+                )
+                created_match = await self.match_repo.create(match_create)
+
+                result_with_id = MatchResultWithId(
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    match_id=created_match.id
+                )
+                matches.append((candidate, result_with_id))
+
+                if len(matches) >= limit:
+                    break
+
+        # Sort by score
+        matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
+        return matches[:limit]

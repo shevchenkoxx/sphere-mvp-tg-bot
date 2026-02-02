@@ -97,6 +97,10 @@ class UserUpdate(BaseModel):
     ai_summary: Optional[str] = None
     onboarding_completed: Optional[bool] = None
     current_event_id: Optional[UUID] = None
+    # Professional info (from extraction)
+    profession: Optional[str] = None
+    company: Optional[str] = None
+    skills: Optional[List[str]] = None
 
 
 # === EVENT ===
@@ -157,6 +161,7 @@ class MatchCreate(BaseModel):
     match_type: MatchType
     ai_explanation: str
     icebreaker: str
+    city: Optional[str] = None  # For Sphere City matches
 
 
 class Match(BaseModel):
@@ -172,6 +177,7 @@ class Match(BaseModel):
     status: MatchStatus = MatchStatus.PENDING
     user_a_notified: bool = False
     user_b_notified: bool = False
+    city: Optional[str] = None  # For Sphere City matches
     created_at: Optional[datetime] = None
 
     class Config:

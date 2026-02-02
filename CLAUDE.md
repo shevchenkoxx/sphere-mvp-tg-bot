@@ -96,13 +96,24 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - Photo display, hashtags, AI explanation
    - Icebreaker suggestion, contact @username
 
+9. **Sphere City** (NEW)
+   - City-based matching outside events
+   - City picker: Moscow, Kyiv, Dubai, Berlin, London, NYC, Tbilisi, Yerevan, + custom
+   - Matches menu with Event + Sphere City options
+   - City detection from voice + manual selection
+
+10. **Enhanced Extraction** (NEW)
+    - Chain-of-thought prompting for better analysis
+    - Now extracts: profession, company, skills, location, experience_level
+    - `/test_extract` command for debugging (admin-only)
+
 ### Known Issues / Gaps ❌
 
 1. **No in-app messaging** - must leave bot to contact match
 2. **No match actions** - can't say "met them" or "not interested"
 3. **No event discovery** - only via QR codes
 4. **Language not saved** - detected but not persisted
-5. **Unused DB fields** - profession, skills, linkedin_data never populated
+5. **LinkedIn integration** - linkedin_url, linkedin_data fields unused
 
 ---
 
@@ -112,35 +123,40 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 sphere-bot/
 ├── adapters/telegram/
 │   ├── handlers/
-│   │   ├── start.py           # /start, menu, profile, reset
+│   │   ├── start.py           # /start, menu, profile, reset, matches menu
 │   │   ├── profile_edit.py    # Profile editing (quick + conversational)
-│   │   ├── onboarding_audio.py # Voice onboarding + selfie + embeddings
+│   │   ├── onboarding_audio.py # Voice onboarding + selfie + /test_extract
 │   │   ├── onboarding_v2.py    # Text onboarding flow
 │   │   ├── matches.py          # Match display, pagination, notifications
+│   │   ├── sphere_city.py      # City-based matching (Sphere City)
 │   │   └── events.py           # Event creation & joining
-│   ├── keyboards/inline.py     # All keyboards (with lang support)
+│   ├── keyboards/inline.py     # All keyboards + city picker + Sphere City
 │   ├── states/onboarding.py    # FSM states (includes ProfileEditStates)
 │   └── loader.py               # Bot & services init (includes embedding_service)
 ├── core/
 │   ├── domain/
-│   │   ├── models.py           # User (with embeddings), Event, Match
+│   │   ├── models.py           # User, Event, Match (with city field)
 │   │   └── constants.py        # INTERESTS, GOALS
 │   ├── services/
-│   │   ├── matching_service.py # Vector + LLM matching
+│   │   ├── matching_service.py # Vector + LLM + City matching
 │   │   └── event_service.py
 │   └── prompts/
-│       └── audio_onboarding.py # Extraction prompts
+│       └── audio_onboarding.py # Chain-of-thought extraction prompts
 ├── infrastructure/
 │   ├── database/
-│   │   ├── user_repository.py  # includes update_embeddings()
+│   │   ├── user_repository.py  # includes update_embeddings(), get_users_by_city()
+│   │   ├── match_repository.py # includes get_city_matches()
 │   │   └── supabase_client.py
 │   └── ai/
-│       ├── openai_service.py   # GPT-4o-mini
+│       ├── openai_service.py   # GPT-4o-mini + profession/skills in matching
 │       ├── whisper_service.py  # Voice transcription
 │       └── embedding_service.py # text-embedding-3-small
+├── scripts/
+│   └── test_extraction.py      # CLI for testing extraction prompts
 ├── supabase/migrations/
 │   ├── 002_enhanced_profiles.sql
-│   └── 003_vector_embeddings.sql # pgvector + match_candidates()
+│   ├── 003_vector_embeddings.sql # pgvector + match_candidates()
+│   └── 004_sphere_city.sql     # experience_level, city on matches
 └── .credentials/keys.md        # All credentials (gitignored)
 ```
 
@@ -155,11 +171,13 @@ interests[], goals[], bio
 looking_for, can_help_with
 photo_url, voice_intro_url
 ai_summary, onboarding_completed
-current_event_id
+current_event_id, city_current
 -- Vector embeddings (1536 dims each)
 profile_embedding, interests_embedding, expertise_embedding
--- Unused but available
-profession, company, skills[], linkedin_url, linkedin_data, deep_profile
+-- Professional info (populated from extraction)
+profession, company, skills[], experience_level
+-- Available but unused
+linkedin_url, linkedin_data, deep_profile
 ```
 
 ### events
@@ -175,6 +193,7 @@ compatibility_score, match_type
 ai_explanation, icebreaker
 status (pending/accepted/declined)
 user_a_notified, user_b_notified
+city  -- For Sphere City matches (event_id is NULL)
 ```
 
 ### messages (exists but unused)
@@ -305,19 +324,50 @@ ONBOARDING_MODE=audio
 
 ## Recent Session Changes
 
-1. **Profile Editing Feature** (NEW)
+### February 2026 - Extraction & Sphere City
+
+1. **Sphere City Feature** (NEW)
+   - City-based matching outside events
+   - City picker with major cities + custom input
+   - New handler: `sphere_city.py`
+   - New keyboards: city picker, Sphere City menu
+   - Matches menu now shows Event + Sphere City options
+
+2. **Enhanced Extraction (Chain-of-thought)**
+   - Updated `AUDIO_EXTRACTION_PROMPT` with step-by-step analysis
+   - Steps: FACTS → CONTEXT → INSIGHTS → JSON
+   - Now saves: profession, company, skills, city_current
+   - Extended `validate_extracted_profile()` with more fields
+
+3. **Improved Matching Prompt**
+   - Now includes profession, company, skills in matching context
+   - Better professional matching with additional context
+
+4. **Testing Tools**
+   - CLI script: `scripts/test_extraction.py`
+   - Telegram command: `/test_extract` (admin-only)
+   - Shows raw extraction JSON for debugging
+
+5. **Database Migration**
+   - `004_sphere_city.sql`: experience_level on users, city on matches
+
+6. **Bug Fixes** (code review by agents)
+   - Added `profession`, `company`, `skills` to `UserUpdate` model (data was silently lost)
+   - Fixed `event_matches` to filter by current event only (was showing ALL matches)
+   - Fixed double `callback.answer()` in `show_city_matches`
+   - Added missing `state.clear()` in city selection handler
+   - Removed unused `bot` import from sphere_city.py
+
+### Previous Changes
+
+1. **Profile Editing Feature**
    - Quick edit: select field → type/voice → preview → confirm
    - Conversational: describe changes → LLM parses → preview → confirm
    - Auto-regenerates embeddings in background after edit
-   - New FSM states: ProfileEditStates
-   - New handler: profile_edit.py
-   - New keyboards: edit mode, field selection, confirm
 2. **OpenAI chat() method** - Added generic chat method to OpenAIService
 3. **Vector Matching** - pgvector + LLM two-stage pipeline
 4. **Background Embeddings** - asyncio.create_task (non-blocking)
-5. **Embedding Timeout** - 15s timeout on API calls
-6. **Error Handling** - Selfie handlers now always clear state
-7. **Migration** - 003_vector_embeddings.sql executed
+5. **Migration** - 003_vector_embeddings.sql executed
 
 ---
 

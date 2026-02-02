@@ -178,3 +178,27 @@ class SupabaseUserRepository(IUserRepository):
             "expertise_embedding": expertise_embedding
         })
         return self._to_model(data) if data else None
+
+    # === SPHERE CITY - City-based User Queries ===
+
+    @run_sync
+    def _get_users_by_city_sync(self, city: str, exclude_user_id: UUID, limit: int) -> List[dict]:
+        """Get users in a specific city (case-insensitive)"""
+        response = supabase.table("users").select("*")\
+            .ilike("city_current", city)\
+            .neq("id", str(exclude_user_id))\
+            .eq("onboarding_completed", True)\
+            .eq("is_active", True)\
+            .limit(limit)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_users_by_city(
+        self,
+        city: str,
+        exclude_user_id: UUID,
+        limit: int = 20
+    ) -> List[User]:
+        """Get users in a specific city for Sphere City matching"""
+        data = await self._get_users_by_city_sync(city, exclude_user_id, limit)
+        return [self._to_model(d) for d in data]

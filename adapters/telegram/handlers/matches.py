@@ -15,6 +15,7 @@ from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
     get_profile_view_keyboard,
+    get_matches_menu_keyboard,
 )
 from config.features import Features
 
@@ -157,8 +158,8 @@ async def show_new_matches(message: Message, matches: list, event_name: str, lan
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
-async def list_matches_callback(callback: CallbackQuery, index: int = 0):
-    """Show user's matches via callback"""
+async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None):
+    """Show user's matches via callback, optionally filtered by event"""
     lang = detect_lang(callback)
 
     user = await user_service.get_user_by_platform(
@@ -171,13 +172,17 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0):
         await callback.answer(msg, show_alert=True)
         return
 
-    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index)
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
     await callback.answer()
 
 
-async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0):
+async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None):
     """Display user's matches with detailed profiles and pagination"""
     matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
+
+    # Filter by event if specified
+    if event_id:
+        matches = [m for m in matches if m.event_id == event_id]
 
     if not matches:
         if lang == "ru":

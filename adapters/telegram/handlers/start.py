@@ -309,9 +309,66 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_matches")
 async def show_matches_menu(callback: CallbackQuery):
-    """Show matches"""
+    """Show matches menu with event and Sphere City options"""
+    from adapters.telegram.keyboards.inline import get_matches_menu_keyboard
+
+    lang = detect_lang_callback(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user:
+        msg = "Profile not found" if lang == "en" else "Профиль не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Check if user has a current event
+    has_event = user.current_event_id is not None
+    event_name = None
+
+    if has_event:
+        event = await event_service.get_event_by_id(user.current_event_id)
+        event_name = event.name if event else None
+
+    if lang == "ru":
+        text = (
+            "💫 <b>Матчи</b>\n\n"
+            "Выбери где искать интересных людей:"
+        )
+    else:
+        text = (
+            "💫 <b>Matches</b>\n\n"
+            "Choose where to find interesting people:"
+        )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_matches_menu_keyboard(has_event, event_name, lang)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "event_matches")
+async def show_event_matches(callback: CallbackQuery):
+    """Show matches from current event only"""
     from adapters.telegram.handlers.matches import list_matches_callback
-    await list_matches_callback(callback)
+
+    lang = detect_lang_callback(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user or not user.current_event_id:
+        msg = "No current event" if lang == "en" else "Нет текущего ивента"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Pass event_id to filter matches
+    await list_matches_callback(callback, event_id=user.current_event_id)
 
 
 # === FALLBACK FOR OLD/STALE CALLBACKS ===

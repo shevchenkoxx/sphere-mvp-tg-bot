@@ -17,6 +17,11 @@ from adapters.telegram.keyboards.inline import (
     get_edit_field_keyboard,
     get_edit_confirm_keyboard,
     get_edit_continue_keyboard,
+    # Sphere City
+    get_city_picker_keyboard,
+    get_sphere_city_menu_keyboard,
+    get_matches_menu_keyboard,
+    SPHERE_CITIES,
 )
 
 __all__ = [
@@ -38,4 +43,9 @@ __all__ = [
     "get_edit_field_keyboard",
     "get_edit_confirm_keyboard",
     "get_edit_continue_keyboard",
+    # Sphere City
+    "get_city_picker_keyboard",
+    "get_sphere_city_menu_keyboard",
+    "get_matches_menu_keyboard",
+    "SPHERE_CITIES",
 ]

@@ -90,6 +90,14 @@ Language: same as bio text."""
         interests_a = user_a.get('interests', [])
         interests_b = user_b.get('interests', [])
 
+        # Additional context fields
+        profession_a = user_a.get('profession') or ""
+        profession_b = user_b.get('profession') or ""
+        company_a = user_a.get('company') or ""
+        company_b = user_b.get('company') or ""
+        skills_a = user_a.get('skills', [])
+        skills_b = user_b.get('skills', [])
+
         # Detect language from user content if not provided
         if not language:
             language = self._detect_language(bio_a, bio_b, looking_for_a, looking_for_b, can_help_a, can_help_b)
@@ -102,12 +110,18 @@ CRITICAL: Base your analysis ONLY on what users ACTUALLY stated. Do NOT invent o
 
 === PERSON A: {name_a} ===
 Bio (their words): {bio_a or 'Not provided'}
+Profession: {profession_a or 'Not specified'}
+Company: {company_a or 'Not specified'}
+Skills: {', '.join(skills_a) if skills_a else 'None listed'}
 Looking for: {looking_for_a or 'Not specified'}
 Can help with: {can_help_a or 'Not specified'}
 Interests: {', '.join(interests_a) if interests_a else 'None listed'}
 
 === PERSON B: {name_b} ===
 Bio (their words): {bio_b or 'Not provided'}
+Profession: {profession_b or 'Not specified'}
+Company: {company_b or 'Not specified'}
+Skills: {', '.join(skills_b) if skills_b else 'None listed'}
 Looking for: {looking_for_b or 'Not specified'}
 Can help with: {can_help_b or 'Not specified'}
 Interests: {', '.join(interests_b) if interests_b else 'None listed'}

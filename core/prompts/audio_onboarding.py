@@ -44,7 +44,8 @@ AUDIO_GUIDE_PROMPT_RU = """🎤 Запиши голосовое сообщени
 Говори свободно — я использую это чтобы найти лучшие матчи!"""
 
 # Extraction prompt - converts transcription to structured data
-AUDIO_EXTRACTION_PROMPT = """You are an expert profile data extractor for a networking app. Extract MAXIMUM useful information from this voice message.
+# Using Chain-of-thought (A3) approach for deeper analysis
+AUDIO_EXTRACTION_PROMPT = """You are an expert profile data extractor for a networking app.
 
 TRANSCRIPTION:
 {transcription}
@@ -53,68 +54,94 @@ CONTEXT:
 - Event: {event_name}
 - User's UI language preference: {language}
 
-IMPORTANT: Extract in the SAME LANGUAGE as the transcription.
+---
 
-YOUR TASK: Extract useful details, but ONLY what is stated or very clearly implied:
-- "I work at Google" → company: Google, profession: from what they describe
-- "I'm building an app" → interests: tech, profession: founder/developer (if they say so)
-- "I want to find investors" → looking_for: investors
-- "I can help with marketing" → can_help_with: marketing
-- Do NOT infer interests that weren't mentioned (e.g., "tech" does NOT imply crypto)
+Analyze this transcription STEP BY STEP:
 
-Extract and return as JSON:
+## STEP 1 - FACTS
+List all concrete facts mentioned:
+- Name?
+- Current job/role?
+- Company/organization?
+- Location/city?
+- Years of experience?
+- Specific skills or expertise?
+- What they're looking for?
+- How they can help others?
+
+## STEP 2 - CONTEXT
+What can we understand from context:
+- Experience level (junior/mid/senior/founder/executive)?
+- Industry they work in?
+- Their communication style?
+- Personality traits that come through?
+
+## STEP 3 - INSIGHTS
+What makes this person unique:
+- What's their unique value proposition?
+- What type of connections would benefit them most?
+- Any memorable quotes or points?
+
+## STEP 4 - JSON OUTPUT
+
+Based ONLY on what was stated or very clearly implied, extract as JSON:
 
 {{
   "display_name": "name if mentioned",
   "language": "language code (en/ru/etc)",
 
-  "about": "WHO they are - rich summary capturing personality, background, current focus (3-4 sentences). Include: what they do, their experience level, what makes them unique",
+  "about": "WHO they are - rich summary (3-4 sentences) capturing personality, background, current focus. Include: what they do, experience level, what makes them unique",
 
-  "looking_for": "SPECIFIC types of people/connections they want. Be detailed: 'looking for technical co-founder for AI startup' not just 'co-founder'. Include: type of person, purpose, any specifics mentioned",
+  "looking_for": "SPECIFIC types of people/connections they want. Be detailed: 'looking for technical co-founder for AI startup' not just 'co-founder'",
 
-  "can_help_with": "SPECIFIC expertise and how they can help. Be detailed: 'UX design, user research, design systems for mobile apps' not just 'design'. Include: skills, experience areas, what problems they solve",
+  "can_help_with": "SPECIFIC expertise. Be detailed: 'UX design, user research, design systems for mobile apps' not just 'design'",
 
   "interests": ["3-5 tags ONLY if explicitly mentioned or very clearly implied"],
   "goals": ["2-4 goal tags - what they want from networking"],
 
-  "profession": "job title/role - be specific (e.g. 'Senior Product Manager' not just 'PM')",
+  "profession": "specific job title/role (e.g. 'Senior Product Manager' not 'PM')",
   "company": "company/organization if mentioned",
-  "industry": "industry/field they work in",
-  "experience_level": "junior/mid/senior/founder/executive - infer from context",
+  "industry": "industry/field",
+  "experience_level": "junior/mid/senior/founder/executive",
 
-  "skills": ["specific skills mentioned or implied - technical and soft skills"],
-  "expertise_areas": ["areas where they have deep knowledge"],
+  "skills": ["specific skills - technical and soft"],
+  "expertise_areas": ["areas of deep knowledge"],
 
-  "personality_traits": ["2-3 traits that come through - e.g. ambitious, creative, analytical"],
-  "communication_style": "brief description of how they express themselves",
+  "personality_traits": ["2-3 traits - e.g. ambitious, creative, analytical"],
+  "communication_style": "brief description",
 
-  "link": "any URL mentioned (linkedin, website, etc)",
+  "link": "any URL mentioned",
   "location": "city/country if mentioned",
 
-  "raw_highlights": ["4-6 memorable quotes or interesting points that show personality"],
+  "raw_highlights": ["4-6 memorable quotes or points that show personality"],
   "unique_value": "one sentence: what makes this person uniquely valuable to meet",
 
   "confidence_score": 0.0-1.0,
   "extraction_notes": "any ambiguities or assumptions made"
 }}
 
-INTEREST TAGS (choose ONLY if explicitly mentioned or very clearly implied):
+---
+
+VALID TAGS:
+
+INTERESTS (choose ONLY if explicitly mentioned):
 tech, AI, ML, product, business, startups, crypto, web3, design, UX, art, music, books, travel, sport, fitness, wellness, psychology, gaming, ecology, cooking, cinema, science, education, marketing, growth, finance, investing, sales, HR, legal, healthcare, real_estate
 
-GOAL TAGS (choose from):
+GOALS (choose from):
 networking, friends, business, mentorship, cofounders, creative, learning, dating, hiring, investing, partnerships, advice, collaboration
 
-CRITICAL RULES:
-- ONLY include interests that are EXPLICITLY mentioned or VERY clearly implied (90%+ confidence)
-- Do NOT assume crypto/web3 interest unless explicitly stated
-- Do NOT assume finance/investing unless explicitly stated
-- "tech" alone does NOT imply crypto, web3, or finance
-- "startups" alone does NOT imply crypto or investing
-- "about" should capture what they SAID, not what you assume
-- "looking_for" and "can_help_with" must be from their actual words
-- confidence_score: 1.0 = explicitly stated, 0.7 = clearly implied, 0.5 = inferred (risky)
+---
 
-Return ONLY valid JSON, no markdown or explanations."""
+CRITICAL RULES:
+- Extract in the SAME LANGUAGE as the transcription
+- ONLY include interests that are EXPLICITLY mentioned (90%+ confidence)
+- "tech" does NOT imply crypto/web3/finance
+- "startups" does NOT imply crypto/investing
+- "about", "looking_for", "can_help_with" must be from their ACTUAL words
+- confidence_score: 1.0 = explicit, 0.7 = clearly implied, 0.5 = inferred (risky)
+
+Return the full chain of thought, then the JSON at the end.
+Mark the JSON section clearly with "## JSON:" header."""
 
 
 # Validation prompt - check what's missing and generate follow-up

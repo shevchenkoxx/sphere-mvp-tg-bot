@@ -20,6 +20,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.filters import Command
 
 from core.domain.models import MessagePlatform
 from core.prompts.audio_onboarding import (
@@ -797,7 +798,13 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
     bio = " | ".join(bio_parts)[:500] if bio_parts else ""
 
-    # Update user with all extracted data
+    # Extract city from location
+    city = profile_data.get("location")
+    if city:
+        # Clean up location - take first part if comma-separated
+        city = city.split(",")[0].strip()[:100]
+
+    # Update user with all extracted data (including new fields)
     await user_service.update_user(
         MessagePlatform.TELEGRAM,
         user_id,
@@ -807,6 +814,11 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         bio=bio,
         looking_for=profile_data.get("looking_for", "")[:300] or None,
         can_help_with=profile_data.get("can_help_with", "")[:300] or None,
+        # New fields from enhanced extraction
+        profession=profile_data.get("profession"),
+        company=profile_data.get("company"),
+        skills=profile_data.get("skills", [])[:10],
+        city_current=city,
         onboarding_completed=True
     )
 
@@ -1148,9 +1160,14 @@ async def finish_onboarding_after_selfie(message: Message, state: FSMContext, us
 async def extract_profile_from_transcription(
     transcription: str,
     event_name: str = None,
-    detected_lang: str = "ru"
+    detected_lang: str = "ru",
+    return_raw: bool = False
 ) -> dict:
-    """Extract structured profile data from voice transcription"""
+    """Extract structured profile data from voice transcription.
+
+    Uses Chain-of-thought extraction for better analysis.
+    If return_raw=True, returns the full LLM response for debugging.
+    """
     from openai import AsyncOpenAI
     from config.settings import settings
 
@@ -1166,18 +1183,38 @@ async def extract_profile_from_transcription(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1000,
+            max_tokens=2000,  # Increased for chain-of-thought
             temperature=0.1  # Low for consistent extraction
         )
 
         text = response.choices[0].message.content
 
-        # Clean JSON from markdown
-        text = re.sub(r'```json\s*', '', text)
-        text = re.sub(r'```\s*', '', text)
-        text = text.strip()
+        # For debugging - return raw response
+        if return_raw:
+            return {"raw_response": text, "transcription": transcription}
 
-        data = json.loads(text)
+        # Extract JSON from chain-of-thought response
+        # Look for "## JSON:" section or just find the JSON block
+        json_text = text
+
+        # Try to find JSON section marker
+        if "## JSON:" in text:
+            json_text = text.split("## JSON:")[-1]
+        elif "```json" in text:
+            json_text = text.split("```json")[-1].split("```")[0]
+        elif "{" in text:
+            # Find the last JSON block (the output)
+            start = text.rfind("{")
+            end = text.rfind("}") + 1
+            if start != -1 and end > start:
+                json_text = text[start:end]
+
+        # Clean JSON from markdown
+        json_text = re.sub(r'```json\s*', '', json_text)
+        json_text = re.sub(r'```\s*', '', json_text)
+        json_text = json_text.strip()
+
+        data = json.loads(json_text)
         return validate_extracted_profile(data)
 
     except Exception as e:
@@ -1193,6 +1230,9 @@ async def extract_profile_from_transcription(
             "goals": ["networking"],  # Only networking is safe to assume
             "profession": None,
             "company": None,
+            "location": None,
+            "skills": [],
+            "experience_level": None,
             "confidence_score": 0.1  # Very low - extraction failed
         }
 
@@ -1203,11 +1243,17 @@ def validate_extracted_profile(data: dict) -> dict:
         "tech", "business", "startups", "crypto", "design", "art",
         "music", "books", "travel", "sport", "wellness", "psychology",
         "gaming", "ecology", "cooking", "cinema", "science", "education",
-        "marketing", "finance"
+        "marketing", "finance", "AI", "ML", "product", "web3", "UX",
+        "fitness", "growth", "investing", "sales", "HR", "legal",
+        "healthcare", "real_estate"
     }
     valid_goals = {
         "networking", "friends", "business", "mentorship",
-        "cofounders", "creative", "learning", "dating", "hiring", "investing"
+        "cofounders", "creative", "learning", "dating", "hiring",
+        "investing", "partnerships", "advice", "collaboration"
+    }
+    valid_experience_levels = {
+        "junior", "mid", "senior", "founder", "executive"
     }
 
     # Filter to valid values
@@ -1220,6 +1266,17 @@ def validate_extracted_profile(data: dict) -> dict:
     if not goals:
         goals = ["networking"]
 
+    # Validate experience level
+    experience_level = data.get("experience_level")
+    if experience_level and experience_level not in valid_experience_levels:
+        experience_level = None
+
+    # Extract skills as list
+    skills = data.get("skills", [])
+    if isinstance(skills, str):
+        skills = [s.strip() for s in skills.split(",")]
+    skills = skills[:10]  # Limit to 10 skills
+
     return {
         "display_name": data.get("display_name"),
         "about": data.get("about", "")[:500],
@@ -1229,7 +1286,133 @@ def validate_extracted_profile(data: dict) -> dict:
         "goals": goals[:3],
         "profession": data.get("profession"),
         "company": data.get("company"),
+        "industry": data.get("industry"),
+        "experience_level": experience_level,
+        "skills": skills,
+        "location": data.get("location"),
+        "personality_traits": data.get("personality_traits", [])[:3],
+        "unique_value": data.get("unique_value"),
         "link": data.get("link"),
         "raw_highlights": data.get("raw_highlights", [])[:5],
-        "confidence_score": data.get("confidence_score", 0.5)
+        "confidence_score": data.get("confidence_score", 0.5),
+        "extraction_notes": data.get("extraction_notes")
     }
+
+
+# === ADMIN: Test Extraction Command ===
+
+class TestExtractStates(StatesGroup):
+    """States for test extraction"""
+    waiting_voice = State()
+
+
+@router.message(Command("test_extract"))
+async def test_extract_command(message: Message, state: FSMContext):
+    """Admin command to test extraction on voice messages"""
+    from config.settings import settings
+
+    # Check if admin
+    is_admin = message.from_user.id in settings.admin_telegram_ids
+    is_debug = settings.debug
+
+    if not is_admin and not is_debug:
+        await message.answer("⛔ Admin only command")
+        return
+
+    lang = detect_language(message)
+    if lang == "ru":
+        text = (
+            "🔬 <b>Тест экстракции</b>\n\n"
+            "Отправь голосовое сообщение — покажу raw JSON результат экстракции.\n\n"
+            "Напиши /cancel чтобы отменить."
+        )
+    else:
+        text = (
+            "🔬 <b>Extraction Test</b>\n\n"
+            "Send a voice message — I'll show the raw JSON extraction result.\n\n"
+            "Type /cancel to cancel."
+        )
+
+    await message.answer(text)
+    await state.set_state(TestExtractStates.waiting_voice)
+
+
+@router.message(TestExtractStates.waiting_voice, F.voice)
+async def test_extract_voice(message: Message, state: FSMContext):
+    """Process voice for extraction test"""
+    lang = detect_language(message)
+
+    status = await message.answer("🔬 Processing extraction test..." if lang == "en" else "🔬 Тестирую экстракцию...")
+
+    try:
+        # Get voice file
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+
+        # Transcribe
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if not transcription:
+            await status.edit_text("❌ Could not transcribe audio" if lang == "en" else "❌ Не удалось транскрибировать")
+            return
+
+        # Extract with raw=True to get full response
+        result = await extract_profile_from_transcription(
+            transcription,
+            event_name="Test Event",
+            detected_lang=lang,
+            return_raw=True
+        )
+
+        if "raw_response" in result:
+            # Show raw response
+            raw = result["raw_response"]
+            # Truncate if too long for Telegram
+            if len(raw) > 3500:
+                raw = raw[:3500] + "\n\n... (truncated)"
+
+            await status.delete()
+            await message.answer(
+                f"📝 <b>Transcription:</b>\n<code>{transcription[:500]}</code>\n\n"
+                f"🔬 <b>Raw Extraction:</b>\n<pre>{raw}</pre>",
+                parse_mode="HTML"
+            )
+        else:
+            # Show parsed result
+            await status.delete()
+            result_json = json.dumps(result, indent=2, ensure_ascii=False)
+            if len(result_json) > 3500:
+                result_json = result_json[:3500] + "\n... (truncated)"
+
+            await message.answer(
+                f"📝 <b>Transcription:</b>\n<code>{transcription[:300]}</code>\n\n"
+                f"✅ <b>Parsed JSON:</b>\n<pre>{result_json}</pre>",
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        logger.error(f"Test extraction error: {e}")
+        await status.edit_text(f"❌ Error: {str(e)[:200]}")
+
+    await state.clear()
+
+
+@router.message(TestExtractStates.waiting_voice, Command("cancel"))
+async def cancel_test_extract(message: Message, state: FSMContext):
+    """Cancel test extraction"""
+    await state.clear()
+    await message.answer("✓ Cancelled" if detect_language(message) == "en" else "✓ Отменено")
+
+
+@router.message(TestExtractStates.waiting_voice, F.text)
+async def test_extract_text_fallback(message: Message, state: FSMContext):
+    """Handle text when expecting voice"""
+    if message.text.startswith("/"):
+        await state.clear()
+        return
+
+    lang = detect_language(message)
+    await message.answer(
+        "🎤 Send a voice message for extraction test" if lang == "en"
+        else "🎤 Отправь голосовое для теста экстракции"
+    )

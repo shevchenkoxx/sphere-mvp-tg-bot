@@ -304,6 +304,81 @@ def get_edit_continue_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+# === SPHERE CITY ===
+
+# Cities available in MVP
+SPHERE_CITIES = {
+    "moscow": {"en": "Moscow", "ru": "Москва"},
+    "kyiv": {"en": "Kyiv", "ru": "Киев"},
+    "dubai": {"en": "Dubai", "ru": "Дубай"},
+    "berlin": {"en": "Berlin", "ru": "Берлин"},
+    "london": {"en": "London", "ru": "Лондон"},
+    "new_york": {"en": "New York", "ru": "Нью-Йорк"},
+    "tbilisi": {"en": "Tbilisi", "ru": "Тбилиси"},
+    "yerevan": {"en": "Yerevan", "ru": "Ереван"},
+}
+
+
+def get_city_picker_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """City selection keyboard for Sphere City"""
+    builder = InlineKeyboardBuilder()
+
+    for city_key, names in SPHERE_CITIES.items():
+        city_name = names.get(lang, names["en"])
+        builder.button(text=city_name, callback_data=f"city_select_{city_key}")
+
+    # Other option for custom input
+    other_text = "🌍 Other..." if lang == "en" else "🌍 Другой..."
+    builder.button(text=other_text, callback_data="city_select_other")
+
+    # Back button
+    back_text = "← Back" if lang == "en" else "← Назад"
+    builder.button(text=back_text, callback_data="back_to_menu")
+
+    builder.adjust(2)  # 2 cities per row
+    return builder.as_markup()
+
+
+def get_sphere_city_menu_keyboard(has_matches: bool = True, lang: str = "en") -> InlineKeyboardMarkup:
+    """Sphere City main menu"""
+    builder = InlineKeyboardBuilder()
+
+    if has_matches:
+        view_text = "👀 View matches" if lang == "en" else "👀 Посмотреть матчи"
+        builder.button(text=view_text, callback_data="sphere_city_matches")
+
+    change_city = "📍 Change city" if lang == "en" else "📍 Сменить город"
+    builder.button(text=change_city, callback_data="sphere_city_change")
+
+    back_text = "← Menu" if lang == "en" else "← Меню"
+    builder.button(text=back_text, callback_data="back_to_menu")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_matches_menu_keyboard(
+    has_event: bool = False,
+    event_name: str = None,
+    lang: str = "en"
+) -> InlineKeyboardMarkup:
+    """Matches menu with event and Sphere City options"""
+    builder = InlineKeyboardBuilder()
+
+    if has_event and event_name:
+        event_text = f"🎉 {event_name}"
+        builder.button(text=event_text, callback_data="event_matches")
+
+    city_text = "🏙️ Sphere City" if lang == "en" else "🏙️ Sphere City"
+    builder.button(text=city_text, callback_data="sphere_city")
+
+    back_text = "← Menu" if lang == "en" else "← Меню"
+    builder.button(text=back_text, callback_data="back_to_menu")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

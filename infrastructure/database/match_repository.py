@@ -26,6 +26,7 @@ class SupabaseMatchRepository(IMatchRepository):
             status=MatchStatus(data.get("status", "pending")),
             user_a_notified=data.get("user_a_notified", False),
             user_b_notified=data.get("user_b_notified", False),
+            city=data.get("city"),
             created_at=data.get("created_at"),
         )
 
@@ -48,6 +49,7 @@ class SupabaseMatchRepository(IMatchRepository):
             "match_type": match_data.match_type.value,
             "ai_explanation": match_data.ai_explanation,
             "icebreaker": match_data.icebreaker,
+            "city": match_data.city,  # For Sphere City matches
         }
         response = supabase.table("matches").upsert(data).execute()
         return response.data[0]
@@ -131,3 +133,35 @@ class SupabaseMatchRepository(IMatchRepository):
     async def get_unnotified_matches(self, user_id: UUID) -> List[Match]:
         data = await self._get_unnotified_matches_sync(user_id)
         return [self._to_model(d) for d in data]
+
+    # === SPHERE CITY - City-based Matching ===
+
+    @run_sync
+    def _get_city_matches_sync(self, user_id: UUID, city: str) -> List[dict]:
+        """Get city matches for a user (event_id is NULL)"""
+        response = supabase.table("matches").select("*")\
+            .is_("event_id", "null")\
+            .eq("city", city)\
+            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")\
+            .order("compatibility_score", desc=True)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_city_matches(self, user_id: UUID, city: str) -> List[Match]:
+        """Get city-based matches for a user"""
+        data = await self._get_city_matches_sync(user_id, city)
+        return [self._to_model(d) for d in data]
+
+    @run_sync
+    def _exists_any_sync(self, user_a_id: UUID, user_b_id: UUID) -> bool:
+        """Check if any match exists between two users (regardless of event)"""
+        response = supabase.table("matches").select("id")\
+            .or_(
+                f"and(user_a_id.eq.{user_a_id},user_b_id.eq.{user_b_id}),"
+                f"and(user_a_id.eq.{user_b_id},user_b_id.eq.{user_a_id})"
+            ).execute()
+        return len(response.data) > 0 if response.data else False
+
+    async def exists_any(self, user_a_id: UUID, user_b_id: UUID) -> bool:
+        """Check if any match exists between two users"""
+        return await self._exists_any_sync(user_a_id, user_b_id)
