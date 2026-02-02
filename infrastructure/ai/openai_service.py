@@ -5,11 +5,14 @@ Handles user analysis and match compatibility using GPT-4.
 
 import json
 import re
+import logging
 from typing import Dict, Any
 from openai import AsyncOpenAI
 from core.domain.models import MatchResult, MatchType
 from core.interfaces.ai import IAIService
 from config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIService(IAIService):
@@ -58,11 +61,18 @@ Language: same as bio text."""
 
         return response.choices[0].message.content
 
+    def _detect_language(self, *texts) -> str:
+        """Detect language from text content - checks for Cyrillic characters"""
+        combined = " ".join(t for t in texts if t)
+        cyrillic_count = sum(1 for c in combined if '\u0400' <= c <= '\u04FF')
+        return "ru" if cyrillic_count > len(combined) * 0.1 else "en"
+
     async def analyze_match(
         self,
         user_a: Dict[str, Any],
         user_b: Dict[str, Any],
-        event_context: str = None
+        event_context: str = None,
+        language: str = None
     ) -> MatchResult:
         """Analyze compatibility between two users"""
 
@@ -79,6 +89,12 @@ Language: same as bio text."""
         can_help_b = user_b.get('can_help_with') or ""
         interests_a = user_a.get('interests', [])
         interests_b = user_b.get('interests', [])
+
+        # Detect language from user content if not provided
+        if not language:
+            language = self._detect_language(bio_a, bio_b, looking_for_a, looking_for_b, can_help_a, can_help_b)
+
+        lang_instruction = "Russian" if language == "ru" else "English"
 
         prompt = f"""Analyze compatibility between two people for networking.
 
@@ -105,32 +121,34 @@ MATCHING RULES:
 4. Do NOT mention interests that only one person has
 5. If data is sparse, focus on general networking potential at the event
 
+LANGUAGE: Write explanation and icebreaker in {lang_instruction}.
+
 Return JSON:
 {{
   "compatibility_score": 0.0-1.0,
   "match_type": "friendship" | "professional" | "creative" | "romantic",
-  "explanation": "2-3 sentences about why they could benefit from meeting. Reference ONLY what they actually stated. Do NOT use names.",
-  "icebreaker": "One conversation starter based on their actual shared interests or complementary needs"
+  "explanation": "2-3 sentences in {lang_instruction} about why they could benefit from meeting. Reference ONLY what they actually stated. Do NOT use names.",
+  "icebreaker": "One conversation starter in {lang_instruction} based on their actual shared interests or complementary needs"
 }}
 
 IMPORTANT: If someone's bio mentions 'AI' but NOT 'crypto', do NOT mention crypto in explanation.
 Respond with valid JSON only, no markdown."""
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            max_tokens=800,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # Parse JSON from response
-        text = response.choices[0].message.content
-
-        # Remove possible markdown blocks
-        text = re.sub(r'```json\s*', '', text)
-        text = re.sub(r'```\s*', '', text)
-        text = text.strip()
-
         try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            # Parse JSON from response
+            text = response.choices[0].message.content
+
+            # Remove possible markdown blocks
+            text = re.sub(r'```json\s*', '', text)
+            text = re.sub(r'```\s*', '', text)
+            text = text.strip()
+
             data = json.loads(text)
             return MatchResult(
                 compatibility_score=data["compatibility_score"],
@@ -138,13 +156,27 @@ Respond with valid JSON only, no markdown."""
                 explanation=data["explanation"],
                 icebreaker=data["icebreaker"]
             )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            # Fallback on parse error
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse match analysis JSON: {text[:300] if 'text' in dir() else 'no response'} Error: {e}")
+        except KeyError as e:
+            logger.error(f"Missing key in match analysis response: {e}")
+        except Exception as e:
+            logger.error(f"Match analysis failed: {e}")
+
+        # Fallback with proper language
+        if language == "ru":
             return MatchResult(
                 compatibility_score=0.5,
                 match_type=MatchType.FRIENDSHIP,
-                explanation="У вас есть общие интересы, которые могут стать основой для интересного общения.",
+                explanation="У вас есть потенциал для интересного знакомства и обмена опытом.",
                 icebreaker="Что привело тебя на это мероприятие?"
+            )
+        else:
+            return MatchResult(
+                compatibility_score=0.5,
+                match_type=MatchType.FRIENDSHIP,
+                explanation="You have potential for an interesting connection and knowledge exchange.",
+                icebreaker="What brings you to this event?"
             )
 
     async def generate_icebreaker(
