@@ -286,31 +286,50 @@ async def show_profile(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_events")
 async def show_events(callback: CallbackQuery):
-    """Show user's events"""
+    """Show user's events with mode toggle"""
+    from adapters.telegram.keyboards.inline import get_events_keyboard
+
     lang = detect_lang_callback(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
     events = await event_service.get_user_events(
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
     )
 
+    # Current mode
+    mode = getattr(user, 'matching_mode', 'event') or 'event' if user else 'event'
+
+    if lang == "ru":
+        mode_text = "🎉 Event" if mode == "event" else "🏙️ Sphere City"
+        text = f"<b>Режим матчинга:</b> {mode_text}\n\n"
+    else:
+        mode_text = "🎉 Event" if mode == "event" else "🏙️ Sphere City"
+        text = f"<b>Matching mode:</b> {mode_text}\n\n"
+
     if not events:
         if lang == "ru":
-            text = "Пока нет ивентов.\nСканируй QR-коды чтобы присоединиться!"
+            text += "Пока нет ивентов.\nСканируй QR-коды чтобы присоединиться!"
         else:
-            text = "No events yet.\nScan QR codes to join!"
+            text += "No events yet.\nScan QR codes to join!"
     else:
-        text = "<b>Your events:</b>\n\n" if lang == "en" else "<b>Твои ивенты:</b>\n\n"
+        text += "<b>Your events:</b>\n\n" if lang == "en" else "<b>Твои ивенты:</b>\n\n"
         for event in events[:5]:
             text += f"• {event.name}\n"
 
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    await callback.message.edit_text(text, reply_markup=get_events_keyboard(mode, lang))
     await callback.answer()
 
 
 @router.callback_query(F.data == "my_matches")
-async def show_matches_menu(callback: CallbackQuery):
-    """Show matches menu with event and Sphere City options"""
-    from adapters.telegram.keyboards.inline import get_matches_menu_keyboard
+async def show_matches(callback: CallbackQuery):
+    """Show matches based on current matching_mode (event or city)"""
+    from adapters.telegram.handlers.matches import list_matches_callback
+    from adapters.telegram.handlers.sphere_city import show_city_matches
 
     lang = detect_lang_callback(callback)
 
@@ -324,37 +343,42 @@ async def show_matches_menu(callback: CallbackQuery):
         await callback.answer(msg, show_alert=True)
         return
 
-    # Check if user has a current event
-    has_event = user.current_event_id is not None
-    event_name = None
+    # Check matching mode
+    mode = getattr(user, 'matching_mode', 'event') or 'event'
 
-    if has_event:
-        event = await event_service.get_event_by_id(user.current_event_id)
-        event_name = event.name if event else None
-
-    if lang == "ru":
-        text = (
-            "💫 <b>Матчи</b>\n\n"
-            "Выбери где искать интересных людей:"
-        )
+    if mode == "city":
+        # Show city matches
+        if not user.city_current:
+            # Need to set city first - redirect to sphere city
+            from adapters.telegram.handlers.sphere_city import sphere_city_entry
+            await sphere_city_entry(callback, None)
+        else:
+            await show_city_matches(callback)
     else:
-        text = (
-            "💫 <b>Matches</b>\n\n"
-            "Choose where to find interesting people:"
-        )
+        # Show event matches (default)
+        if user.current_event_id:
+            await list_matches_callback(callback, event_id=user.current_event_id)
+        else:
+            # No event - suggest joining one
+            if lang == "ru":
+                text = (
+                    "📭 <b>Нет активного ивента</b>\n\n"
+                    "Сканируй QR-код на ивенте, чтобы получить матчи!\n\n"
+                    "Или переключись на 🏙️ Sphere City в разделе Events."
+                )
+            else:
+                text = (
+                    "📭 <b>No active event</b>\n\n"
+                    "Scan a QR code at an event to get matches!\n\n"
+                    "Or switch to 🏙️ Sphere City in the Events section."
+                )
+            await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+            await callback.answer()
 
-    await callback.message.edit_text(
-        text,
-        reply_markup=get_matches_menu_keyboard(has_event, event_name, lang)
-    )
-    await callback.answer()
 
-
-@router.callback_query(F.data == "event_matches")
-async def show_event_matches(callback: CallbackQuery):
-    """Show matches from current event only"""
-    from adapters.telegram.handlers.matches import list_matches_callback
-
+@router.callback_query(F.data == "toggle_matching_mode")
+async def toggle_matching_mode(callback: CallbackQuery):
+    """Toggle between event and city matching modes"""
     lang = detect_lang_callback(callback)
 
     user = await user_service.get_user_by_platform(
@@ -362,13 +386,43 @@ async def show_event_matches(callback: CallbackQuery):
         str(callback.from_user.id)
     )
 
-    if not user or not user.current_event_id:
-        msg = "No current event" if lang == "en" else "Нет текущего ивента"
+    if not user:
+        msg = "Profile not found" if lang == "en" else "Профиль не найден"
         await callback.answer(msg, show_alert=True)
         return
 
-    # Pass event_id to filter matches
-    await list_matches_callback(callback, event_id=user.current_event_id)
+    current_mode = getattr(user, 'matching_mode', 'event') or 'event'
+    new_mode = "city" if current_mode == "event" else "event"
+
+    # If switching to city mode and no city set, ask for city first
+    if new_mode == "city" and not user.city_current:
+        from adapters.telegram.handlers.sphere_city import sphere_city_entry
+        # Set mode first, then ask for city
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id),
+            matching_mode=new_mode
+        )
+        await sphere_city_entry(callback, None)
+        return
+
+    # Update mode
+    await user_service.update_user(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id),
+        matching_mode=new_mode
+    )
+
+    # Show confirmation and refresh events view
+    if lang == "ru":
+        msg = "🏙️ Режим: Sphere City" if new_mode == "city" else "🎉 Режим: Event"
+    else:
+        msg = "🏙️ Mode: Sphere City" if new_mode == "city" else "🎉 Mode: Event"
+
+    await callback.answer(msg)
+
+    # Refresh the events screen
+    await show_events(callback)
 
 
 # === FALLBACK FOR OLD/STALE CALLBACKS ===

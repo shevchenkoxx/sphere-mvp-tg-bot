@@ -56,6 +56,7 @@ class SupabaseUserRepository(IUserRepository):
             onboarding_completed=data.get("onboarding_completed", False),
             is_active=data.get("is_active", True),
             current_event_id=data.get("current_event_id"),
+            matching_mode=data.get("matching_mode", "event"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             profile_embedding=_parse_embedding(data.get("profile_embedding")),

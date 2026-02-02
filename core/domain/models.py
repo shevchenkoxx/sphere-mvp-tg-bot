@@ -69,6 +69,7 @@ class User(UserBase):
     onboarding_completed: bool = False
     is_active: bool = True
     current_event_id: Optional[UUID] = None
+    matching_mode: str = "event"  # 'event' or 'city'
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     # Vector embeddings for similarity matching
@@ -101,6 +102,8 @@ class UserUpdate(BaseModel):
     profession: Optional[str] = None
     company: Optional[str] = None
     skills: Optional[List[str]] = None
+    # Matching mode
+    matching_mode: Optional[str] = None  # 'event' or 'city'
 
 
 # === EVENT ===

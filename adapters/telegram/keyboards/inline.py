@@ -225,6 +225,28 @@ def get_back_to_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def get_events_keyboard(current_mode: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Events screen with mode toggle button"""
+    builder = InlineKeyboardBuilder()
+
+    # Toggle button - shows what you can switch TO
+    if current_mode == "event":
+        if lang == "ru":
+            builder.button(text="🏙️ Переключить на Sphere City", callback_data="toggle_matching_mode")
+        else:
+            builder.button(text="🏙️ Switch to Sphere City", callback_data="toggle_matching_mode")
+    else:
+        if lang == "ru":
+            builder.button(text="🎉 Переключить на Event", callback_data="toggle_matching_mode")
+        else:
+            builder.button(text="🎉 Switch to Event mode", callback_data="toggle_matching_mode")
+
+    # Back to menu
+    builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 # === PROFILE EDITING ===
 
 def get_profile_with_edit_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
