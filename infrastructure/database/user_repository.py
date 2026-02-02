@@ -2,11 +2,27 @@
 Supabase implementation of User repository.
 """
 
+import json
 from typing import Optional, List
 from uuid import UUID
 from core.domain.models import User, UserCreate, UserUpdate, MessagePlatform
 from core.interfaces.repositories import IUserRepository
 from infrastructure.database.supabase_client import supabase, run_sync
+
+
+def _parse_embedding(value) -> Optional[List[float]]:
+    """Parse embedding from database - handles string or list format"""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        # PostgreSQL vector comes as string like '[0.1,0.2,...]'
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 class SupabaseUserRepository(IUserRepository):
@@ -42,9 +58,9 @@ class SupabaseUserRepository(IUserRepository):
             current_event_id=data.get("current_event_id"),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
-            profile_embedding=data.get("profile_embedding"),
-            interests_embedding=data.get("interests_embedding"),
-            expertise_embedding=data.get("expertise_embedding"),
+            profile_embedding=_parse_embedding(data.get("profile_embedding")),
+            interests_embedding=_parse_embedding(data.get("interests_embedding")),
+            expertise_embedding=_parse_embedding(data.get("expertise_embedding")),
         )
 
     @run_sync
