@@ -383,3 +383,50 @@ psql "postgresql://postgres:PASSWORD@db.cfppunyxxelqutfwqfbi.supabase.co:5432/po
 # Check syntax
 python3 -m py_compile path/to/file.py
 ```
+
+---
+
+## Claude Code Capabilities
+
+**What I can do for this project:**
+
+### Code
+- Read, edit, write any file in the project
+- Create new handlers, services, models
+- Fix bugs, refactor code
+- Add new features end-to-end
+- Run syntax checks (`python3 -m py_compile`)
+
+### Git & Deploy
+- `git status`, `git diff`, `git log`
+- Stage files, commit with proper messages
+- Push to origin → Railway auto-deploys
+- Create branches, PRs via `gh` CLI
+
+### Database
+- Write SQL migrations
+- Design schema changes
+- Query via API (if psql not installed)
+
+### AI/LLM
+- Update prompts (extraction, matching, onboarding)
+- Test and iterate on prompt quality
+- Add new AI features
+
+### Research & Analysis
+- Search codebase with Glob/Grep
+- Read and understand any file
+- Web search for docs/solutions
+- Review code for bugs (via subagents)
+
+### Project Management
+- Update CLAUDE.md with current state
+- Create/update task lists
+- Plan features before implementation
+- Track what's done vs TODO
+
+**What I need help with:**
+- Running psql (not installed locally)
+- Testing in actual Telegram (need you to interact with bot)
+- Approving destructive git operations
+- Accessing external services without CLI tools
