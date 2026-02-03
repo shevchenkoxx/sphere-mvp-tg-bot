@@ -105,12 +105,17 @@ async def process_passion_response(message: Message, state: FSMContext):
     # Handle voice message
     if message.voice:
         try:
-            # Download and transcribe voice
+            # Build file URL and transcribe
             file = await message.bot.get_file(message.voice.file_id)
-            file_bytes = await message.bot.download_file(file.file_path)
-            audio_data = file_bytes.read()
+            file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file.file_path}"
 
-            passion_text = await voice_service.transcribe(audio_data)
+            passion_text = await voice_service.download_and_transcribe(file_url)
+
+            if not passion_text:
+                error_text = "Не удалось распознать голос. Попробуй текстом?" if lang == "ru" else "Couldn't transcribe voice. Try text?"
+                await message.answer(error_text)
+                return
+
             logger.info(f"Transcribed passion: {passion_text[:100]}...")
         except Exception as e:
             logger.error(f"Voice transcription failed: {e}")
