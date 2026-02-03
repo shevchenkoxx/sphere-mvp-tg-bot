@@ -111,6 +111,19 @@ def get_selfie_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def get_test_mode_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Keyboard to choose test mode: normal onboarding or personalization only"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="1️⃣ Обычный онбординг", callback_data="test_mode_normal")
+        builder.button(text="2️⃣ Только персонализация", callback_data="test_mode_personalization")
+    else:
+        builder.button(text="1️⃣ Normal onboarding", callback_data="test_mode_normal")
+        builder.button(text="2️⃣ Personalization only", callback_data="test_mode_personalization")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 # === Entry Point ===
 
 async def start_audio_onboarding(
@@ -136,7 +149,26 @@ async def start_audio_onboarding(
         user_first_name=message.from_user.first_name
     )
 
-    # Generate personalized intro with LLM
+    # In DEBUG mode, show test mode selector
+    if settings.debug:
+        if lang == "ru":
+            text = (
+                "🧪 <b>Тестовый режим</b>\n\n"
+                "Выбери что хочешь протестировать:\n\n"
+                "1️⃣ <b>Обычный онбординг</b> - полный флоу с голосом\n"
+                "2️⃣ <b>Только персонализация</b> - новый флоу после онбординга"
+            )
+        else:
+            text = (
+                "🧪 <b>Test Mode</b>\n\n"
+                "Choose what to test:\n\n"
+                "1️⃣ <b>Normal onboarding</b> - full voice flow\n"
+                "2️⃣ <b>Personalization only</b> - new post-onboarding flow"
+            )
+        await message.answer(text, reply_markup=get_test_mode_keyboard(lang))
+        return
+
+    # Normal flow - generate personalized intro with LLM
     intro_text = await generate_onboarding_intro(
         event_name=event_name,
         first_name=message.from_user.first_name,
@@ -260,6 +292,44 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     # Send greeting
     await bot.send_message(callback.from_user.id, greeting)
     await callback.answer()
+
+
+# === Test Mode Handlers ===
+
+@router.callback_query(F.data == "test_mode_normal")
+async def test_mode_normal(callback: CallbackQuery, state: FSMContext):
+    """User chose normal onboarding for testing"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+    event_name = data.get("event_name")
+
+    # Generate personalized intro with LLM
+    intro_text = await generate_onboarding_intro(
+        event_name=event_name,
+        first_name=callback.from_user.first_name,
+        lang=lang
+    )
+
+    await callback.message.edit_text(
+        intro_text,
+        reply_markup=get_audio_start_keyboard(lang)
+    )
+    await state.set_state(AudioOnboarding.waiting_audio)
+    await callback.answer("Normal onboarding mode")
+
+
+@router.callback_query(F.data == "test_mode_personalization")
+async def test_mode_personalization(callback: CallbackQuery, state: FSMContext):
+    """User chose personalization only for testing - skip onboarding"""
+    data = await state.get_data()
+    lang = data.get("language", "ru")
+
+    await callback.answer("Personalization mode")
+
+    # Start personalization directly
+    from adapters.telegram.handlers.personalization import start_personalization
+    await callback.message.delete()
+    await start_personalization(callback.message, state, lang)
 
 
 @router.message(AudioOnboarding.waiting_audio, F.voice)
