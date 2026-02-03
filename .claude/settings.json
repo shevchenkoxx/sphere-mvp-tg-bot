@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "if [[ \"$CC_FILE_PATH\" == *.py ]]; then python3 -m py_compile \"$CC_FILE_PATH\" 2>&1 || echo 'Syntax error in $CC_FILE_PATH'; fi"
+      }
+    ]
+  }
+}

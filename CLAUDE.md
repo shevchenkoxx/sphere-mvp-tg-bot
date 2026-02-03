@@ -413,6 +413,51 @@ ONBOARDING_MODE=audio
 
 ---
 
+## Git Worktrees (Parallel Development)
+
+Worktrees allow running multiple Claude sessions on different branches simultaneously.
+
+| Directory | Branch | Purpose |
+|-----------|--------|---------|
+| `sphere-bot/` | main | Production code |
+| `worktrees/sphere-bot-staging/` | staging | Test before deploy |
+| `worktrees/sphere-bot-experiment/` | experiment | Experimental features |
+
+**Commands:**
+```bash
+# List worktrees
+git worktree list
+
+# Create new feature worktree
+git worktree add ../worktrees/sphere-bot-feature-name -b feature-name
+
+# Remove when done
+git worktree remove ../worktrees/sphere-bot-feature-name
+
+# Merge staging to main
+git merge staging && git push origin main
+```
+
+**Parallel Claude Sessions:**
+- Open Claude Code in `sphere-bot/` for production
+- Open another in `worktrees/sphere-bot-staging/` for testing
+- They work independently without conflicts
+
+---
+
+## Claude Code Skills
+
+Skills are invocable workflows in `.claude/skills/`:
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| `/deploy` | Deploy to production | Syntax check → commit → push → Railway |
+| `/migrate` | Run DB migration | Execute SQL on Supabase via psql |
+| `/test-staging` | Test in worktree | Workflow for testing before merge |
+| `/review` | Code review | Checklist for bugs, security, performance |
+
+---
+
 ## Quick Commands
 
 ```bash
@@ -424,6 +469,9 @@ git add -A && git commit -m "message" && git push
 
 # Check syntax
 python3 -m py_compile path/to/file.py
+
+# List worktrees
+git worktree list
 ```
 
 ---
