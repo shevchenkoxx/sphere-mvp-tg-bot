@@ -109,12 +109,19 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
     - Now extracts: profession, company, skills, location, experience_level
     - `/test_extract` command for debugging (admin-only)
 
-11. **AI Speed Dating** (NEW)
+11. **AI Speed Dating**
     - Preview simulated conversation between you and match
     - GPT-4o-mini generates 5 exchanges (10 messages) based on profiles
     - Cached in DB (instant on repeat view)
     - "Regenerate" button for new conversation
     - Bilingual: auto-detects RU/EN from profiles
+
+12. **Personalized Post-Onboarding** (NEW - staging)
+    - Sharp question: "Чем ты горишь в жизни прямо сейчас?" (text/voice)
+    - Intent buttons: conversation / relationship / business
+    - LLM-generated adaptive buttons based on answers (max entropy principle)
+    - Enriches user profile for better matching
+    - ~60-90 seconds total (1 text + 4-5 button clicks)
 
 ### Known Issues / Gaps ❌
 
@@ -138,6 +145,7 @@ sphere-bot/
 │   │   ├── onboarding_v2.py    # Text onboarding flow
 │   │   ├── matches.py          # Match display, pagination, notifications
 │   │   ├── sphere_city.py      # City-based matching (Sphere City)
+│   │   ├── personalization.py  # Post-onboarding personalization flow
 │   │   └── events.py           # Event creation & joining
 │   ├── keyboards/inline.py     # All keyboards + city picker + Sphere City
 │   ├── states/onboarding.py    # FSM states (includes ProfileEditStates)
