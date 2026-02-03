@@ -877,7 +877,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                 current_event_id=event.id
             )
 
-    # Ask for selfie before showing matches
+    # Ask for selfie before personalization
     await state.update_data(
         pending_event=pending_event,
         event_id=str(event.id) if event else None,
@@ -886,13 +886,13 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
     if lang == "ru":
         selfie_text = (
-            "📸 <b>Последний шаг!</b>\n\n"
+            "📸 <b>Почти готово!</b>\n\n"
             "Отправь своё фото, чтобы твои матчи могли легко найти тебя на ивенте.\n\n"
             "<i>Это поможет быстрее узнать друг друга в толпе!</i>"
         )
     else:
         selfie_text = (
-            "📸 <b>One last thing!</b>\n\n"
+            "📸 <b>Almost there!</b>\n\n"
             "Send a photo of yourself so your matches can easily find you at the event.\n\n"
             "<i>This helps you recognize each other in the crowd!</i>"
         )
@@ -1093,7 +1093,7 @@ async def handle_selfie_text(message: Message, state: FSMContext):
 
 
 async def finish_onboarding_after_selfie(message: Message, state: FSMContext, user_tg_id: int = None):
-    """Complete onboarding after selfie step"""
+    """Complete onboarding after selfie step - start personalization flow"""
     try:
         data = await state.get_data()
         lang = data.get("language", "ru")
@@ -1102,22 +1102,34 @@ async def finish_onboarding_after_selfie(message: Message, state: FSMContext, us
 
         # Get user
         tg_id = user_tg_id or message.from_user.id
-        user_id = str(tg_id)
-        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
 
-        if event_id and user:
-            from uuid import UUID
-            text = (
-                f"🎉 Ты в ивенте <b>{event_name}</b>!\n\n"
-                "Ищу для тебя интересных людей..."
-            ) if lang == "ru" else (
-                f"🎉 You're in <b>{event_name}</b>!\n\n"
-                "Finding interesting people for you..."
-            )
-            await message.answer(text)
+        # Start personalization flow instead of going directly to matches
+        from adapters.telegram.handlers.personalization import start_personalization
 
-            try:
-                # Create fake event object for show_top_matches
+        await start_personalization(
+            message=message,
+            state=state,
+            event_name=event_name,
+            event_id=event_id,
+            lang=lang
+        )
+        # Note: state is NOT cleared here - personalization will handle it
+
+    except Exception as e:
+        logger.error(f"Error in finish_onboarding_after_selfie: {e}")
+        # Fallback: show matches directly if personalization fails
+        try:
+            data = await state.get_data()
+            lang = data.get("language", "ru")
+            event_id = data.get("event_id")
+            event_name = data.get("event_name")
+            tg_id = user_tg_id or message.from_user.id
+            user_id = str(tg_id)
+            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+            if event_id and user:
+                from uuid import UUID
+
                 class EventWrapper:
                     def __init__(self, id, name):
                         self.id = UUID(id)
@@ -1125,34 +1137,19 @@ async def finish_onboarding_after_selfie(message: Message, state: FSMContext, us
 
                 event = EventWrapper(event_id, event_name)
                 await show_top_matches(message, user, event, lang, user.username)
-            except Exception as e:
-                logger.error(f"Failed to show matches: {e}")
-                # Show fallback message
-                fallback = (
-                    "✓ Профиль сохранён! Напишу когда найду матчи."
-                ) if lang == "ru" else (
-                    "✓ Profile saved! I'll notify you about matches."
+            else:
+                await message.answer(
+                    "✓ Профиль готов!" if lang == "ru" else "✓ Profile ready!",
+                    reply_markup=get_main_menu_keyboard(lang)
                 )
-                await message.answer(fallback, reply_markup=get_main_menu_keyboard(lang))
-        else:
-            text = (
-                "🎉 <b>Профиль готов!</b>\n\n"
-                "Сканируй QR-коды на ивентах, чтобы находить интересных людей!"
-            ) if lang == "ru" else (
-                "🎉 <b>Profile ready!</b>\n\n"
-                "Scan QR codes at events to meet interesting people!"
+        except Exception as e2:
+            logger.error(f"Fallback also failed: {e2}")
+            await message.answer(
+                "✓ Profile ready!",
+                reply_markup=get_main_menu_keyboard("en")
             )
-            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
-    except Exception as e:
-        logger.error(f"Error in finish_onboarding_after_selfie: {e}")
-        # Always show menu on error
-        await message.answer(
-            "✓ Profile ready!" if lang == "en" else "✓ Профиль готов!",
-            reply_markup=get_main_menu_keyboard(lang if 'lang' in dir() else "ru")
-        )
-    finally:
-        # Always clear state
-        await state.clear()
+        finally:
+            await state.clear()
 
 
 # === Profile Extraction ===

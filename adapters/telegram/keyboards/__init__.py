@@ -25,6 +25,10 @@ from adapters.telegram.keyboards.inline import (
     SPHERE_CITIES,
     # AI Speed Dating
     get_speed_dating_result_keyboard,
+    # Personalization
+    get_connection_mode_keyboard,
+    get_adaptive_buttons_keyboard,
+    get_skip_personalization_keyboard,
 )
 
 __all__ = [
@@ -54,4 +58,8 @@ __all__ = [
     "SPHERE_CITIES",
     # AI Speed Dating
     "get_speed_dating_result_keyboard",
+    # Personalization
+    "get_connection_mode_keyboard",
+    "get_adaptive_buttons_keyboard",
+    "get_skip_personalization_keyboard",
 ]

@@ -425,6 +425,44 @@ def get_speed_dating_result_keyboard(match_id: str, lang: str = "en") -> InlineK
     return builder.as_markup()
 
 
+# === PERSONALIZATION ===
+
+def get_connection_mode_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for selecting connection mode in personalization flow"""
+    builder = InlineKeyboardBuilder()
+
+    if lang == "ru":
+        builder.button(text="🎯 Получить помощь/совет", callback_data="conn_mode_receive_help")
+        builder.button(text="💪 Помочь другим/поделиться", callback_data="conn_mode_give_help")
+        builder.button(text="🔄 Обменяться опытом", callback_data="conn_mode_exchange")
+    else:
+        builder.button(text="🎯 Get help/advice", callback_data="conn_mode_receive_help")
+        builder.button(text="💪 Help others/share", callback_data="conn_mode_give_help")
+        builder.button(text="🔄 Exchange experience", callback_data="conn_mode_exchange")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_adaptive_buttons_keyboard(buttons: list, lang: str = "en") -> InlineKeyboardMarkup:
+    """Create keyboard from LLM-generated personalized buttons"""
+    builder = InlineKeyboardBuilder()
+
+    for i, btn_text in enumerate(buttons[:3]):  # Max 3 buttons
+        builder.button(text=btn_text, callback_data=f"adaptive_btn_{i}")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_skip_personalization_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Skip button for personalization steps"""
+    builder = InlineKeyboardBuilder()
+    text = "⏩ Skip" if lang == "en" else "⏩ Пропустить"
+    builder.button(text=text, callback_data="skip_personalization_step")
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

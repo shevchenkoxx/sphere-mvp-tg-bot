@@ -62,6 +62,12 @@ class SupabaseUserRepository(IUserRepository):
             profile_embedding=_parse_embedding(data.get("profile_embedding")),
             interests_embedding=_parse_embedding(data.get("interests_embedding")),
             expertise_embedding=_parse_embedding(data.get("expertise_embedding")),
+            # Personalization fields
+            passion_text=data.get("passion_text"),
+            passion_themes=data.get("passion_themes") or [],
+            connection_mode=data.get("connection_mode"),
+            personalization_preference=data.get("personalization_preference"),
+            ideal_connection=data.get("ideal_connection"),
         )
 
     @run_sync

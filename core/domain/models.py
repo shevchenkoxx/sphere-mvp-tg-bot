@@ -76,6 +76,12 @@ class User(UserBase):
     profile_embedding: Optional[List[float]] = None
     interests_embedding: Optional[List[float]] = None
     expertise_embedding: Optional[List[float]] = None
+    # Personalization fields (post-onboarding)
+    passion_text: Optional[str] = None
+    passion_themes: Optional[List[str]] = None
+    connection_mode: Optional[str] = None
+    personalization_preference: Optional[str] = None
+    ideal_connection: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -104,6 +110,12 @@ class UserUpdate(BaseModel):
     skills: Optional[List[str]] = None
     # Matching mode
     matching_mode: Optional[str] = None  # 'event' or 'city'
+    # Personalization fields (post-onboarding flow)
+    passion_text: Optional[str] = None  # "What are you passionate about right now?"
+    passion_themes: Optional[List[str]] = None  # Extracted themes from passion_text
+    connection_mode: Optional[str] = None  # 'receive_help' / 'give_help' / 'exchange'
+    personalization_preference: Optional[str] = None  # Selected adaptive button text
+    ideal_connection: Optional[str] = None  # Free-form description of ideal person to meet
 
 
 # === EVENT ===

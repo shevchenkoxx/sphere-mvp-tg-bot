@@ -98,11 +98,48 @@ Language: same as bio text."""
         skills_a = user_a.get('skills', [])
         skills_b = user_b.get('skills', [])
 
+        # Personalization context (post-onboarding)
+        passion_a = user_a.get('passion_text') or ""
+        passion_b = user_b.get('passion_text') or ""
+        passion_themes_a = user_a.get('passion_themes', [])
+        passion_themes_b = user_b.get('passion_themes', [])
+        conn_mode_a = user_a.get('connection_mode') or ""
+        conn_mode_b = user_b.get('connection_mode') or ""
+        ideal_a = user_a.get('ideal_connection') or ""
+        ideal_b = user_b.get('ideal_connection') or ""
+
         # Detect language from user content if not provided
         if not language:
             language = self._detect_language(bio_a, bio_b, looking_for_a, looking_for_b, can_help_a, can_help_b)
 
         lang_instruction = "Russian" if language == "ru" else "English"
+
+        # Build personalization context section
+        personalization_context = ""
+        if passion_a or passion_b or conn_mode_a or conn_mode_b:
+            personalization_context = "\n=== PERSONALIZATION CONTEXT ===\n"
+            if passion_themes_a or passion_themes_b:
+                themes_overlap = set(passion_themes_a) & set(passion_themes_b) if passion_themes_a and passion_themes_b else set()
+                personalization_context += f"A's current passion themes: {', '.join(passion_themes_a) if passion_themes_a else 'None'}\n"
+                personalization_context += f"B's current passion themes: {', '.join(passion_themes_b) if passion_themes_b else 'None'}\n"
+                if themes_overlap:
+                    personalization_context += f"THEME OVERLAP: {', '.join(themes_overlap)} ✓\n"
+
+            if conn_mode_a and conn_mode_b:
+                # Check for complementary modes (give_help <-> receive_help)
+                complementary = (
+                    (conn_mode_a == "give_help" and conn_mode_b == "receive_help") or
+                    (conn_mode_a == "receive_help" and conn_mode_b == "give_help")
+                )
+                personalization_context += f"A's connection mode: {conn_mode_a}\n"
+                personalization_context += f"B's connection mode: {conn_mode_b}\n"
+                if complementary:
+                    personalization_context += "COMPLEMENTARY MODES: One wants to help, other wants to receive ✓\n"
+
+            if ideal_a:
+                personalization_context += f"A's ideal connection description: {ideal_a[:150]}\n"
+            if ideal_b:
+                personalization_context += f"B's ideal connection description: {ideal_b[:150]}\n"
 
         prompt = f"""Analyze compatibility between two people for networking.
 
@@ -116,6 +153,7 @@ Skills: {', '.join(skills_a) if skills_a else 'None listed'}
 Looking for: {looking_for_a or 'Not specified'}
 Can help with: {can_help_a or 'Not specified'}
 Interests: {', '.join(interests_a) if interests_a else 'None listed'}
+{f'Current passion: {passion_a[:150]}' if passion_a else ''}
 
 === PERSON B: {name_b} ===
 Bio (their words): {bio_b or 'Not provided'}
@@ -125,15 +163,18 @@ Skills: {', '.join(skills_b) if skills_b else 'None listed'}
 Looking for: {looking_for_b or 'Not specified'}
 Can help with: {can_help_b or 'Not specified'}
 Interests: {', '.join(interests_b) if interests_b else 'None listed'}
-
+{f'Current passion: {passion_b[:150]}' if passion_b else ''}
+{personalization_context}
 {f'Event context: "{event_context}"' if event_context else ''}
 
 MATCHING RULES:
 1. PRIMARY: Match "can_help_with" of one person to "looking_for" of another (mutual value exchange)
-2. SECONDARY: Shared interests ONLY if explicitly listed by BOTH users
-3. Use ONLY information explicitly stated in bio/looking_for/can_help_with
-4. Do NOT mention interests that only one person has
-5. If data is sparse, focus on general networking potential at the event
+2. COMPLEMENTARY MODES: If one has give_help and other has receive_help, this is a STRONG signal
+3. THEME OVERLAP: If passion_themes overlap, this indicates current alignment
+4. IDEAL MATCH: If one person's profile matches other's "ideal_connection" description, note this
+5. SECONDARY: Shared interests ONLY if explicitly listed by BOTH users
+6. Use ONLY information explicitly stated in bio/looking_for/can_help_with
+7. If data is sparse, focus on general networking potential at the event
 
 LANGUAGE: Write explanation and icebreaker in {lang_instruction}.
 

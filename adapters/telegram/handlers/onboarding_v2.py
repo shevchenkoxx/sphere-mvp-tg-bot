@@ -574,7 +574,7 @@ async def handle_selfie_text_v2(message: Message, state: FSMContext):
 
 
 async def finish_onboarding_v2(message: Message, state: FSMContext, user_tg_id: int = None):
-    """Complete onboarding after selfie step"""
+    """Complete onboarding after selfie step - start personalization flow"""
     lang = "en"  # Default
     try:
         data = await state.get_data()
@@ -584,19 +584,34 @@ async def finish_onboarding_v2(message: Message, state: FSMContext, user_tg_id: 
 
         # Get user
         tg_id = user_tg_id or message.from_user.id
-        user_id = str(tg_id)
-        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
 
-        if event_id and user:
-            from uuid import UUID
-            if lang == "ru":
-                text = f"🎉 Ты в ивенте <b>{event_name}</b>!\n\nИщу для тебя интересных людей..."
-            else:
-                text = f"🎉 You're in <b>{event_name}</b>!\n\nFinding interesting people for you..."
-            await message.answer(text)
+        # Start personalization flow instead of going directly to matches
+        from adapters.telegram.handlers.personalization import start_personalization
 
-            try:
-                # Create fake event object for show_top_matches_v2
+        await start_personalization(
+            message=message,
+            state=state,
+            event_name=event_name,
+            event_id=event_id,
+            lang=lang
+        )
+        # Note: state is NOT cleared here - personalization will handle it
+
+    except Exception as e:
+        logger.error(f"Error in finish_onboarding_v2: {e}")
+        # Fallback: show matches directly if personalization fails
+        try:
+            data = await state.get_data()
+            lang = data.get("language", "en")
+            event_id = data.get("event_id")
+            event_name = data.get("event_name")
+            tg_id = user_tg_id or message.from_user.id
+            user_id = str(tg_id)
+            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+            if event_id and user:
+                from uuid import UUID
+
                 class EventWrapper:
                     def __init__(self, id, name):
                         self.id = UUID(id)
@@ -604,31 +619,19 @@ async def finish_onboarding_v2(message: Message, state: FSMContext, user_tg_id: 
 
                 event = EventWrapper(event_id, event_name)
                 await show_top_matches_v2(message, user, event, user.username, lang)
-            except Exception as e:
-                logger.error(f"Failed to show matches v2: {e}")
-                # Show fallback message
-                fallback = (
-                    "✓ Профиль сохранён! Напишу когда найду матчи."
-                ) if lang == "ru" else (
-                    "✓ Profile saved! I'll notify you about matches."
-                )
-                await message.answer(fallback, reply_markup=get_main_menu_keyboard(lang))
-        else:
-            if lang == "ru":
-                text = "🎉 <b>Профиль готов!</b>\n\nСканируй QR-коды на ивентах, чтобы находить интересных людей!"
             else:
-                text = "🎉 <b>Profile ready!</b>\n\nScan QR codes at events to meet interesting people!"
-            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
-    except Exception as e:
-        logger.error(f"Error in finish_onboarding_v2: {e}")
-        # Always show menu on error
-        await message.answer(
-            "✓ Profile ready!" if lang == "en" else "✓ Профиль готов!",
-            reply_markup=get_main_menu_keyboard(lang)
-        )
-    finally:
-        # Always clear state
-        await state.clear()
+                await message.answer(
+                    "✓ Профиль готов!" if lang == "ru" else "✓ Profile ready!",
+                    reply_markup=get_main_menu_keyboard(lang)
+                )
+        except Exception as e2:
+            logger.error(f"Fallback also failed: {e2}")
+            await message.answer(
+                "✓ Profile ready!",
+                reply_markup=get_main_menu_keyboard("en")
+            )
+        finally:
+            await state.clear()
 
 
 # Note: Reset/Cancel is now handled inside process_conversation_message to ensure proper priority

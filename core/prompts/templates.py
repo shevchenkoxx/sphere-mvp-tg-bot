@@ -238,3 +238,97 @@ def get_match_analysis_prompt(user_a: dict, user_b: dict, event_name: str = None
         user_b_summary=user_b.get("ai_summary"),
         event_context=event_context
     )
+
+
+# === POST-ONBOARDING PERSONALIZATION PROMPTS ===
+
+PASSION_EXTRACTION_PROMPT = """Extract 2-4 key themes from the user's passion statement.
+
+USER'S PASSION STATEMENT:
+{passion_text}
+
+USER'S PROFILE CONTEXT:
+- Profession: {profession}
+- Interests: {interests}
+- Looking for: {looking_for}
+- Can help with: {can_help_with}
+
+TASK: Analyze what the user is passionate about RIGHT NOW and extract actionable themes.
+
+Return JSON:
+{{
+  "themes": ["theme1", "theme2", "theme3"],
+  "summary": "One sentence capturing the essence of their current passion/focus",
+  "matching_signals": ["type of person 1 who would match well", "type of person 2"]
+}}
+
+RULES:
+1. Themes should be SPECIFIC (not generic like "tech" but "AI product development")
+2. Maximum 4 themes, minimum 2
+3. Summary should be in the SAME language as passion_text
+4. matching_signals: describe 2-3 types of people who would be valuable connections
+
+Return ONLY valid JSON."""
+
+
+PERSONALIZED_ADAPTIVE_BUTTONS_PROMPT = """Generate 3 specific, context-aware buttons for networking preference.
+
+=== USER PROFILE ===
+Name: {display_name}
+Profession: {profession}
+Bio: {bio}
+Interests: {interests}
+Looking for: {looking_for}
+Can help with: {can_help_with}
+
+=== CURRENT SESSION ===
+Passion: {passion_text}
+Extracted Themes: {passion_themes}
+Connection Mode: {connection_mode}
+
+=== TASK ===
+Create 3 SPECIFIC buttons that help identify what kind of connection this user wants TODAY.
+
+MODE-SPECIFIC APPROACH:
+- If connection_mode = "give_help" → buttons about WHO they want to help (e.g., "Помочь начинающим предпринимателям", "Поделиться опытом с продуктовыми командами")
+- If connection_mode = "receive_help" → buttons about WHAT help they need (e.g., "Найти ментора по привлечению инвестиций", "Получить фидбек на продукт")
+- If connection_mode = "exchange" → buttons about WHAT topic to exchange (e.g., "Обсудить масштабирование AI продуктов", "Обменяться опытом в управлении командой")
+
+RULES:
+1. Each button MUST reference user's SPECIFIC context (their profession, passion themes)
+2. Buttons should be mutually exclusive - choosing one gives CLEAR signal
+3. Language: {language} (match user's language)
+4. Button text: 4-8 words, starts with action verb
+5. NO generic options like "Просто познакомиться" or "Networking"
+
+Return JSON:
+{{
+  "header": "Question text to show above buttons (1 sentence in {language})",
+  "buttons": ["Button 1 text", "Button 2 text", "Button 3 text"]
+}}
+
+Return ONLY valid JSON."""
+
+
+IDEAL_CONNECTION_QUESTION_PROMPT = """Generate a personalized open-ended question based on user's connection mode.
+
+Connection Mode: {connection_mode}
+Passion Themes: {passion_themes}
+Selected Preference: {personalization_preference}
+Language: {language}
+
+Generate ONE open-ended question (15-25 words) that helps the user describe their ideal connection.
+
+If connection_mode = "receive_help":
+  Ask about what advice/help would be most valuable for them
+
+If connection_mode = "give_help":
+  Ask about who they could help the most / what knowledge they want to share
+
+If connection_mode = "exchange":
+  Ask about the ideal person to exchange experience with
+
+Make the question SPECIFIC to their context, not generic.
+Use the same language as specified.
+
+Return ONLY the question text, nothing else."""
