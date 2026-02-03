@@ -30,8 +30,10 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ### Database (Supabase)
 - URL: `https://cfppunyxxelqutfwqfbi.supabase.co`
-- Direct SQL: `psql "postgresql://postgres:[password]@db.cfppunyxxelqutfwqfbi.supabase.co:5432/postgres"`
+- **psql path:** `/opt/homebrew/Cellar/libpq/18.1/bin/psql`
+- Direct SQL: `/opt/homebrew/Cellar/libpq/18.1/bin/psql "postgresql://postgres:[password]@db.cfppunyxxelqutfwqfbi.supabase.co:5432/postgres"`
 - Migrations in `supabase/migrations/`
+- **Claude CAN run migrations directly** via psql
 
 ### Testing
 - Test event: `TEST2024`
@@ -414,11 +416,11 @@ ONBOARDING_MODE=audio
 ## Quick Commands
 
 ```bash
-# Deploy
+# Deploy (Claude can do this)
 git add -A && git commit -m "message" && git push
 
-# Run migration
-psql "postgresql://postgres:PASSWORD@db.cfppunyxxelqutfwqfbi.supabase.co:5432/postgres" -f supabase/migrations/XXX.sql
+# Run migration (Claude can do this)
+/opt/homebrew/Cellar/libpq/18.1/bin/psql "postgresql://postgres:PASSWORD@db.cfppunyxxelqutfwqfbi.supabase.co:5432/postgres" -f supabase/migrations/XXX.sql
 
 # Check syntax
 python3 -m py_compile path/to/file.py
