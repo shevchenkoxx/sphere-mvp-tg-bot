@@ -41,6 +41,13 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - Reset profile: `/reset` in bot (needs DEBUG=true or admin)
 - Find matches: `/find_matches` - manually trigger AI matching
 
+### Test Bot (Staging)
+- **Bot**: @Socialconnection_bot
+- **Branch**: `staging`
+- **Bot Token**: in `.credentials/keys.md`
+- **Railway**: separate service, deploys from `staging` branch
+- **DEBUG=true**: shows test mode selector on /start
+
 ---
 
 ## Current Status (February 2026)
