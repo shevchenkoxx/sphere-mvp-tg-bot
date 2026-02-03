@@ -425,6 +425,36 @@ def get_speed_dating_result_keyboard(match_id: str, lang: str = "en") -> InlineK
     return builder.as_markup()
 
 
+# === POST-ONBOARDING PERSONALIZATION ===
+
+def get_intent_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for intent selection: What's your win today?"""
+    builder = InlineKeyboardBuilder()
+
+    if lang == "ru":
+        builder.button(text="💬 Найти интересного собеседника", callback_data="intent_conversation")
+        builder.button(text="💕 Познакомиться для отношений", callback_data="intent_relationship")
+        builder.button(text="🤝 Найти партнёра/коллегу", callback_data="intent_business")
+    else:
+        builder.button(text="💬 Find interesting conversation", callback_data="intent_conversation")
+        builder.button(text="💕 Meet someone for relationship", callback_data="intent_relationship")
+        builder.button(text="🤝 Find business partner", callback_data="intent_business")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_adaptive_buttons_keyboard(buttons: List[str], lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for LLM-generated adaptive buttons."""
+    builder = InlineKeyboardBuilder()
+
+    for i, button_text in enumerate(buttons[:3]):  # Max 3 buttons
+        builder.button(text=button_text, callback_data=f"adaptive_{i}")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

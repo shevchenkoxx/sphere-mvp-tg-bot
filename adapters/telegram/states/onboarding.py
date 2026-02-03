@@ -36,3 +36,10 @@ class ProfileEditStates(StatesGroup):
     entering_value = State()          # Entering new value (text or voice)
     confirming_changes = State()      # Preview and confirm
     conversational = State()          # LLM conversation mode
+
+
+class PersonalizationStates(StatesGroup):
+    """FSM states for post-onboarding personalization"""
+    waiting_passion = State()         # "Чем ты горишь прямо сейчас?" (text/voice)
+    choosing_intent = State()         # "Что для тебя будет win?" (3 buttons)
+    choosing_adaptive = State()       # LLM-generated 3 buttons based on answers
