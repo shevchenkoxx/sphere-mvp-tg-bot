@@ -102,10 +102,17 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - Matches menu with Event + Sphere City options
    - City detection from voice + manual selection
 
-10. **Enhanced Extraction** (NEW)
+10. **Enhanced Extraction**
     - Chain-of-thought prompting for better analysis
     - Now extracts: profession, company, skills, location, experience_level
     - `/test_extract` command for debugging (admin-only)
+
+11. **AI Speed Dating** (NEW)
+    - Preview simulated conversation between you and match
+    - GPT-4o-mini generates 5 exchanges (10 messages) based on profiles
+    - Cached in DB (instant on repeat view)
+    - "Regenerate" button for new conversation
+    - Bilingual: auto-detects RU/EN from profiles
 
 ### Known Issues / Gaps ❌
 
@@ -146,17 +153,20 @@ sphere-bot/
 │   ├── database/
 │   │   ├── user_repository.py  # includes update_embeddings(), get_users_by_city()
 │   │   ├── match_repository.py # includes get_city_matches()
+│   │   ├── speed_dating_repository.py # AI Speed Dating cache
 │   │   └── supabase_client.py
 │   └── ai/
 │       ├── openai_service.py   # GPT-4o-mini + profession/skills in matching
 │       ├── whisper_service.py  # Voice transcription
-│       └── embedding_service.py # text-embedding-3-small
+│       ├── embedding_service.py # text-embedding-3-small
+│       └── speed_dating_service.py # AI Speed Dating conversation generator
 ├── scripts/
 │   └── test_extraction.py      # CLI for testing extraction prompts
 ├── supabase/migrations/
 │   ├── 002_enhanced_profiles.sql
 │   ├── 003_vector_embeddings.sql # pgvector + match_candidates()
-│   └── 004_sphere_city.sql     # experience_level, city on matches
+│   ├── 004_sphere_city.sql     # experience_level, city on matches
+│   └── 005_speed_dating.sql    # AI Speed Dating cache table
 └── .credentials/keys.md        # All credentials (gitignored)
 ```
 
@@ -199,6 +209,14 @@ city  -- For Sphere City matches (event_id is NULL)
 ### messages (exists but unused)
 ```sql
 id, match_id, sender_id, content, is_read, created_at
+```
+
+### speed_dating_conversations (NEW)
+```sql
+id, match_id, viewer_user_id
+conversation_text, language
+created_at
+-- Unique constraint: (match_id, viewer_user_id)
 ```
 
 ---
@@ -324,6 +342,28 @@ ONBOARDING_MODE=audio
 
 ## Recent Session Changes
 
+### February 2026 - AI Speed Dating
+
+1. **AI Speed Dating Feature** (NEW)
+   - Button "⚡ AI Speed Dating" on match cards
+   - Generates simulated 5-exchange conversation between users
+   - Uses GPT-4o-mini with personas built from profiles
+   - Cached in `speed_dating_conversations` table
+   - "Regenerate" bypasses cache for new conversation
+   - Auto-detects language (RU/EN) from profile content
+
+2. **New Files**
+   - `infrastructure/ai/speed_dating_service.py` - conversation generation
+   - `infrastructure/database/speed_dating_repository.py` - DB cache
+   - `supabase/migrations/005_speed_dating.sql` - table schema
+
+3. **Modified Files**
+   - `adapters/telegram/loader.py` - init speed_dating_service, speed_dating_repo
+   - `adapters/telegram/keyboards/inline.py` - added button + result keyboard
+   - `adapters/telegram/handlers/matches.py` - speed_dating_preview handler
+
+---
+
 ### February 2026 - Extraction & Sphere City
 
 1. **Sphere City Feature** (NEW)
@@ -400,13 +440,15 @@ python3 -m py_compile path/to/file.py
 ### Git & Deploy
 - `git status`, `git diff`, `git log`
 - Stage files, commit with proper messages
-- Push to origin → Railway auto-deploys
+- **Push to origin → Railway auto-deploys** (I can do this!)
 - Create branches, PRs via `gh` CLI
 
-### Database
+### Database (Supabase)
 - Write SQL migrations
 - Design schema changes
-- Query via API (if psql not installed)
+- **Run migrations via psql** (I can do this!)
+- Query database directly
+- Connection string in `.credentials/keys.md`
 
 ### AI/LLM
 - Update prompts (extraction, matching, onboarding)
@@ -426,7 +468,10 @@ python3 -m py_compile path/to/file.py
 - Track what's done vs TODO
 
 **What I need help with:**
-- Running psql (not installed locally)
 - Testing in actual Telegram (need you to interact with bot)
-- Approving destructive git operations
-- Accessing external services without CLI tools
+- Approving destructive git operations (force push, reset --hard)
+
+**What I CAN do autonomously:**
+- Run database migrations via psql
+- Git add, commit, push to deploy
+- Read credentials from `.credentials/keys.md`

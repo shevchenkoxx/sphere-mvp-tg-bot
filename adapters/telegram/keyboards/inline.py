@@ -156,12 +156,16 @@ def get_match_keyboard(
     """Match action keyboard with pagination"""
     builder = InlineKeyboardBuilder()
 
-    # Action buttons
+    # Row 1: Action buttons (Chat + Profile)
     chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
     profile_text = "👤 Profile" if lang == "en" else "👤 Профиль"
     builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
     builder.button(text=profile_text, callback_data=f"view_profile_{match_id}")
     builder.adjust(2)
+
+    # Row 2: AI Speed Dating button
+    speed_text = "AI Speed Dating" if lang == "en" else "AI Знакомство"
+    builder.row(InlineKeyboardButton(text=speed_text, callback_data=f"speed_dating_{match_id}"))
 
     # Pagination buttons (if more than 1 match)
     if total_matches > 1:
@@ -398,6 +402,26 @@ def get_matches_menu_keyboard(
     builder.button(text=back_text, callback_data="back_to_menu")
 
     builder.adjust(1)
+    return builder.as_markup()
+
+
+# === AI SPEED DATING ===
+
+def get_speed_dating_result_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for speed dating preview result"""
+    builder = InlineKeyboardBuilder()
+
+    # Row 1: Main actions
+    chat_text = "💬 Write" if lang == "en" else "💬 Написать"
+    regen_text = "🔄 Again" if lang == "en" else "🔄 Ещё раз"
+    builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
+    builder.button(text=regen_text, callback_data=f"speed_dating_regen_{match_id}")
+    builder.adjust(2)
+
+    # Row 2: Back to match
+    back_text = "← Back to match" if lang == "en" else "← К матчу"
+    builder.row(InlineKeyboardButton(text=back_text, callback_data="back_to_matches"))
+
     return builder.as_markup()
 
 

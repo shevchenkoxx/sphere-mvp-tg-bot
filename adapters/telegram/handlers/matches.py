@@ -8,7 +8,10 @@ from aiogram.filters import Command
 
 from core.domain.models import MessagePlatform, MatchStatus
 from core.domain.constants import get_interest_display, get_goal_display
-from adapters.telegram.loader import matching_service, user_service, event_service, bot
+from adapters.telegram.loader import (
+    matching_service, user_service, event_service, bot,
+    speed_dating_service, speed_dating_repo
+)
 from adapters.telegram.keyboards import (
     get_match_keyboard,
     get_chat_keyboard,
@@ -16,6 +19,7 @@ from adapters.telegram.keyboards import (
     get_back_to_menu_keyboard,
     get_profile_view_keyboard,
     get_matches_menu_keyboard,
+    get_speed_dating_result_keyboard,
 )
 from config.features import Features
 
@@ -465,6 +469,121 @@ async def match_next(callback: CallbackQuery):
 async def match_counter_click(callback: CallbackQuery):
     """Handle click on counter (no action)"""
     await callback.answer()
+
+
+# === AI SPEED DATING ===
+
+@router.callback_query(F.data.startswith("speed_dating_"))
+async def speed_dating_preview(callback: CallbackQuery):
+    """Generate or show AI speed dating conversation preview"""
+    lang = detect_lang(callback)
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Parse callback data: speed_dating_{id} or speed_dating_regen_{id}
+    data = callback.data
+    regenerate = "regen" in data
+    match_id = data.replace("speed_dating_regen_", "").replace("speed_dating_", "")
+
+    # Get current user
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user:
+        msg = "User not found" if lang == "en" else "Пользователь не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Get match
+    match = await matching_service.get_match(match_id)
+    if not match:
+        msg = "Match not found" if lang == "en" else "Матч не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Determine partner
+    partner_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
+    partner = await user_service.get_user(partner_id)
+
+    if not partner:
+        msg = "Partner profile not found" if lang == "en" else "Профиль партнёра не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Check cache (skip if regenerating)
+    if not regenerate:
+        try:
+            cached = await speed_dating_repo.get_conversation(match.id, user.id)
+            if cached:
+                # Show cached conversation
+                name_a = user.display_name or user.first_name or "You"
+                name_b = partner.display_name or partner.first_name or "Partner"
+                formatted = speed_dating_service.format_for_telegram(
+                    cached.conversation_text, name_a, name_b, lang
+                )
+                await callback.message.edit_text(
+                    formatted,
+                    reply_markup=get_speed_dating_result_keyboard(match_id, lang)
+                )
+                await callback.answer()
+                return
+        except Exception as e:
+            logger.warning(f"Cache lookup failed: {e}")
+            # Continue to generate new conversation
+
+    # Show loading message
+    loading_text = "Generating conversation preview..." if lang == "en" else "Генерирую превью разговора..."
+    try:
+        await callback.message.edit_text(f"🤖 {loading_text}")
+    except Exception:
+        pass  # Message might not be editable
+
+    await callback.answer()
+
+    try:
+        # Generate conversation
+        conversation = await speed_dating_service.generate_conversation(
+            user_a=user,
+            user_b=partner,
+            match_context=None,  # Could add event name here if available
+            language=lang
+        )
+
+        # Cache the conversation
+        try:
+            await speed_dating_repo.save_conversation(
+                match_id=match.id,
+                viewer_user_id=user.id,
+                conversation_text=conversation,
+                language=lang
+            )
+        except Exception as e:
+            logger.warning(f"Failed to cache conversation: {e}")
+            # Continue even if caching fails
+
+        # Format and show result
+        name_a = user.display_name or user.first_name or "You"
+        name_b = partner.display_name or partner.first_name or "Partner"
+        formatted = speed_dating_service.format_for_telegram(conversation, name_a, name_b, lang)
+
+        await callback.message.edit_text(
+            formatted,
+            reply_markup=get_speed_dating_result_keyboard(match_id, lang)
+        )
+
+    except Exception as e:
+        logger.error(f"Speed dating generation failed: {e}")
+        error_text = (
+            "Failed to generate preview. Please try again."
+            if lang == "en" else
+            "Не удалось создать превью. Попробуйте ещё раз."
+        )
+        await callback.message.edit_text(
+            f"❌ {error_text}",
+            reply_markup=get_speed_dating_result_keyboard(match_id, lang)
+        )
 
 
 # === NOTIFICATIONS ===
