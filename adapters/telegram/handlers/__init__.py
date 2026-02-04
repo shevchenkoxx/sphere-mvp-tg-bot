@@ -13,15 +13,15 @@ elif ONBOARDING_VERSION == "audio":
 else:  # v2 (default)
     onboarding_routers = [onboarding_v2.router]
 
-# IMPORTANT: Onboarding routers must be BEFORE start router
-# because start.py has fallback handlers that would catch onboarding callbacks
+# IMPORTANT: State-specific routers must be BEFORE start router
+# because start.py has fallback handlers that would catch callbacks/messages
 routers = [
     *onboarding_routers,  # Must be first to handle state-specific callbacks
     personalization.router,  # Post-onboarding personalization - before start.py
     profile_edit.router,  # Profile editing - before start.py
     sphere_city.router,   # Sphere City - before start.py
+    events.router,        # Event joining - has state handler, must be before start.py
     start.router,
-    events.router,
     matches.router,
 ]
 
