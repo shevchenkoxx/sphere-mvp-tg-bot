@@ -2,6 +2,7 @@
 Events handler - event creation and joining.
 """
 
+import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -18,7 +19,9 @@ from adapters.telegram.keyboards import (
 )
 from adapters.telegram.states import EventStates
 
-router = Router()
+logger = logging.getLogger(__name__)
+
+router = Router(name="events")
 
 
 def detect_lang_callback(callback: CallbackQuery) -> str:
@@ -38,6 +41,7 @@ def detect_lang_message(message: Message) -> str:
 @router.callback_query(F.data == "enter_event_code")
 async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
     """Start entering event code"""
+    logger.info(f"[EVENTS] enter_event_code_start triggered for user {callback.from_user.id}")
     lang = detect_lang_callback(callback)
 
     if lang == "ru":
@@ -56,16 +60,23 @@ async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
     await state.update_data(lang=lang)
     await state.set_state(EventStates.waiting_event_code)
+    logger.info(f"[EVENTS] State set to EventStates.waiting_event_code for user {callback.from_user.id}")
     await callback.answer()
 
 
 @router.message(EventStates.waiting_event_code, F.text)
 async def process_event_code(message: Message, state: FSMContext):
     """Process entered event code"""
+    logger.info(f"[EVENTS] process_event_code triggered for user {message.from_user.id}, text: {message.text}")
+
+    current_state = await state.get_state()
+    logger.info(f"[EVENTS] Current state: {current_state}")
+
     data = await state.get_data()
     lang = data.get("lang", detect_lang_message(message))
 
     event_code = message.text.strip().upper()
+    logger.info(f"[EVENTS] Processing event code: {event_code}")
 
     # Try to join event
     success, msg, event = await event_service.join_event(
