@@ -15,10 +15,19 @@ from config.features import features
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG if features.DEBUG_MODE else logging.INFO,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Set DEBUG level only for our app loggers, not for noisy libraries
+if features.DEBUG_MODE:
+    for name in ['adapters', 'core', 'infrastructure', '__main__']:
+        logging.getLogger(name).setLevel(logging.DEBUG)
+    # Silence noisy HTTP debug logs
+    logging.getLogger('httpx').setLevel(logging.WARNING)
+    logging.getLogger('httpcore').setLevel(logging.WARNING)
+    logging.getLogger('hpack').setLevel(logging.WARNING)
 
 # Retry settings
 MAX_RETRIES = 5
