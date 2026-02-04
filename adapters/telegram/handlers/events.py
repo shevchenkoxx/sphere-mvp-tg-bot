@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="events")
 
+# Debug: Log when module is loaded
+logger.info("[EVENTS] Router initialized")
+
 
 def detect_lang_callback(callback: CallbackQuery) -> str:
     """Detect language from callback user settings."""
@@ -38,7 +41,7 @@ def detect_lang_message(message: Message) -> str:
 
 # === JOIN EVENT BY CODE ===
 
-@router.callback_query(StateFilter("*"), F.data == "enter_event_code")
+@router.callback_query(F.data == "enter_event_code")
 async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
     """Start entering event code"""
     logger.info(f"[EVENTS] enter_event_code_start triggered for user {callback.from_user.id}")
