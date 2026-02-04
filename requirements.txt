@@ -1,5 +1,6 @@
 # Telegram Bot
 aiogram==3.4.1
+# Force rebuild
 
 # Database
 supabase>=2.0.0
