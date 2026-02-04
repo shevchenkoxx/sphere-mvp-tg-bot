@@ -103,7 +103,7 @@ class UserUpdate(BaseModel):
     social_links: Optional[Dict[str, str]] = None
     ai_summary: Optional[str] = None
     onboarding_completed: Optional[bool] = None
-    current_event_id: Optional[UUID] = None
+    current_event_id: Optional[str] = None  # String UUID for JSON serialization
     # Professional info (from extraction)
     profession: Optional[str] = None
     company: Optional[str] = None
