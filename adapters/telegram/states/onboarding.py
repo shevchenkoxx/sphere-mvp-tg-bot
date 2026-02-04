@@ -17,11 +17,12 @@ class OnboardingStates(StatesGroup):
 
 
 class EventStates(StatesGroup):
-    """FSM states for event creation"""
+    """FSM states for event creation and joining"""
     waiting_name = State()
     waiting_description = State()
     waiting_location = State()
     confirming_event = State()
+    waiting_event_code = State()  # For joining event by code
 
 
 class ChatStates(StatesGroup):

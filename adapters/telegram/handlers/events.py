@@ -14,10 +14,97 @@ from adapters.telegram.keyboards import (
     get_event_actions_keyboard,
     get_join_event_keyboard,
     get_main_menu_keyboard,
+    get_back_to_menu_keyboard,
 )
 from adapters.telegram.states import EventStates
 
 router = Router()
+
+
+def detect_lang_callback(callback: CallbackQuery) -> str:
+    """Detect language from callback user settings."""
+    lang_code = callback.from_user.language_code or "en"
+    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+
+
+def detect_lang_message(message: Message) -> str:
+    """Detect language from message user settings."""
+    lang_code = message.from_user.language_code or "en"
+    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+
+
+# === JOIN EVENT BY CODE ===
+
+@router.callback_query(F.data == "enter_event_code")
+async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
+    """Start entering event code"""
+    lang = detect_lang_callback(callback)
+
+    if lang == "ru":
+        text = (
+            "📲 <b>Введи код ивента</b>\n\n"
+            "Код обычно указан на QR-коде или в приглашении.\n"
+            "Например: <code>TEST2024</code>"
+        )
+    else:
+        text = (
+            "📲 <b>Enter event code</b>\n\n"
+            "The code is usually on the QR or in the invitation.\n"
+            "Example: <code>TEST2024</code>"
+        )
+
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    await state.update_data(lang=lang)
+    await state.set_state(EventStates.waiting_event_code)
+    await callback.answer()
+
+
+@router.message(EventStates.waiting_event_code, F.text)
+async def process_event_code(message: Message, state: FSMContext):
+    """Process entered event code"""
+    data = await state.get_data()
+    lang = data.get("lang", detect_lang_message(message))
+
+    event_code = message.text.strip().upper()
+
+    # Try to join event
+    success, msg, event = await event_service.join_event(
+        event_code,
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+
+    if success and event:
+        # Update current_event_id
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id),
+            current_event_id=event.id
+        )
+
+        if lang == "ru":
+            text = (
+                f"🎉 <b>Ты в ивенте {event.name}!</b>\n\n"
+                "Система уже ищет для тебя интересных людей.\n"
+                "Напишу, когда найду матчи!"
+            )
+        else:
+            text = (
+                f"🎉 <b>You're in {event.name}!</b>\n\n"
+                "The system is finding interesting people for you.\n"
+                "I'll message you when I find matches!"
+            )
+
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+    else:
+        if lang == "ru":
+            text = f"❌ {msg}\n\nПопробуй другой код или вернись в меню."
+        else:
+            text = f"❌ {msg}\n\nTry another code or go back to menu."
+
+        await message.answer(text, reply_markup=get_back_to_menu_keyboard(lang))
+
+    await state.clear()
 
 
 # === EVENT CREATION (admin only) ===

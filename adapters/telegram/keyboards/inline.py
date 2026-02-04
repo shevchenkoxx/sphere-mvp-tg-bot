@@ -230,8 +230,14 @@ def get_back_to_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
 
 
 def get_events_keyboard(current_mode: str, lang: str = "en") -> InlineKeyboardMarkup:
-    """Events screen with mode toggle button"""
+    """Events screen with mode toggle button and join event option"""
     builder = InlineKeyboardBuilder()
+
+    # Join event button
+    if lang == "ru":
+        builder.button(text="📲 Ввести код ивента", callback_data="enter_event_code")
+    else:
+        builder.button(text="📲 Enter event code", callback_data="enter_event_code")
 
     # Toggle button - shows what you can switch TO
     if current_mode == "event":
