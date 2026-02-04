@@ -32,25 +32,57 @@ class MatchingService:
 
     def calculate_base_score(self, user_a: User, user_b: User) -> float:
         """
-        Calculate quick base score based on interests/goals overlap.
-        This is a fast pre-filter before expensive AI analysis.
+        Calculate quick base score for pre-filtering.
+        Considers: looking_for/can_help_with match, interests, goals, city.
         """
+        score = 0.0
+
+        # PRIMARY: looking_for <-> can_help_with match (most important!)
+        # Check if A's looking_for mentions anything B can help with, or vice versa
+        looking_a = (user_a.looking_for or "").lower()
+        looking_b = (user_b.looking_for or "").lower()
+        help_a = (user_a.can_help_with or "").lower()
+        help_b = (user_b.can_help_with or "").lower()
+
+        # Simple keyword matching for pre-filter
+        value_exchange = False
+        keywords_a_looking = set(looking_a.split()) if looking_a else set()
+        keywords_b_help = set(help_b.split()) if help_b else set()
+        keywords_b_looking = set(looking_b.split()) if looking_b else set()
+        keywords_a_help = set(help_a.split()) if help_a else set()
+
+        # Check for common meaningful words (excluding stopwords)
+        stopwords = {'a', 'an', 'the', 'and', 'or', 'for', 'to', 'with', 'in', 'on', 'at', 'i', 'am', 'is', 'are', 'can', 'help', 'looking'}
+        keywords_a_looking -= stopwords
+        keywords_b_help -= stopwords
+        keywords_b_looking -= stopwords
+        keywords_a_help -= stopwords
+
+        if keywords_a_looking & keywords_b_help or keywords_b_looking & keywords_a_help:
+            value_exchange = True
+            score += 0.4  # Strong signal
+
+        # If both have looking_for and can_help_with filled, that's good
+        if (looking_a and help_a) or (looking_b and help_b):
+            score += 0.1
+
+        # SECONDARY: interests overlap
         interests_a = set(user_a.interests or [])
         interests_b = set(user_b.interests or [])
+        common_interests = interests_a & interests_b
+        score += min(len(common_interests) * 0.1, 0.3)
+
+        # TERTIARY: goals overlap
         goals_a = set(user_a.goals or [])
         goals_b = set(user_b.goals or [])
-
-        common_interests = interests_a & interests_b
         common_goals = goals_a & goals_b
-
-        # Weights: interests = 0.15 each (max 0.5), goals = 0.2 each (max 0.5)
-        interest_score = min(len(common_interests) * 0.15, 0.5)
-        goal_score = min(len(common_goals) * 0.2, 0.5)
+        score += min(len(common_goals) * 0.1, 0.2)
 
         # City bonus
-        city_bonus = 0.1 if user_a.city_current == user_b.city_current else 0
+        if user_a.city_current and user_b.city_current and user_a.city_current == user_b.city_current:
+            score += 0.1
 
-        return min(interest_score + goal_score + city_bonus, 1.0)
+        return min(score, 1.0)
 
     async def analyze_pair(
         self,
