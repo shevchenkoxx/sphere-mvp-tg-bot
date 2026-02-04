@@ -193,8 +193,11 @@ def detect_lang_callback(callback: CallbackQuery) -> str:
 
 
 @router.callback_query(F.data == "back_to_menu")
-async def back_to_menu(callback: CallbackQuery):
+async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""
+    # Clear any active FSM state
+    await state.clear()
+
     lang = detect_lang_callback(callback)
     text = "What would you like to do?" if lang == "en" else "Что делаем?"
     await callback.message.edit_text(
