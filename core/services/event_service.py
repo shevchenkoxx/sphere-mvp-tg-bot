@@ -2,6 +2,7 @@
 Event service - business logic for event operations.
 """
 
+import logging
 import random
 import string
 from typing import Optional, List
@@ -9,6 +10,8 @@ from uuid import UUID
 from core.domain.models import Event, EventCreate, User, MessagePlatform
 from core.domain.constants import EVENT_CODE_LENGTH
 from core.interfaces.repositories import IEventRepository, IUserRepository
+
+logger = logging.getLogger(__name__)
 
 
 class EventService:
@@ -58,9 +61,13 @@ class EventService:
         Join user to event.
         Returns: (success, message, event)
         """
+        logger.info(f"[EVENT_SERVICE] join_event called with code='{event_code}', platform={platform}, user={platform_user_id}")
+
         # Get event
         event = await self.event_repo.get_by_code(event_code)
+        logger.info(f"[EVENT_SERVICE] get_by_code result: {event}")
         if not event:
+            logger.warning(f"[EVENT_SERVICE] Event not found for code '{event_code}'")
             return False, "Event not found or ended", None
 
         # Get user
