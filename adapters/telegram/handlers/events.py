@@ -5,7 +5,7 @@ Events handler - event creation and joining.
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 
 from core.domain.models import MessagePlatform
@@ -38,7 +38,7 @@ def detect_lang_message(message: Message) -> str:
 
 # === JOIN EVENT BY CODE ===
 
-@router.callback_query(F.data == "enter_event_code")
+@router.callback_query(StateFilter("*"), F.data == "enter_event_code")
 async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
     """Start entering event code"""
     logger.info(f"[EVENTS] enter_event_code_start triggered for user {callback.from_user.id}")
