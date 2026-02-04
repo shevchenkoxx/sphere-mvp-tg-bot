@@ -2,9 +2,12 @@
 Supabase implementation of Event repository.
 """
 
+import logging
 import random
 import string
 from typing import Optional, List
+
+logger = logging.getLogger(__name__)
 from uuid import UUID
 from core.domain.models import Event, EventCreate, User, MessagePlatform
 from core.domain.constants import EVENT_CODE_LENGTH
@@ -50,10 +53,12 @@ class SupabaseEventRepository(IEventRepository):
 
     @run_sync
     def _get_by_code_sync(self, code: str) -> Optional[dict]:
+        logger.info(f"[EVENT_REPO] Looking for event with code: '{code}'")
         response = supabase.table("events").select("*")\
             .eq("code", code)\
             .eq("is_active", True)\
             .execute()
+        logger.info(f"[EVENT_REPO] Response data: {response.data}")
         return response.data[0] if response.data else None
 
     async def get_by_code(self, code: str) -> Optional[Event]:
