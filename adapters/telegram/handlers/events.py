@@ -67,9 +67,9 @@ async def enter_event_code_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(EventStates.waiting_event_code, F.text)
+@router.message(EventStates.waiting_event_code, F.text, ~F.text.startswith("/"))
 async def process_event_code(message: Message, state: FSMContext):
-    """Process entered event code"""
+    """Process entered event code (ignore commands)"""
     logger.info(f"[EVENTS] process_event_code triggered for user {message.from_user.id}, text: {message.text}")
 
     current_state = await state.get_state()
@@ -77,6 +77,15 @@ async def process_event_code(message: Message, state: FSMContext):
 
     data = await state.get_data()
     lang = data.get("lang", detect_lang_message(message))
+
+    # Check for cancel
+    if message.text.strip().lower() in ["cancel", "отмена", "back", "назад"]:
+        await state.clear()
+        if lang == "ru":
+            await message.answer("Отменено. Возвращаюсь в меню.", reply_markup=get_main_menu_keyboard(lang))
+        else:
+            await message.answer("Cancelled. Back to menu.", reply_markup=get_main_menu_keyboard(lang))
+        return
 
     event_code = message.text.strip().upper()
     logger.info(f"[EVENTS] Processing event code: {event_code}")
