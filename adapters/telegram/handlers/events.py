@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="events")
 
-# Debug: Log when module is loaded
-logger.info("[EVENTS] Router initialized")
-
 
 def detect_lang_callback(callback: CallbackQuery) -> str:
     """Detect language from callback user settings."""
