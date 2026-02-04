@@ -29,6 +29,9 @@ from adapters.telegram.keyboards.inline import (
     get_connection_mode_keyboard,
     get_adaptive_buttons_keyboard,
     get_skip_personalization_keyboard,
+    # Matches photo & feedback
+    get_matches_photo_keyboard,
+    get_feedback_keyboard,
 )
 
 __all__ = [
@@ -62,4 +65,7 @@ __all__ = [
     "get_connection_mode_keyboard",
     "get_adaptive_buttons_keyboard",
     "get_skip_personalization_keyboard",
+    # Matches photo & feedback
+    "get_matches_photo_keyboard",
+    "get_feedback_keyboard",
 ]
