@@ -262,7 +262,7 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
             await message.answer(error_msg, reply_markup=get_main_menu_keyboard(lang))
         return
 
-    # Build partner profile display - clean card style
+    # Build partner profile display - rich card style
     name = partner.display_name or partner.first_name or ("Anonymous" if lang == "en" else "Аноним")
     header = "Match" if lang == "en" else "Матч"
 
@@ -275,15 +275,49 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         text += f"  •  @{partner.username}"
     text += "\n"
 
+    # Profession + Company as subtitle
+    profession = getattr(partner, 'profession', None)
+    company = getattr(partner, 'company', None)
+    if profession or company:
+        subtitle = ""
+        if profession:
+            subtitle += profession
+        if company:
+            subtitle += f" @ {company}" if profession else company
+        text += f"🏢 {subtitle}\n"
+
+    # City + Experience level
+    city = getattr(partner, 'city_current', None)
+    exp_level = getattr(partner, 'experience_level', None)
+    if city or exp_level:
+        location_line = ""
+        if city:
+            location_line += f"📍 {city}"
+        if exp_level:
+            exp_labels = {"junior": "Junior", "mid": "Middle", "senior": "Senior", "founder": "Founder", "executive": "Executive"}
+            exp_display = exp_labels.get(exp_level, exp_level.title())
+            location_line += f"  •  {exp_display}" if city else exp_display
+        text += f"{location_line}\n"
+
     # Bio - main description
     if partner.bio:
-        bio_text = partner.bio[:150] + ('...' if len(partner.bio) > 150 else '')
+        bio_text = partner.bio[:180] + ('...' if len(partner.bio) > 180 else '')
         text += f"\n{bio_text}\n"
 
-    # Interests as hashtags
+    # Interests as hashtags (up to 7)
+    all_hashtags = []
     if partner.interests:
-        hashtags = " ".join([f"#{i}" for i in partner.interests[:5]])
-        text += f"\n{hashtags}\n"
+        all_hashtags.extend([f"#{i}" for i in partner.interests[:7]])
+
+    # Skills as additional hashtags
+    skills = getattr(partner, 'skills', None)
+    if skills:
+        all_hashtags.extend([f"#{s.replace(' ', '_')}" for s in skills[:5]])
+
+    if all_hashtags:
+        # Remove duplicates and limit
+        unique_hashtags = list(dict.fromkeys(all_hashtags))[:10]
+        text += f"\n{' '.join(unique_hashtags)}\n"
 
     # Divider
     text += "\n" + "─" * 20 + "\n"
@@ -291,14 +325,30 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     # Looking for
     if partner.looking_for:
         label = "🔍 Looking for" if lang == "en" else "🔍 Ищет"
-        looking_text = partner.looking_for[:100] + ('...' if len(partner.looking_for) > 100 else '')
+        looking_text = partner.looking_for[:120] + ('...' if len(partner.looking_for) > 120 else '')
         text += f"\n<b>{label}</b>\n{looking_text}\n"
 
     # Can help with
     if partner.can_help_with:
         label = "💡 Can help with" if lang == "en" else "💡 Может помочь"
-        help_text = partner.can_help_with[:100] + ('...' if len(partner.can_help_with) > 100 else '')
+        help_text = partner.can_help_with[:120] + ('...' if len(partner.can_help_with) > 120 else '')
         text += f"\n<b>{label}</b>\n{help_text}\n"
+
+    # Goals
+    if partner.goals:
+        goals_labels = {
+            "networking": "🤝 Networking",
+            "cofounders": "👥 Co-founders",
+            "mentorship": "🎓 Mentorship",
+            "business": "💼 Business",
+            "friends": "👋 Friends",
+            "creative": "🎨 Creative",
+            "learning": "📚 Learning",
+            "hiring": "💼 Hiring",
+            "investing": "💰 Investing"
+        }
+        goals_display = " ".join([goals_labels.get(g, g) for g in partner.goals[:4]])
+        text += f"\n🎯 {goals_display}\n"
 
     # Divider before match insights
     text += "\n" + "─" * 20 + "\n"
