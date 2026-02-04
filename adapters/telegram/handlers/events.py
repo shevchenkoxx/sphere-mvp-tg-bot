@@ -98,11 +98,11 @@ async def process_event_code(message: Message, state: FSMContext):
     )
 
     if success and event:
-        # Update current_event_id
+        # Update current_event_id (convert UUID to string for JSON serialization)
         await user_service.update_user(
             MessagePlatform.TELEGRAM,
             str(message.from_user.id),
-            current_event_id=event.id
+            current_event_id=str(event.id)
         )
 
         if lang == "ru":
