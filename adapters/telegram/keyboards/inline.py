@@ -153,7 +153,7 @@ def get_match_keyboard(
     total_matches: int = 1,
     lang: str = "en"
 ) -> InlineKeyboardMarkup:
-    """Match action keyboard with pagination"""
+    """Match action keyboard with pagination and feedback"""
     builder = InlineKeyboardBuilder()
 
     # Row 1: Action buttons (Chat + Profile)
@@ -164,8 +164,15 @@ def get_match_keyboard(
     builder.adjust(2)
 
     # Row 2: AI Speed Dating button
-    speed_text = "AI Speed Dating" if lang == "en" else "AI Знакомство"
+    speed_text = "⚡ AI Speed Dating" if lang == "en" else "⚡ AI Знакомство"
     builder.row(InlineKeyboardButton(text=speed_text, callback_data=f"speed_dating_{match_id}"))
+
+    # Row 3: Feedback buttons
+    feedback_label = "Match quality:" if lang == "en" else "Качество матча:"
+    builder.row(
+        InlineKeyboardButton(text=f"{feedback_label} 👍", callback_data=f"feedback_good_{match_id}"),
+        InlineKeyboardButton(text="👎", callback_data=f"feedback_bad_{match_id}")
+    )
 
     # Pagination buttons (if more than 1 match)
     if total_matches > 1:
@@ -466,6 +473,33 @@ def get_skip_personalization_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     text = "⏩ Skip" if lang == "en" else "⏩ Пропустить"
     builder.button(text=text, callback_data="skip_personalization_step")
+    return builder.as_markup()
+
+
+# === MATCHES PHOTO REQUEST ===
+
+def get_matches_photo_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for photo request when opening matches"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="⏩ Позже", callback_data="skip_matches_photo")
+    else:
+        builder.button(text="⏩ Later", callback_data="skip_matches_photo")
+    return builder.as_markup()
+
+
+# === FEEDBACK ===
+
+def get_feedback_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for match feedback"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="👍", callback_data=f"feedback_good_{match_id}")
+        builder.button(text="👎", callback_data=f"feedback_bad_{match_id}")
+    else:
+        builder.button(text="👍", callback_data=f"feedback_good_{match_id}")
+        builder.button(text="👎", callback_data=f"feedback_bad_{match_id}")
+    builder.adjust(2)
     return builder.as_markup()
 
 

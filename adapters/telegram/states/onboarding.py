@@ -45,3 +45,8 @@ class PersonalizationStates(StatesGroup):
     choosing_connection_mode = State()  # Step 2: receive_help / give_help / exchange
     choosing_adaptive_option = State()  # Step 3: LLM-generated personalized buttons
     waiting_ideal_connection = State()  # Step 4: Open-ended "Опиши идеального человека"
+
+
+class MatchesPhotoStates(StatesGroup):
+    """FSM states for photo request in matches flow"""
+    waiting_photo = State()  # Waiting for selfie when user opens matches without photo

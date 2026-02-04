@@ -367,13 +367,9 @@ async def complete_conversational_onboarding(
             user_id
         )
 
-        if success and event:
-            # Save current_event_id to user profile
-            await user_service.update_user(
-                MessagePlatform.TELEGRAM,
-                user_id,
-                current_event_id=event.id
-            )
+        # Note: event_service.join_event() already updates current_event_id
+        # No need to update again here
+        pass
 
     # Save event info for after selfie
     await state.update_data(

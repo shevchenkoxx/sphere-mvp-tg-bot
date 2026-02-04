@@ -5,6 +5,7 @@ Matches handler - viewing and interacting with matches.
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 
 from core.domain.models import MessagePlatform, MatchStatus
 from core.domain.constants import get_interest_display, get_goal_display
@@ -20,9 +21,14 @@ from adapters.telegram.keyboards import (
     get_profile_view_keyboard,
     get_matches_menu_keyboard,
     get_speed_dating_result_keyboard,
+    get_matches_photo_keyboard,
+    get_feedback_keyboard,
 )
+from adapters.telegram.states.onboarding import MatchesPhotoStates
 from config.features import Features
+import logging
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 
@@ -162,7 +168,7 @@ async def show_new_matches(message: Message, matches: list, event_name: str, lan
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
-async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None):
+async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None, state: FSMContext = None):
     """Show user's matches via callback, optionally filtered by event"""
     lang = detect_lang(callback)
 
@@ -174,6 +180,32 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
     if not user:
         msg = "Profile not found" if lang == "en" else "Профиль не найден"
         await callback.answer(msg, show_alert=True)
+        return
+
+    # Check if user has no photo - ask for one before showing matches
+    if not user.photo_url and state:
+        # Store context for after photo
+        await state.update_data(
+            matches_index=index,
+            matches_event_id=str(event_id) if event_id else None
+        )
+        await state.set_state(MatchesPhotoStates.waiting_photo)
+
+        if lang == "ru":
+            text = (
+                "📸 <b>Добавь фото!</b>\n\n"
+                "Твои матчи смогут легко найти тебя на ивенте.\n"
+                "Отправь своё фото или нажми 'Позже'."
+            )
+        else:
+            text = (
+                "📸 <b>Add your photo!</b>\n\n"
+                "Your matches will be able to easily find you at the event.\n"
+                "Send your photo or tap 'Later'."
+            )
+
+        await callback.message.edit_text(text, reply_markup=get_matches_photo_keyboard(lang))
+        await callback.answer()
         return
 
     await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
@@ -584,6 +616,139 @@ async def speed_dating_preview(callback: CallbackQuery):
             f"❌ {error_text}",
             reply_markup=get_speed_dating_result_keyboard(match_id, lang)
         )
+
+
+# === PHOTO REQUEST IN MATCHES ===
+
+@router.message(MatchesPhotoStates.waiting_photo, F.photo)
+async def handle_matches_photo(message: Message, state: FSMContext):
+    """Handle photo upload when opening matches"""
+    lang = detect_lang(message)
+    user_id = str(message.from_user.id)
+
+    try:
+        # Get the largest photo
+        photo = message.photo[-1]
+
+        # Save photo URL
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            user_id,
+            photo_url=photo.file_id
+        )
+
+        if lang == "ru":
+            await message.answer("✅ Фото сохранено!")
+        else:
+            await message.answer("✅ Photo saved!")
+
+    except Exception as e:
+        logger.error(f"Failed to save photo for user {user_id}: {e}")
+
+    # Continue to show matches
+    data = await state.get_data()
+    await state.clear()
+
+    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+    index = data.get("matches_index", 0)
+    event_id = data.get("matches_event_id")
+
+    await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id)
+
+
+@router.callback_query(F.data == "skip_matches_photo")
+async def skip_matches_photo(callback: CallbackQuery, state: FSMContext):
+    """Skip photo and show matches"""
+    lang = detect_lang(callback)
+    await callback.answer()
+
+    data = await state.get_data()
+    await state.clear()
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    index = data.get("matches_index", 0)
+    event_id = data.get("matches_event_id")
+
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
+
+
+@router.message(MatchesPhotoStates.waiting_photo, F.text)
+async def handle_matches_photo_text(message: Message, state: FSMContext):
+    """Handle text when expecting photo"""
+    lang = detect_lang(message)
+
+    text_lower = message.text.lower()
+    if text_lower in ["skip", "пропуск", "позже", "later", "нет", "no"]:
+        # Skip photo
+        data = await state.get_data()
+        await state.clear()
+
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id)
+        )
+
+        index = data.get("matches_index", 0)
+        event_id = data.get("matches_event_id")
+
+        await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id)
+    else:
+        if lang == "ru":
+            await message.answer("📸 Отправь фото или напиши 'позже'")
+        else:
+            await message.answer("📸 Send a photo or type 'later'")
+
+
+# === FEEDBACK ===
+
+@router.callback_query(F.data.startswith("feedback_"))
+async def handle_feedback(callback: CallbackQuery):
+    """Handle match feedback (good/bad) - saves to database"""
+    from infrastructure.database.supabase_client import supabase
+
+    lang = detect_lang(callback)
+
+    # Parse callback: feedback_good_{match_id} or feedback_bad_{match_id}
+    parts = callback.data.split("_")
+    feedback_type = parts[1]  # "good" or "bad"
+    match_id = "_".join(parts[2:])  # match UUID
+
+    # Get user
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user:
+        await callback.answer("Error", show_alert=True)
+        return
+
+    try:
+        # Save feedback to database (upsert - update if exists)
+        supabase.table("match_feedback").upsert({
+            "match_id": match_id,
+            "user_id": str(user.id),
+            "feedback_type": feedback_type
+        }, on_conflict="match_id,user_id").execute()
+
+        logger.info(f"Feedback saved: user={user.id}, match={match_id}, type={feedback_type}")
+
+        if feedback_type == "good":
+            msg = "Thanks! 👍" if lang == "en" else "Спасибо! 👍"
+        else:
+            msg = "Got it, will improve! 👎" if lang == "en" else "Понял, улучшим! 👎"
+
+        await callback.answer(msg)
+
+    except Exception as e:
+        logger.error(f"Feedback save error: {e}")
+        # Still show confirmation to user even if DB fails
+        msg = "Thanks for feedback!" if lang == "en" else "Спасибо за отзыв!"
+        await callback.answer(msg)
 
 
 # === NOTIFICATIONS ===

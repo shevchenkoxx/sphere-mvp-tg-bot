@@ -108,7 +108,7 @@ class SpeedDatingService:
         else:
             lang_instruction = "Write the conversation in English. Keep it casual and friendly."
 
-        prompt = f"""Simulate a networking conversation between two people who just met at {context}.
+        prompt = f"""Simulate a fast-paced networking conversation between two people at {context}.
 
 === PERSON A ===
 {persona_a}
@@ -116,14 +116,19 @@ class SpeedDatingService:
 === PERSON B ===
 {persona_b}
 
-Generate exactly 5 exchanges (10 messages total). Rules:
-1. Natural opener based on shared context or interests
-2. Find genuine connection points from their profiles
-3. Explore potential collaboration or shared interests
-4. Keep each message 1-2 sentences, natural and conversational
-5. Be authentic - show personality, not everyone clicks perfectly
-6. End on a positive note suggesting future connection
-7. {lang_instruction}
+Generate exactly 5 exchanges (10 messages total). CRITICAL RULES:
+1. SKIP small talk - immediately dive into VALUE EXCHANGE in the first 2 messages
+2. First message: Direct opener about potential collaboration/help/shared interest
+3. By message 2-3: Already discussing concrete ways to help each other or collaborate
+4. Messages 4-6: Specific project/idea/opportunity they could work on together
+5. Messages 7-10: Making concrete plans (exchange contacts, schedule call, share resources)
+6. Keep each message SHORT (1 sentence max) - people are busy
+7. Be direct and action-oriented - no fluff or pleasantries
+8. End with CONCRETE next step (not vague "let's stay in touch")
+9. {lang_instruction}
+
+BAD: "Hi, nice to meet you. What brings you here?"
+GOOD: "You're into AI? I have a problem you could help with."
 
 Format (exactly like this, no extra text):
 {name_a}: [message]

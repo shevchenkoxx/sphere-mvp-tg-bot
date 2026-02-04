@@ -141,53 +141,62 @@ Language: same as bio text."""
             if ideal_b:
                 personalization_context += f"B's ideal connection description: {ideal_b[:150]}\n"
 
-        prompt = f"""Analyze compatibility between two people for networking.
+        prompt = f"""Analyze compatibility between two people for networking at an event.
 
-CRITICAL: Base your analysis ONLY on what users ACTUALLY stated. Do NOT invent or assume interests/skills not mentioned.
+CRITICAL: Base analysis ONLY on what users ACTUALLY stated. Do NOT invent or assume.
 
 === PERSON A: {name_a} ===
-Bio (their words): {bio_a or 'Not provided'}
+Bio: {bio_a or 'Not provided'}
 Profession: {profession_a or 'Not specified'}
 Company: {company_a or 'Not specified'}
-Skills: {', '.join(skills_a) if skills_a else 'None listed'}
+Skills: {', '.join(skills_a) if skills_a else 'None'}
 Looking for: {looking_for_a or 'Not specified'}
 Can help with: {can_help_a or 'Not specified'}
-Interests: {', '.join(interests_a) if interests_a else 'None listed'}
+Interests: {', '.join(interests_a) if interests_a else 'None'}
 {f'Current passion: {passion_a[:150]}' if passion_a else ''}
 
 === PERSON B: {name_b} ===
-Bio (their words): {bio_b or 'Not provided'}
+Bio: {bio_b or 'Not provided'}
 Profession: {profession_b or 'Not specified'}
 Company: {company_b or 'Not specified'}
-Skills: {', '.join(skills_b) if skills_b else 'None listed'}
+Skills: {', '.join(skills_b) if skills_b else 'None'}
 Looking for: {looking_for_b or 'Not specified'}
 Can help with: {can_help_b or 'Not specified'}
-Interests: {', '.join(interests_b) if interests_b else 'None listed'}
+Interests: {', '.join(interests_b) if interests_b else 'None'}
 {f'Current passion: {passion_b[:150]}' if passion_b else ''}
 {personalization_context}
-{f'Event context: "{event_context}"' if event_context else ''}
+{f'Event: "{event_context}"' if event_context else ''}
 
-MATCHING RULES:
-1. PRIMARY: Match "can_help_with" of one person to "looking_for" of another (mutual value exchange)
-2. COMPLEMENTARY MODES: If one has give_help and other has receive_help, this is a STRONG signal
-3. THEME OVERLAP: If passion_themes overlap, this indicates current alignment
-4. IDEAL MATCH: If one person's profile matches other's "ideal_connection" description, note this
-5. SECONDARY: Shared interests ONLY if explicitly listed by BOTH users
-6. Use ONLY information explicitly stated in bio/looking_for/can_help_with
-7. If data is sparse, focus on general networking potential at the event
+SCORING CRITERIA (in order of importance):
+1. VALUE EXCHANGE (0.4 weight): Does A's "can_help" match B's "looking_for" or vice versa?
+   - Direct match: +0.4 | Partial: +0.2 | None: 0
+2. PROFESSIONAL SYNERGY (0.3 weight): Could they collaborate based on profession/skills?
+   - Same industry + complementary skills: +0.3 | Same industry: +0.15 | None: 0
+3. INTERESTS OVERLAP (0.2 weight): Shared explicit interests?
+   - 2+ shared: +0.2 | 1 shared: +0.1 | None: 0
+4. GOALS ALIGNMENT (0.1 weight): Similar networking goals?
+   - Both looking for same type of connection: +0.1
 
-LANGUAGE: Write explanation and icebreaker in {lang_instruction}.
+ONLY MATCH IF:
+- There is at least ONE concrete reason they should meet
+- Score >= 0.5 means they have real potential value for each other
+- Score < 0.4 = don't waste their time
+
+LANGUAGE: {lang_instruction}
 
 Return JSON:
 {{
   "compatibility_score": 0.0-1.0,
-  "match_type": "friendship" | "professional" | "creative" | "romantic",
-  "explanation": "2-3 sentences in {lang_instruction} about why they could benefit from meeting. Reference ONLY what they actually stated. Do NOT use names.",
-  "icebreaker": "One conversation starter in {lang_instruction} based on their actual shared interests or complementary needs"
+  "match_type": "professional" | "friendship" | "creative" | "romantic",
+  "explanation": "1-2 sentences in {lang_instruction}. Be SPECIFIC about WHY they should meet. Example: 'Ты ищешь инвестора, а он работает в фонде' NOT 'У вас общие интересы'",
+  "icebreaker": "Direct actionable opener in {lang_instruction}. Example: 'Расскажи про свой стартап - могу помочь с фандрейзингом'"
 }}
 
-IMPORTANT: If someone's bio mentions 'AI' but NOT 'crypto', do NOT mention crypto in explanation.
-Respond with valid JSON only, no markdown."""
+IMPORTANT:
+- Be SPECIFIC in explanation - mention actual skills/needs
+- Icebreaker should be ACTION-oriented, not small talk
+- Score honestly - bad matches hurt user trust
+Respond with valid JSON only."""
 
         try:
             response = await self.client.chat.completions.create(

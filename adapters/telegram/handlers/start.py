@@ -329,7 +329,7 @@ async def show_events(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "my_matches")
-async def show_matches(callback: CallbackQuery):
+async def show_matches(callback: CallbackQuery, state: FSMContext):
     """Show matches based on current matching_mode (event or city)"""
     from adapters.telegram.handlers.matches import list_matches_callback
     from adapters.telegram.handlers.sphere_city import show_city_matches
@@ -360,7 +360,7 @@ async def show_matches(callback: CallbackQuery):
     else:
         # Show event matches (default)
         if user.current_event_id:
-            await list_matches_callback(callback, event_id=user.current_event_id)
+            await list_matches_callback(callback, event_id=user.current_event_id, state=state)
         else:
             # No event - suggest joining one
             if lang == "ru":

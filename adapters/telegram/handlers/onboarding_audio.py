@@ -867,38 +867,19 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
             MessagePlatform.TELEGRAM,
             user_id
         )
+        # Note: event_service.join_event() already updates current_event_id
+        # No need to update again here
 
-        if success and event:
-            # Save current_event_id to user profile
-            from uuid import UUID
-            await user_service.update_user(
-                MessagePlatform.TELEGRAM,
-                user_id,
-                current_event_id=event.id
-            )
-
-    # Ask for selfie before personalization
+    # Save event context for personalization
     await state.update_data(
         pending_event=pending_event,
         event_id=str(event.id) if event else None,
         event_name=event.name if event else None
     )
 
-    if lang == "ru":
-        selfie_text = (
-            "📸 <b>Почти готово!</b>\n\n"
-            "Отправь своё фото, чтобы твои матчи могли легко найти тебя на ивенте.\n\n"
-            "<i>Это поможет быстрее узнать друг друга в толпе!</i>"
-        )
-    else:
-        selfie_text = (
-            "📸 <b>Almost there!</b>\n\n"
-            "Send a photo of yourself so your matches can easily find you at the event.\n\n"
-            "<i>This helps you recognize each other in the crowd!</i>"
-        )
-
-    await message.answer(selfie_text, reply_markup=get_selfie_keyboard(lang))
-    await state.set_state(AudioOnboarding.waiting_selfie)
+    # Skip selfie request during onboarding - will ask when user opens Matches tab
+    # Go directly to personalization flow
+    await finish_onboarding_after_selfie(message, state)
 
 
 async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
