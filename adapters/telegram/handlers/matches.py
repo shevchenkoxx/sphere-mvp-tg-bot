@@ -259,20 +259,31 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         if lang == "ru":
             text = (
                 "<b>💫 Твои матчи</b>\n\n"
-                "Пока нет активных матчей.\n"
-                "Подожди, пока больше людей присоединится к ивенту!"
+                "Пока нет подходящих матчей.\n\n"
+                "💡 <b>Совет:</b> Добавь больше информации о себе — "
+                "чем ищешь, чем можешь помочь. Это поможет найти релевантных людей!"
             )
         else:
             text = (
                 "<b>💫 Your Matches</b>\n\n"
-                "No matches found yet.\n"
-                "Wait for more people to join the event!"
+                "No matches found yet.\n\n"
+                "💡 <b>Tip:</b> Add more details about yourself — "
+                "what you're looking for, how you can help. This helps find better matches!"
             )
 
+        # Create keyboard with "Add more info" button
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        btn_text = "✏️ Add more info" if lang == "en" else "✏️ Добавить инфо"
+        builder.button(text=btn_text, callback_data="edit_profile")
+        builder.button(text="🔄 Try again", callback_data="retry_matching")
+        builder.button(text="◀️ Menu" if lang == "en" else "◀️ Меню", callback_data="back_to_menu")
+        builder.adjust(1)
+
         if edit:
-            await message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+            await message.edit_text(text, reply_markup=builder.as_markup())
         else:
-            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+            await message.answer(text, reply_markup=builder.as_markup())
         return
 
     # Ensure index is valid
@@ -572,6 +583,55 @@ async def view_match_profile(callback: CallbackQuery):
 async def back_to_matches(callback: CallbackQuery):
     """Go back to matches list"""
     await list_matches_callback(callback)
+
+
+@router.callback_query(F.data == "retry_matching")
+async def retry_matching(callback: CallbackQuery):
+    """Retry finding matches"""
+    lang = detect_lang(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user or not user.current_event_id:
+        msg = "Join an event first!" if lang == "en" else "Сначала присоединись к ивенту!"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    # Show loading
+    await callback.message.edit_text(
+        "🔄 Searching for matches..." if lang == "en" else "🔄 Ищу матчи..."
+    )
+
+    try:
+        from config.features import Features
+
+        if user.profile_embedding:
+            matches = await matching_service.find_matches_vector(
+                user=user,
+                event_id=user.current_event_id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
+        else:
+            matches = await matching_service.find_and_create_matches_for_user(
+                user=user,
+                event_id=user.current_event_id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
+
+        # Show results
+        await show_matches(callback.message, user.id, lang=lang, edit=True)
+
+    except Exception as e:
+        logger.error(f"Retry matching failed: {e}")
+        await callback.message.edit_text(
+            f"Error: {str(e)[:100]}" if lang == "en" else f"Ошибка: {str(e)[:100]}",
+            reply_markup=get_back_to_menu_keyboard(lang)
+        )
+
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("match_prev_"))
