@@ -216,18 +216,57 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     if event_id:
         matches = [m for m in matches if m.event_id == event_id]
 
+    # If no matches, try to create them automatically
+    if not matches:
+        user = await user_service.get_user(user_id)
+
+        # Check if user is in an event
+        if user and user.current_event_id:
+            # Show loading message
+            loading_text = "🔄 Finding your matches..." if lang == "en" else "🔄 Ищу матчи для тебя..."
+            if edit:
+                await message.edit_text(loading_text)
+            else:
+                status_msg = await message.answer(loading_text)
+
+            try:
+                # Run matching for this user
+                from config.features import Features
+
+                if user.profile_embedding:
+                    new_matches = await matching_service.find_matches_vector(
+                        user=user,
+                        event_id=user.current_event_id,
+                        limit=Features.SHOW_TOP_MATCHES
+                    )
+                else:
+                    new_matches = await matching_service.find_and_create_matches_for_user(
+                        user=user,
+                        event_id=user.current_event_id,
+                        limit=Features.SHOW_TOP_MATCHES
+                    )
+
+                # Re-fetch matches from DB
+                matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
+                if event_id:
+                    matches = [m for m in matches if m.event_id == event_id]
+
+            except Exception as e:
+                logger.error(f"Auto-matching failed for user {user_id}: {e}")
+
+    # Still no matches after trying
     if not matches:
         if lang == "ru":
             text = (
                 "<b>💫 Твои матчи</b>\n\n"
                 "Пока нет активных матчей.\n"
-                "Присоединяйся к ивентам, чтобы найти интересных людей!"
+                "Подожди, пока больше людей присоединится к ивенту!"
             )
         else:
             text = (
                 "<b>💫 Your Matches</b>\n\n"
-                "No active matches yet.\n"
-                "Join events to find interesting people!"
+                "No matches found yet.\n"
+                "Wait for more people to join the event!"
             )
 
         if edit:

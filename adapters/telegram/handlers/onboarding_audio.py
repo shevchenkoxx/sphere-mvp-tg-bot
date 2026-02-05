@@ -827,9 +827,10 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
             ai_summary=summary
         )
 
-        # Generate vector embeddings in background (non-blocking)
-        async def generate_embeddings_background(user_obj):
+        # Generate vector embeddings and run matching in background (non-blocking)
+        async def generate_embeddings_and_match(user_obj, event_code):
             try:
+                # Step 1: Generate embeddings
                 result = await embedding_service.generate_embeddings(user_obj)
                 if result:
                     profile_emb, interests_emb, expertise_emb = result
@@ -841,6 +842,21 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                         expertise_embedding=expertise_emb
                     )
                     logger.info(f"Generated embeddings for user {user_obj.id}")
+
+                    # Step 2: Run matching if user is in an event
+                    if event_code:
+                        try:
+                            # Re-fetch user with embeddings
+                            updated_user = await user_repo.get_by_id(user_obj.id)
+                            if updated_user and updated_user.current_event_id:
+                                matches = await matching_service.find_matches_vector(
+                                    user=updated_user,
+                                    event_id=updated_user.current_event_id,
+                                    limit=5
+                                )
+                                logger.info(f"Auto-created {len(matches) if matches else 0} matches for user {user_obj.id}")
+                        except Exception as me:
+                            logger.error(f"Background matching failed for user {user_obj.id}: {me}")
                 else:
                     logger.warning(f"Embeddings returned None for user {user_obj.id}")
             except Exception as e:
@@ -848,7 +864,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
         # Fire and forget - don't block the flow
         import asyncio
-        asyncio.create_task(generate_embeddings_background(user))
+        pending_event_code = data.get("pending_event")
+        asyncio.create_task(generate_embeddings_and_match(user, pending_event_code))
 
     # Handle event join
     pending_event = data.get("pending_event")
