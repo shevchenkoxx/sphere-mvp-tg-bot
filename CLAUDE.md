@@ -42,8 +42,9 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - Test event: `TEST2024`
 - Reset profile: `/reset` in bot (needs DEBUG=true or admin)
 - Find matches: `/find_matches` - manually trigger AI matching
+- Demo mode: `/demo` - interactive walkthrough of all features
 
-### Admin Commands (NEW)
+### Admin Commands
 - `/stats [event_code]` - Event statistics (participants, matches, feedback)
 - `/participants [event_code]` - List participants with details
 - `/broadcast <text>` - Send message to all event participants

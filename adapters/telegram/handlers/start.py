@@ -140,7 +140,8 @@ async def help_command(message: Message):
             "📱 Сканируй QR → получай матчи → общайся\n\n"
             "/start — начать\n"
             "/menu — меню\n"
-            "/reset — сбросить профиль (тест)"
+            "/demo — интерактивный тур\n"
+            "/reset — сбросить профиль"
         )
     else:
         text = (
@@ -148,7 +149,8 @@ async def help_command(message: Message):
             "📱 Scan QR → get matches → connect\n\n"
             "/start — start\n"
             "/menu — menu\n"
-            "/reset — reset profile (test)"
+            "/demo — interactive walkthrough\n"
+            "/reset — reset profile"
         )
     await message.answer(text)
 
@@ -181,6 +183,167 @@ async def reset_command(message: Message, state: FSMContext):
     else:
         text = "🔄 Profile fully reset!\n\nAll data cleared. Type /start to begin again."
     await message.answer(text)
+
+
+@router.message(Command("demo"))
+async def demo_command(message: Message):
+    """
+    Interactive demo - walks through all bot features automatically.
+    Great for presentations and onboarding new users.
+    """
+    import asyncio
+
+    # Demo data
+    demo_profile = {
+        "name": "Alex Chen",
+        "profession": "Product Manager",
+        "company": "TechStartup",
+        "bio": "Building AI products. Previously at Google. Angel investor in 5 startups.",
+        "looking_for": "Technical co-founders, AI engineers, investors",
+        "can_help": "Product strategy, fundraising, GTM",
+        "interests": ["AI", "Startups", "Web3", "Investing"],
+    }
+
+    demo_match = {
+        "name": "Maria Kim",
+        "profession": "ML Engineer",
+        "company": "OpenAI",
+        "bio": "Building large language models. PhD in NLP. Looking to join early-stage startup.",
+        "score": 0.87,
+        "reason": "Maria is looking for startup opportunities, and Alex needs technical co-founders. Both are passionate about AI.",
+        "icebreaker": "Maria, I see you're interested in startups - I'm looking for a technical co-founder for my AI project. Would love to hear about your work at OpenAI!",
+    }
+
+    # Step 1: Welcome
+    await message.answer(
+        "🎬 <b>SPHERE DEMO</b>\n\n"
+        "Welcome! I'll show you how Sphere works.\n"
+        "This is an interactive walkthrough of all features.\n\n"
+        "<i>Demo starting in 2 seconds...</i>"
+    )
+    await asyncio.sleep(2)
+
+    # Step 2: QR Scan simulation
+    await message.answer(
+        "📱 <b>Step 1: Scan QR at Event</b>\n\n"
+        "At events, you scan a QR code that brings you here.\n"
+        "Each event has a unique code like: <code>POSTSW24</code>\n\n"
+        "The QR contains a deep link:\n"
+        "<code>t.me/Matchd_bot?start=event_POSTSW24</code>"
+    )
+    await asyncio.sleep(3)
+
+    # Step 3: Onboarding
+    await message.answer(
+        "🎤 <b>Step 2: 60-Second Voice Intro</b>\n\n"
+        "New users record a quick voice message telling about themselves:\n"
+        "• Who they are\n"
+        "• What they're looking for\n"
+        "• How they can help others\n\n"
+        "<i>AI extracts structured data from your voice...</i>"
+    )
+    await asyncio.sleep(3)
+
+    # Step 4: Profile created
+    profile_text = f"""✅ <b>Step 3: Profile Created</b>
+
+<b>{demo_profile['name']}</b>
+🏢 {demo_profile['profession']} @ {demo_profile['company']}
+
+{demo_profile['bio']}
+
+<b>🔍 Looking for:</b>
+{demo_profile['looking_for']}
+
+<b>💡 Can help with:</b>
+{demo_profile['can_help']}
+
+#{' #'.join(demo_profile['interests'])}
+
+<i>All extracted automatically from voice!</i>"""
+
+    await message.answer(profile_text)
+    await asyncio.sleep(4)
+
+    # Step 5: Matching
+    await message.answer(
+        "🔄 <b>Step 4: AI Matching</b>\n\n"
+        "Our AI analyzes all participants:\n"
+        "• Vector embeddings for semantic similarity\n"
+        "• GPT-4 for deep compatibility analysis\n"
+        "• Scores based on mutual value exchange\n\n"
+        "<i>Finding your best matches...</i>"
+    )
+    await asyncio.sleep(3)
+
+    # Step 6: Match found
+    match_text = f"""💫 <b>Step 5: Match Found!</b>
+
+<b>{demo_match['name']}</b>  •  @maria_kim
+🏢 {demo_match['profession']} @ {demo_match['company']}
+
+{demo_match['bio']}
+
+#ML #AI #NLP #Startups
+
+────────────────────
+
+<b>✨ Why this match</b>
+<i>{demo_match['reason']}</i>
+
+<b>💬 Start with</b>
+<i>{demo_match['icebreaker']}</i>
+
+<b>Score:</b> {demo_match['score']:.0%} compatibility"""
+
+    await message.answer(match_text)
+    await asyncio.sleep(4)
+
+    # Step 7: Features overview
+    await message.answer(
+        "⚡ <b>Additional Features</b>\n\n"
+        "• <b>AI Speed Dating</b> - Preview a simulated conversation with your match\n"
+        "• <b>Sphere City</b> - Match with people in your city, not just events\n"
+        "• <b>Profile Edit</b> - Update via voice or chat with AI\n"
+        "• <b>Feedback</b> - Rate matches to improve recommendations\n\n"
+        "────────────────────\n\n"
+        "<b>For Organizers:</b>\n"
+        "• Import event info from Luma/websites\n"
+        "• Broadcast messages to participants\n"
+        "• Real-time stats and analytics"
+    )
+    await asyncio.sleep(4)
+
+    # Step 8: CTA
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚀 Try it now!", callback_data="start_real_onboarding")
+    builder.button(text="📋 Main Menu", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    await message.answer(
+        "🎉 <b>That's Sphere!</b>\n\n"
+        "Smart networking powered by AI.\n"
+        "No more awkward \"what do you do?\" - we match you with the right people.\n\n"
+        "Ready to create your profile?",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data == "start_real_onboarding")
+async def start_real_onboarding_from_demo(callback: CallbackQuery, state: FSMContext):
+    """Start real onboarding after demo"""
+    from adapters.telegram.config import ONBOARDING_VERSION
+
+    if ONBOARDING_VERSION == "audio":
+        from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
+        # Create a fake message object from callback
+        await start_audio_onboarding(callback.message, state)
+    else:
+        from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+        await start_conversational_onboarding(callback.message, state)
+
+    await callback.answer()
 
 
 # === MAIN MENU CALLBACKS ===
