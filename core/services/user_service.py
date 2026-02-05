@@ -66,8 +66,17 @@ class UserService:
         platform: MessagePlatform,
         platform_user_id: str
     ) -> Optional[User]:
-        """Full reset of user profile - clears all fields to defaults"""
-        # Use raw update to set fields including NULL for current_event_id
+        """Full reset of user profile - clears all fields and event participations"""
+        # First, remove user from all events
+        user = await self.user_repo.get_by_platform_id(platform, platform_user_id)
+        if user:
+            from infrastructure.database.supabase_client import supabase
+            # Delete from event_participants
+            supabase.table("event_participants").delete().eq("user_id", str(user.id)).execute()
+            # Delete user's matches
+            supabase.table("matches").delete().or_(f"user_a_id.eq.{user.id},user_b_id.eq.{user.id}").execute()
+
+        # Reset profile fields
         reset_data = {
             "display_name": None,
             "first_name": None,
@@ -79,7 +88,14 @@ class UserService:
             "ai_summary": None,
             "photo_url": None,
             "current_event_id": None,
-            "onboarding_completed": False
+            "city_current": None,
+            "profession": None,
+            "company": None,
+            "skills": [],
+            "onboarding_completed": False,
+            "profile_embedding": None,
+            "interests_embedding": None,
+            "expertise_embedding": None,
         }
         return await self.user_repo.reset_profile(platform, platform_user_id, reset_data)
 
