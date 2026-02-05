@@ -43,6 +43,12 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - Reset profile: `/reset` in bot (needs DEBUG=true or admin)
 - Find matches: `/find_matches` - manually trigger AI matching
 
+### Admin Commands (NEW)
+- `/stats [event_code]` - Event statistics (participants, matches, feedback)
+- `/participants [event_code]` - List participants with details
+- `/broadcast <text>` - Send message to all event participants
+- `/event [code]` - Show event info (or list all active events)
+
 ### Auto-Matching (Event Testing)
 - **Script:** `scripts/event_matching_test.py`
 - Runs every 20 min, sends admin TG notifications
@@ -310,17 +316,111 @@ async def finish_onboarding_after_selfie(...):
 
 ### 🟢 Phase 3: Growth
 
-| Feature | Description | Time |
-|---------|-------------|------|
-| Event Discovery | Browse available events | 3h |
-| Event Info System | Schedule, speakers for LLM context | 2h |
-| Use All Embeddings | Update match_candidates() SQL | 2h |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Event Discovery | Browse available events | TODO |
+| **Event Info System** | Schedule, speakers, topics for LLM context | TODO |
+| Use All Embeddings | Update match_candidates() SQL | TODO |
 
 ### 📊 Phase 4: Organizers
 
-| Feature | Description | Time |
-|---------|-------------|------|
-| Analytics Dashboard | Participant count, acceptance rate | 4h |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| **Analytics Dashboard** | Participant count, matches, feedback stats | TODO |
+| Participant Profiles | View individual profiles | TODO |
+| Export CSV | Participant list export | TODO |
+| Per-event Settings | Adjust matching threshold per event | TODO |
+
+---
+
+## Future Feature Plans
+
+### Event Info System (Priority)
+
+**Goal:** Allow organizers to add custom event info that improves matching context.
+
+**Database Changes:**
+```sql
+-- Add to events table or create new table
+ALTER TABLE events ADD COLUMN event_info JSONB DEFAULT '{}';
+
+-- event_info structure:
+{
+  "schedule": [
+    {"time": "10:00", "title": "Opening", "speaker": "John"},
+    {"time": "11:00", "title": "AI Panel", "topics": ["LLM", "agents"]}
+  ],
+  "speakers": [
+    {"name": "John Doe", "bio": "CEO of X", "topics": ["startup", "funding"]}
+  ],
+  "topics": ["AI", "Web3", "Startups"],
+  "networking_focus": "B2B partnerships",
+  "matching_hints": "Focus on co-founder matches"
+}
+```
+
+**Implementation:**
+1. **Admin command:** `/event_info <code>` to set/edit event info
+2. **FSM flow:** Add schedule → Add speakers → Add topics → Confirm
+3. **Matching integration:** Pass `event_info` to `analyze_match()` prompt
+4. **Display:** Show relevant event context in match cards
+
+**Files to modify:**
+- `supabase/migrations/007_event_info.sql` - DB schema
+- `adapters/telegram/handlers/events.py` - Admin FSM for editing
+- `infrastructure/ai/openai_service.py` - Include in matching prompt
+- `adapters/telegram/handlers/matches.py` - Display context
+
+**Matching Prompt Update:**
+```python
+# In analyze_match(), add event context:
+event_context = f"""
+Event: {event_name}
+Focus: {event_info.get('networking_focus', 'General networking')}
+Topics: {', '.join(event_info.get('topics', []))}
+Hint: {event_info.get('matching_hints', '')}
+"""
+```
+
+---
+
+### Analytics Dashboard (Phase 4)
+
+**Goal:** Real-time stats for organizers during events.
+
+**Metrics to track:**
+- Participants count (total, new in last hour)
+- Matches created (total, pending, accepted)
+- Feedback ratio (👍 vs 👎)
+- Most matched participants (top 5)
+- Matching quality score (avg compatibility)
+- Response rate (matches viewed / total)
+
+**Implementation options:**
+1. **In-bot:** `/analytics` command with formatted text
+2. **Web dashboard:** Simple Next.js page with Supabase realtime
+3. **Telegram Mini App:** Native-feeling analytics
+
+**Recommended:** Start with `/analytics` command, then web dashboard.
+
+**Example output:**
+```
+📊 POSTSW24 Analytics (Live)
+
+👥 Participants: 47 (+5 in last hour)
+💫 Matches: 89 total
+   ├ Pending: 34
+   ├ Accepted: 55
+   └ Rate: 62%
+
+⭐ Quality: 0.67 avg score
+📈 Feedback: 23 👍 / 4 👎 (85% positive)
+
+🏆 Top Networkers:
+1. Alex - 8 matches
+2. Maria - 7 matches
+3. John - 6 matches
+```
 | Participant Profiles | View individual profiles | 2h |
 | Export CSV | Participant list export | 2h |
 | Per-event Settings | Adjust matching threshold | 2h |

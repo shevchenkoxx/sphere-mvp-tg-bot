@@ -290,3 +290,242 @@ async def show_event_participants(callback: CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=get_event_actions_keyboard(event_code))
     await callback.answer()
+
+
+# === ADMIN COMMANDS ===
+
+@router.message(Command("stats"))
+async def admin_stats(message: Message):
+    """
+    /stats [event_code] - Show event statistics
+    Without code - shows current user's event
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    # Parse event code from command
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip() if len(parts) > 1 else None
+
+    # If no code provided, get user's current event
+    if not event_code:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            event_code = event.code if event else None
+
+    if not event_code:
+        await message.answer("Usage: /stats EVENT_CODE\nOr join an event first.")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    # Get stats
+    participants = await event_service.get_event_participants(event.id)
+
+    # Get matches count
+    from infrastructure.database.supabase_client import supabase
+    matches_resp = supabase.table("matches").select("id, status").eq("event_id", str(event.id)).execute()
+    matches = matches_resp.data or []
+
+    # Get feedback count
+    feedback_resp = supabase.table("match_feedback").select("feedback_type").execute()
+    all_feedback = feedback_resp.data or []
+    good_feedback = len([f for f in all_feedback if f['feedback_type'] == 'good'])
+    bad_feedback = len([f for f in all_feedback if f['feedback_type'] == 'bad'])
+
+    # Count by status
+    pending = len([m for m in matches if m['status'] == 'pending'])
+    accepted = len([m for m in matches if m['status'] == 'accepted'])
+
+    text = f"""<b>📊 Stats: {event.name}</b>
+
+<b>Participants:</b> {len(participants)}
+<b>Total Matches:</b> {len(matches)}
+├ Pending: {pending}
+└ Accepted: {accepted}
+
+<b>Feedback:</b>
+├ 👍 Good: {good_feedback}
+└ 👎 Bad: {bad_feedback}
+
+<b>Code:</b> <code>{event.code}</code>
+<b>Location:</b> {event.location or 'N/A'}
+<b>Active:</b> {'Yes' if event.is_active else 'No'}"""
+
+    await message.answer(text)
+
+
+@router.message(Command("participants"))
+async def admin_participants(message: Message):
+    """
+    /participants [event_code] - List event participants
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip() if len(parts) > 1 else None
+
+    if not event_code:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            event_code = event.code if event else None
+
+    if not event_code:
+        await message.answer("Usage: /participants EVENT_CODE")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+
+    if not participants:
+        await message.answer(f"No participants in {event.name}")
+        return
+
+    text = f"<b>👥 Participants: {event.name}</b>\n\n"
+    for i, p in enumerate(participants[:30], 1):
+        name = p.display_name or p.first_name or "Anonymous"
+        username = f"@{p.username}" if p.username else ""
+        profession = p.profession or ""
+        city = p.city_current or ""
+
+        line = f"{i}. <b>{name}</b>"
+        if username:
+            line += f" {username}"
+        if profession or city:
+            details = ", ".join(filter(None, [profession, city]))
+            line += f"\n   └ {details}"
+        text += line + "\n"
+
+    if len(participants) > 30:
+        text += f"\n... and {len(participants) - 30} more"
+
+    await message.answer(text)
+
+
+@router.message(Command("broadcast"))
+async def admin_broadcast(message: Message):
+    """
+    /broadcast <text> - Send message to all participants of current event
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Usage: /broadcast Your message here")
+        return
+
+    broadcast_text = parts[1]
+
+    # Get user's current event
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+
+    if not user or not user.current_event_id:
+        await message.answer("You're not in any event. Join one first.")
+        return
+
+    event = await event_service.get_event_by_id(user.current_event_id)
+    if not event:
+        await message.answer("Event not found")
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+
+    if not participants:
+        await message.answer("No participants to broadcast to")
+        return
+
+    # Send to all participants
+    sent = 0
+    failed = 0
+
+    status_msg = await message.answer(f"Broadcasting to {len(participants)} participants...")
+
+    for p in participants:
+        try:
+            await bot.send_message(
+                chat_id=int(p.platform_user_id),
+                text=f"📢 <b>Event: {event.name}</b>\n\n{broadcast_text}",
+                parse_mode="HTML"
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+
+    await status_msg.edit_text(
+        f"<b>Broadcast complete!</b>\n\n"
+        f"✅ Sent: {sent}\n"
+        f"❌ Failed: {failed}"
+    )
+
+
+@router.message(Command("event"))
+async def admin_event_info(message: Message):
+    """
+    /event <code> - Show event details
+    """
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        # List all active events
+        from infrastructure.database.supabase_client import supabase
+        events_resp = supabase.table("events").select("*").eq("is_active", True).execute()
+        events = events_resp.data or []
+
+        if not events:
+            await message.answer("No active events")
+            return
+
+        text = "<b>📋 Active Events:</b>\n\n"
+        for e in events:
+            text += f"• <code>{e['code']}</code> - {e['name']}\n"
+
+        text += "\nUse /event CODE for details"
+        await message.answer(text)
+        return
+
+    event_code = parts[1].strip().upper()
+    event = await event_service.get_event_by_code(event_code)
+
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    # Generate deep link
+    bot_info = await bot.me()
+    deep_link = f"https://t.me/{bot_info.username}?start=event_{event.code}"
+
+    text = f"""<b>📅 {event.name}</b>
+
+<b>Code:</b> <code>{event.code}</code>
+<b>Location:</b> {event.location or 'N/A'}
+<b>Description:</b> {event.description or 'N/A'}
+<b>Active:</b> {'Yes' if event.is_active else 'No'}
+
+<b>Deep Link:</b>
+<code>{deep_link}</code>
+
+<b>Settings:</b> {event.settings or '{}'}"""
+
+    await message.answer(text, reply_markup=get_event_actions_keyboard(event.code) if message.from_user.id in settings.admin_telegram_ids else None)
