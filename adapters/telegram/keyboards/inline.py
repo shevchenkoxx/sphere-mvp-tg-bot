@@ -125,15 +125,31 @@ def get_goals_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKe
 def get_event_actions_keyboard(event_code: str, lang: str = "en") -> InlineKeyboardMarkup:
     """Event management keyboard (for admins)"""
     builder = InlineKeyboardBuilder()
-    if lang == "ru":
-        builder.button(text="👥 Участники", callback_data=f"event_participants_{event_code}")
-        builder.button(text="🔄 Матчинг", callback_data=f"event_match_{event_code}")
-        builder.button(text="📊 Стата", callback_data=f"event_stats_{event_code}")
-    else:
-        builder.button(text="👥 Participants", callback_data=f"event_participants_{event_code}")
-        builder.button(text="🔄 Matching", callback_data=f"event_match_{event_code}")
-        builder.button(text="📊 Stats", callback_data=f"event_stats_{event_code}")
-    builder.adjust(3)
+
+    # Row 1: Main actions
+    builder.button(text="👥 Participants", callback_data=f"event_participants_{event_code}")
+    builder.button(text="🔄 Matching", callback_data=f"event_match_{event_code}")
+    builder.button(text="📊 Stats", callback_data=f"event_stats_{event_code}")
+
+    # Row 2: Info management
+    builder.button(text="ℹ️ Info", callback_data=f"event_info_{event_code}")
+    builder.button(text="🔗 Import URL", callback_data=f"event_import_{event_code}")
+    builder.button(text="✏️ Edit", callback_data=f"event_edit_{event_code}")
+
+    # Row 3: Broadcast
+    builder.button(text="📢 Broadcast", callback_data=f"event_broadcast_{event_code}")
+
+    builder.adjust(3, 3, 1)
+    return builder.as_markup()
+
+
+def get_event_info_keyboard(event_code: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for event info view"""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="◀️ Back", callback_data=f"event_back_{event_code}")
+    builder.button(text="📋 Full Schedule", callback_data=f"event_schedule_{event_code}")
+    builder.button(text="🎤 All Speakers", callback_data=f"event_speakers_{event_code}")
+    builder.adjust(1, 2)
     return builder.as_markup()
 
 

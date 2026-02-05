@@ -10,14 +10,15 @@ from aiogram.fsm.context import FSMContext
 
 from core.domain.models import MessagePlatform
 from config.settings import settings
-from adapters.telegram.loader import event_service, matching_service, user_service, bot
+from adapters.telegram.loader import event_service, matching_service, user_service, bot, event_parser_service
 from adapters.telegram.keyboards import (
     get_event_actions_keyboard,
     get_join_event_keyboard,
     get_main_menu_keyboard,
     get_back_to_menu_keyboard,
+    get_event_info_keyboard,
 )
-from adapters.telegram.states import EventStates
+from adapters.telegram.states import EventStates, EventInfoStates
 
 logger = logging.getLogger(__name__)
 
@@ -529,3 +530,318 @@ async def admin_event_info(message: Message):
 <b>Settings:</b> {event.settings or '{}'}"""
 
     await message.answer(text, reply_markup=get_event_actions_keyboard(event.code) if message.from_user.id in settings.admin_telegram_ids else None)
+
+
+# === EVENT INFO MANAGEMENT ===
+
+@router.callback_query(F.data.startswith("event_info_"))
+async def show_event_info(callback: CallbackQuery):
+    """Show rich event info card"""
+    event_code = callback.data.replace("event_info_", "")
+    event = await event_service.get_event_by_code(event_code)
+
+    if not event:
+        await callback.answer("Event not found", show_alert=True)
+        return
+
+    # Get event_info from database
+    from infrastructure.database.supabase_client import supabase
+    result = supabase.table("events").select("event_info").eq("code", event_code).execute()
+    event_info = result.data[0].get("event_info", {}) if result.data else {}
+
+    if not event_info or event_info == {}:
+        text = f"<b>📅 {event.name}</b>\n\n"
+        text += f"📍 {event.location or 'Location not set'}\n"
+        text += f"📝 {event.description or 'No description'}\n\n"
+        text += "<i>No detailed info yet. Use 🔗 Import URL to add info from Luma or event page.</i>"
+    else:
+        text = event_parser_service.format_event_card(event_info, event.name)
+
+    await callback.message.edit_text(text, reply_markup=get_event_info_keyboard(event_code), disable_web_page_preview=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("event_import_"))
+async def start_event_import(callback: CallbackQuery, state: FSMContext):
+    """Start URL import flow"""
+    if callback.from_user.id not in settings.admin_telegram_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    event_code = callback.data.replace("event_import_", "")
+
+    await state.update_data(import_event_code=event_code)
+    await state.set_state(EventInfoStates.waiting_import_url)
+
+    await callback.message.edit_text(
+        "<b>🔗 Import Event Info</b>\n\n"
+        "Send me a URL to the event page (Luma, Eventbrite, or any website).\n\n"
+        "I'll extract:\n"
+        "• Description\n"
+        "• Schedule\n"
+        "• Speakers\n"
+        "• Topics\n"
+        "• Organizer info\n\n"
+        "Send /cancel to abort."
+    )
+    await callback.answer()
+
+
+@router.message(EventInfoStates.waiting_import_url, F.text)
+async def process_import_url(message: Message, state: FSMContext):
+    """Process URL for import"""
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("Import cancelled.", reply_markup=get_back_to_menu_keyboard())
+        return
+
+    url = message.text.strip()
+
+    # Basic URL validation
+    if not url.startswith(("http://", "https://")):
+        await message.answer("Please send a valid URL starting with http:// or https://")
+        return
+
+    data = await state.get_data()
+    event_code = data.get("import_event_code")
+
+    status_msg = await message.answer("🔄 Fetching and parsing event page...")
+
+    # Parse URL
+    event_info = await event_parser_service.parse_event_url(url)
+
+    if not event_info:
+        await status_msg.edit_text(
+            "❌ Failed to parse event page.\n\n"
+            "Try a different URL or check if the page is accessible."
+        )
+        return
+
+    # Save to database
+    from infrastructure.database.supabase_client import supabase
+    supabase.table("events").update({"event_info": event_info}).eq("code", event_code).execute()
+
+    # Get event for display
+    event = await event_service.get_event_by_code(event_code)
+
+    # Show result
+    text = f"✅ <b>Import successful!</b>\n\n"
+    text += event_parser_service.format_event_card(event_info, event.name if event else event_code)
+
+    await status_msg.edit_text(text, reply_markup=get_event_info_keyboard(event_code), disable_web_page_preview=True)
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("event_edit_"))
+async def show_event_edit_menu(callback: CallbackQuery):
+    """Show edit options for event info"""
+    if callback.from_user.id not in settings.admin_telegram_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    event_code = callback.data.replace("event_edit_", "")
+
+    # For now, suggest using import or direct DB edit
+    text = (
+        "<b>✏️ Edit Event Info</b>\n\n"
+        "Options:\n"
+        "• Use 🔗 Import URL to replace all info from a webpage\n"
+        "• Or edit directly in database (events.event_info JSONB field)\n\n"
+        "<i>Manual edit UI coming soon!</i>"
+    )
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔗 Import from URL", callback_data=f"event_import_{event_code}")
+    builder.button(text="◀️ Back", callback_data=f"event_back_{event_code}")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("event_schedule_"))
+async def show_full_schedule(callback: CallbackQuery):
+    """Show full event schedule"""
+    event_code = callback.data.replace("event_schedule_", "")
+
+    from infrastructure.database.supabase_client import supabase
+    result = supabase.table("events").select("event_info, name").eq("code", event_code).execute()
+
+    if not result.data:
+        await callback.answer("Event not found", show_alert=True)
+        return
+
+    event_data = result.data[0]
+    event_info = event_data.get("event_info", {})
+    event_name = event_data.get("name", event_code)
+    schedule = event_info.get("schedule", [])
+
+    if not schedule:
+        await callback.answer("No schedule available", show_alert=True)
+        return
+
+    text = f"<b>📋 Full Schedule: {event_name}</b>\n\n"
+    for item in schedule:
+        time_str = item.get("time", "")
+        title = item.get("title", "")
+        speaker = item.get("speaker")
+        desc = item.get("description")
+
+        text += f"<b>{time_str}</b> — {title}\n"
+        if speaker:
+            text += f"   🎤 {speaker}\n"
+        if desc:
+            text += f"   <i>{desc[:100]}</i>\n"
+        text += "\n"
+
+    await callback.message.edit_text(text, reply_markup=get_event_info_keyboard(event_code))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("event_speakers_"))
+async def show_all_speakers(callback: CallbackQuery):
+    """Show all speakers"""
+    event_code = callback.data.replace("event_speakers_", "")
+
+    from infrastructure.database.supabase_client import supabase
+    result = supabase.table("events").select("event_info, name").eq("code", event_code).execute()
+
+    if not result.data:
+        await callback.answer("Event not found", show_alert=True)
+        return
+
+    event_data = result.data[0]
+    event_info = event_data.get("event_info", {})
+    event_name = event_data.get("name", event_code)
+    speakers = event_info.get("speakers", [])
+
+    if not speakers:
+        await callback.answer("No speakers listed", show_alert=True)
+        return
+
+    text = f"<b>🎤 Speakers: {event_name}</b>\n\n"
+    for s in speakers:
+        name = s.get("name", "Unknown")
+        bio = s.get("bio", "")
+        social = s.get("social", "")
+        topics = s.get("topics", [])
+
+        text += f"<b>{name}</b>"
+        if social:
+            text += f" {social}"
+        text += "\n"
+        if bio:
+            text += f"   {bio}\n"
+        if topics:
+            text += f"   Topics: {', '.join(topics)}\n"
+        text += "\n"
+
+    await callback.message.edit_text(text, reply_markup=get_event_info_keyboard(event_code))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("event_back_"))
+async def back_to_event_actions(callback: CallbackQuery):
+    """Back to event actions menu"""
+    event_code = callback.data.replace("event_back_", "")
+    event = await event_service.get_event_by_code(event_code)
+
+    if not event:
+        await callback.answer("Event not found", show_alert=True)
+        return
+
+    # Generate deep link
+    bot_info = await bot.me()
+    deep_link = f"https://t.me/{bot_info.username}?start=event_{event.code}"
+
+    text = f"""<b>📅 {event.name}</b>
+
+<b>Code:</b> <code>{event.code}</code>
+<b>Location:</b> {event.location or 'N/A'}
+
+<b>Deep Link:</b>
+<code>{deep_link}</code>"""
+
+    await callback.message.edit_text(text, reply_markup=get_event_actions_keyboard(event_code))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("event_broadcast_"))
+async def start_event_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Start broadcast flow from button"""
+    if callback.from_user.id not in settings.admin_telegram_ids:
+        await callback.answer("Admin only", show_alert=True)
+        return
+
+    event_code = callback.data.replace("event_broadcast_", "")
+    event = await event_service.get_event_by_code(event_code)
+
+    if not event:
+        await callback.answer("Event not found", show_alert=True)
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+
+    await state.update_data(broadcast_event_code=event_code, broadcast_event_name=event.name)
+    await state.set_state(EventInfoStates.waiting_broadcast_text)
+
+    await callback.message.edit_text(
+        f"<b>📢 Broadcast to {event.name}</b>\n\n"
+        f"Recipients: {len(participants)} participants\n\n"
+        "Send the message you want to broadcast.\n"
+        "Send /cancel to abort."
+    )
+    await callback.answer()
+
+
+@router.message(EventInfoStates.waiting_broadcast_text, F.text)
+async def process_broadcast_text(message: Message, state: FSMContext):
+    """Process and send broadcast"""
+    if message.text == "/cancel":
+        await state.clear()
+        await message.answer("Broadcast cancelled.", reply_markup=get_back_to_menu_keyboard())
+        return
+
+    data = await state.get_data()
+    event_code = data.get("broadcast_event_code")
+    event_name = data.get("broadcast_event_name", "Event")
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer("Event not found")
+        await state.clear()
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+
+    if not participants:
+        await message.answer("No participants to broadcast to")
+        await state.clear()
+        return
+
+    broadcast_text = message.text
+    status_msg = await message.answer(f"📢 Broadcasting to {len(participants)} participants...")
+
+    sent = 0
+    failed = 0
+
+    for p in participants:
+        try:
+            await bot.send_message(
+                chat_id=int(p.platform_user_id),
+                text=f"📢 <b>{event_name}</b>\n\n{broadcast_text}",
+                parse_mode="HTML"
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+
+    await status_msg.edit_text(
+        f"<b>✅ Broadcast complete!</b>\n\n"
+        f"Sent: {sent}\n"
+        f"Failed: {failed}",
+        reply_markup=get_event_actions_keyboard(event_code)
+    )
+
+    await state.clear()

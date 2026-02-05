@@ -25,6 +25,16 @@ class EventStates(StatesGroup):
     waiting_event_code = State()  # For joining event by code
 
 
+class EventInfoStates(StatesGroup):
+    """FSM states for event info management"""
+    waiting_import_url = State()      # Waiting for URL to import from
+    waiting_broadcast_text = State()  # Waiting for broadcast message
+    editing_description = State()     # Editing full description
+    editing_schedule = State()        # Editing schedule
+    editing_speakers = State()        # Editing speakers
+    confirming_import = State()       # Confirming imported data
+
+
 class ChatStates(StatesGroup):
     """FSM states for chat"""
     chatting = State()

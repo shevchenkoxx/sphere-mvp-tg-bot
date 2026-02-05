@@ -32,6 +32,8 @@ from adapters.telegram.keyboards.inline import (
     # Matches photo & feedback
     get_matches_photo_keyboard,
     get_feedback_keyboard,
+    # Event info
+    get_event_info_keyboard,
 )
 
 __all__ = [
@@ -68,4 +70,6 @@ __all__ = [
     # Matches photo & feedback
     "get_matches_photo_keyboard",
     "get_feedback_keyboard",
+    # Event info
+    "get_event_info_keyboard",
 ]
