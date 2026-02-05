@@ -33,12 +33,8 @@ router = Router()
 
 
 def detect_lang(message_or_callback) -> str:
-    """Detect language from user settings"""
-    if hasattr(message_or_callback, 'from_user'):
-        lang_code = message_or_callback.from_user.language_code or "en"
-    else:
-        lang_code = "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 @router.message(Command("matches"))
@@ -368,20 +364,27 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         lang=lang
     )
 
-    # Send photo if partner has one
+    # Send photo with profile as caption (if photo exists)
     if partner.photo_url and not edit:
+        # Telegram caption limit is 1024 chars - truncate if needed
+        caption_text = text
+        if len(caption_text) > 1024:
+            caption_text = caption_text[:1020] + "..."
+
         try:
             await bot.send_photo(
                 chat_id=message.chat.id,
                 photo=partner.photo_url,
-                caption=f"📸 {name}"
+                caption=caption_text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
             )
+            return  # Photo sent with caption, no need for separate text
         except Exception as e:
-            # Log photo send failure for debugging
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to send match partner photo for user {user_id}: {type(e).__name__}: {str(e)[:100]}")
+            # If photo fails, fall back to text-only
+            logger.warning(f"Failed to send match photo for user {user_id}: {type(e).__name__}: {str(e)[:100]}")
 
+    # Text-only (no photo or photo failed)
     if edit:
         await message.edit_text(text, reply_markup=keyboard)
     else:
@@ -501,20 +504,21 @@ async def view_match_profile(callback: CallbackQuery):
         goals_display = " • ".join([get_goal_display(g, lang) for g in partner.goals[:3]])
         text += f"\n🎯 {goals_display}\n"
 
-    # Send photo if partner has one, then text
+    # Send photo with profile as caption (if photo exists)
     if partner.photo_url:
+        # Telegram caption limit is 1024 chars
+        caption_text = text
+        if len(caption_text) > 1024:
+            caption_text = caption_text[:1020] + "..."
+
         try:
-            # Delete old message and send new with photo
             await callback.message.delete()
             await bot.send_photo(
                 chat_id=callback.message.chat.id,
                 photo=partner.photo_url,
-                caption=f"📸 {name}"
-            )
-            await bot.send_message(
-                chat_id=callback.message.chat.id,
-                text=text,
-                reply_markup=get_profile_view_keyboard(match_id, lang)
+                caption=caption_text,
+                reply_markup=get_profile_view_keyboard(match_id, lang),
+                parse_mode="HTML"
             )
         except Exception:
             # Fallback to just text

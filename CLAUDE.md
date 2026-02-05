@@ -36,10 +36,19 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - **Claude CAN run migrations directly** via psql
 
 ### Testing
+- **Production event: `POSTSW24`** (Post Software - Feb 4, 2026)
+- Deep link: `t.me/Matchd_bot?start=event_POSTSW24`
+- QR code: `POSTSW24_QR.png` in project root
 - Test event: `TEST2024`
-- Deep link: `t.me/Matchd_bot?start=event_TEST2024`
 - Reset profile: `/reset` in bot (needs DEBUG=true or admin)
 - Find matches: `/find_matches` - manually trigger AI matching
+
+### Auto-Matching (Event Testing)
+- **Script:** `scripts/event_matching_test.py`
+- Runs every 20 min, sends admin TG notifications
+- Start: `nohup python3 scripts/event_matching_test.py &`
+- Stop: `pkill -f event_matching`
+- Log: `event_matching.log`
 
 ### Test Bot (Staging)
 - **Bot**: @Socialconnection_bot
@@ -66,8 +75,8 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
    - Voice transcription via Whisper (non-blocking)
    - AI extracts: about, looking_for, can_help_with, interests, goals
    - Validation: asks follow-up if key info missing
-   - Selfie request after profile
    - Switch to text mode available
+   - Photo request moved to Matches tab (not during onboarding)
 
 3. **Text Onboarding (v2)**
    - Conversational flow with LLM
@@ -170,12 +179,15 @@ sphere-bot/
 │       ├── embedding_service.py # text-embedding-3-small
 │       └── speed_dating_service.py # AI Speed Dating conversation generator
 ├── scripts/
-│   └── test_extraction.py      # CLI for testing extraction prompts
+│   ├── test_extraction.py      # CLI for testing extraction prompts
+│   ├── auto_matching.py        # Original auto-matching (deprecated)
+│   └── event_matching_test.py  # Event matching with admin notifications
 ├── supabase/migrations/
 │   ├── 002_enhanced_profiles.sql
 │   ├── 003_vector_embeddings.sql # pgvector + match_candidates()
 │   ├── 004_sphere_city.sql     # experience_level, city on matches
-│   └── 005_speed_dating.sql    # AI Speed Dating cache table
+│   ├── 005_speed_dating.sql    # AI Speed Dating cache table
+│   └── 006_match_feedback.sql  # Match feedback (👍/👎)
 └── .credentials/keys.md        # All credentials (gitignored)
 ```
 
@@ -220,12 +232,20 @@ city  -- For Sphere City matches (event_id is NULL)
 id, match_id, sender_id, content, is_read, created_at
 ```
 
-### speed_dating_conversations (NEW)
+### speed_dating_conversations
 ```sql
 id, match_id, viewer_user_id
 conversation_text, language
 created_at
 -- Unique constraint: (match_id, viewer_user_id)
+```
+
+### match_feedback (NEW)
+```sql
+id, match_id, user_id
+feedback_type ('good' or 'bad')
+created_at
+-- Unique constraint: (match_id, user_id)
 ```
 
 ---
@@ -281,12 +301,12 @@ async def finish_onboarding_after_selfie(...):
 
 ### 🟡 Phase 2: Quality
 
-| Feature | Description | Time |
-|---------|-------------|------|
-| Match Feedback | "Was this match helpful?" buttons | 2h |
-| Language Preference | Save during onboarding | 1h |
-| Fix Fallback Language | Pass lang to analyze_match() | 30m |
-| Follow-up Reminders | "Remind me to contact X" | 3h |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| ~~Match Feedback~~ | 👍/👎 buttons on match cards | ✅ Done |
+| Language Preference | Save during onboarding | TODO |
+| Fix Fallback Language | Pass lang to analyze_match() | TODO |
+| Follow-up Reminders | "Remind me to contact X" | TODO |
 
 ### 🟢 Phase 3: Growth
 
@@ -350,6 +370,95 @@ ONBOARDING_MODE=audio
 ---
 
 ## Recent Session Changes
+
+### February 4, 2026 - Post Software Event Prep
+
+**Current Runtime Status:**
+- Auto-matching script running (PID checked via `ps aux | grep event_matching`)
+- Log: `event_matching.log` - shows iterations and new matches
+- Admin notifications: Telegram chat_id 44420077
+- Participants: 2 (Admin "A" + Test Profile)
+- Matches created: 1 (score 0.55)
+- Next iteration: every 20 min until 23:59
+
+**To check status:**
+```bash
+# Check if running
+ps aux | grep event_matching
+
+# View log
+tail -f event_matching.log
+
+# Stop
+pkill -f event_matching
+```
+
+---
+
+1. **Event POSTSW24 Created**
+   - Code: `POSTSW24`
+   - QR: `POSTSW24_QR.png`
+   - Deep link: `t.me/Matchd_bot?start=event_POSTSW24`
+
+2. **Photo Request Moved to Matches Tab**
+   - Removed selfie request from onboarding
+   - Now asks for photo when opening Matches (if no photo)
+   - User can skip with "Later" button
+
+3. **Feedback Buttons Added**
+   - 👍/👎 buttons on match cards
+   - Saves to `match_feedback` table
+   - Migration: `006_match_feedback.sql`
+
+4. **Improved Matching Logic**
+   - `base_score` now considers `looking_for` ↔ `can_help_with` match (+0.4)
+   - Better pre-filtering before LLM analysis
+   - Lower threshold for testing (0.3)
+
+5. **Enhanced Match Profile Display**
+   - Shows profession + company as subtitle
+   - City + experience level
+   - Up to 10 hashtags (interests + skills)
+   - Goals with emoji labels
+
+6. **AI Speed Dating Updated**
+   - Skips small talk, goes straight to collaboration
+   - Short messages (1 sentence max)
+   - Concrete next steps at end
+
+7. **Auto-Matching Script**
+   - `scripts/event_matching_test.py`
+   - Runs every 20 min until 23:59
+   - Admin TG notifications for new matches
+   - Generates missing embeddings automatically
+
+8. **Bug Fixes**
+   - Fixed UUID type mismatch in `current_event_id` (was breaking event join)
+   - Removed redundant event join update in onboarding
+   - Added missing keyboard exports to `__init__.py`
+
+9. **Test Profile Created**
+   - Name: "Test Profile"
+   - AI Engineer @ OpenAI
+   - In POSTSW24 event
+
+10. **Language Always English**
+    - All `detect_lang` functions now return "en"
+    - Telegram language settings ignored
+    - Files changed: start.py, matches.py, sphere_city.py, events.py, profile_edit.py, personalization.py, onboarding_audio.py, onboarding_v2.py
+
+11. **Photo Display Fixed**
+    - Photos now shown WITH profile text as caption (not separate)
+    - Telegram caption limit handled (1024 chars)
+    - Keyboard attached to photo message
+
+12. **Matching Prompt Bug Fixed**
+    - User model was missing `profession`, `company`, `skills`, `experience_level`
+    - Added to `core/domain/models.py` User class
+    - Added to `infrastructure/database/user_repository.py` `_to_model()`
+    - Now "Why this match" uses all profile data
+
+---
 
 ### February 2026 - AI Speed Dating
 

@@ -34,15 +34,13 @@ router = Router()
 
 
 def detect_lang(callback: CallbackQuery) -> str:
-    """Detect language from Telegram settings."""
-    lang_code = callback.from_user.language_code or "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 def detect_lang_message(message: Message) -> str:
-    """Detect language from Telegram settings."""
-    lang_code = message.from_user.language_code or "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 # === LLM PROMPT FOR CONVERSATIONAL EDIT ===

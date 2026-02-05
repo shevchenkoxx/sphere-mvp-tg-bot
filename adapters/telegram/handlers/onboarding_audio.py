@@ -45,16 +45,9 @@ router = Router(name="onboarding_audio")
 # === Language Detection ===
 
 def detect_language(message: Message) -> str:
-    """Detect user language from Telegram settings. Default: English."""
-    lang_code = message.from_user.language_code or "en"
-
-    # Map language codes to our supported languages
-    if lang_code.startswith("ru"):
-        return "ru"
-    elif lang_code.startswith("uk"):  # Ukrainian -> use Russian
-        return "ru"
-    else:
-        return "en"  # Default to English for all other languages
+    """Always return English as default language for all users."""
+    # Always use English regardless of Telegram language settings
+    return "en"
 
 
 def get_language_name(lang: str) -> str:

@@ -76,6 +76,11 @@ class User(UserBase):
     profile_embedding: Optional[List[float]] = None
     interests_embedding: Optional[List[float]] = None
     expertise_embedding: Optional[List[float]] = None
+    # Professional info (from extraction)
+    profession: Optional[str] = None
+    company: Optional[str] = None
+    skills: Optional[List[str]] = None
+    experience_level: Optional[str] = None  # junior/mid/senior/founder/executive
     # Personalization fields (post-onboarding)
     passion_text: Optional[str] = None
     passion_themes: Optional[List[str]] = None

@@ -62,6 +62,11 @@ class SupabaseUserRepository(IUserRepository):
             profile_embedding=_parse_embedding(data.get("profile_embedding")),
             interests_embedding=_parse_embedding(data.get("interests_embedding")),
             expertise_embedding=_parse_embedding(data.get("expertise_embedding")),
+            # Professional info (from extraction)
+            profession=data.get("profession"),
+            company=data.get("company"),
+            skills=data.get("skills") or [],
+            experience_level=data.get("experience_level"),
             # Personalization fields
             passion_text=data.get("passion_text"),
             passion_themes=data.get("passion_themes") or [],

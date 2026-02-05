@@ -30,12 +30,8 @@ router = Router(name="sphere_city")
 
 
 def detect_lang(callback_or_message) -> str:
-    """Detect language from user settings"""
-    if hasattr(callback_or_message, 'from_user'):
-        lang_code = callback_or_message.from_user.language_code or "en"
-    else:
-        lang_code = "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 # === FSM States ===
@@ -186,7 +182,7 @@ async def handle_city_selection(callback: CallbackQuery, state: FSMContext):
 @router.message(SphereCityStates.entering_custom_city, F.text)
 async def handle_custom_city(message: Message, state: FSMContext):
     """Handle custom city input"""
-    lang = "ru" if message.from_user.language_code and message.from_user.language_code.startswith(("ru", "uk")) else "en"
+    lang = "en"  # Always use English
 
     city_name = message.text.strip()[:100]
 

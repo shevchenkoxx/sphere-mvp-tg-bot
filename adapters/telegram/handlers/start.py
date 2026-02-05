@@ -25,9 +25,8 @@ router = Router()
 
 
 def detect_lang(message: Message) -> str:
-    """Detect language from Telegram settings. Default: English."""
-    lang_code = message.from_user.language_code or "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 @router.message(CommandStart(deep_link=True))
@@ -187,9 +186,8 @@ async def reset_command(message: Message, state: FSMContext):
 # === MAIN MENU CALLBACKS ===
 
 def detect_lang_callback(callback: CallbackQuery) -> str:
-    """Detect language from callback user settings. Default: English."""
-    lang_code = callback.from_user.language_code or "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 @router.callback_query(F.data == "back_to_menu")

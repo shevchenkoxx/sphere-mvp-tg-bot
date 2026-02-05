@@ -354,9 +354,8 @@ async def complete_conversational_onboarding(
         import asyncio
         asyncio.create_task(generate_embeddings_background(user))
 
-    # Detect language
-    lang_code = message.from_user.language_code or "en"
-    lang = "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    # Always use English
+    lang = "en"
 
     # Handle event join if pending
     event = None

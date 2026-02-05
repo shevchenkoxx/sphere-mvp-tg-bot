@@ -42,16 +42,8 @@ router = Router(name="personalization")
 # === Language Detection ===
 
 def detect_language(message_or_callback) -> str:
-    """Detect user language from Telegram settings."""
-    if hasattr(message_or_callback, 'from_user'):
-        user = message_or_callback.from_user
-    elif hasattr(message_or_callback, 'message'):
-        user = message_or_callback.from_user
-    else:
-        return "en"
-
-    lang_code = user.language_code or "en"
-    return "ru" if lang_code.startswith(("ru", "uk")) else "en"
+    """Always return English as default language."""
+    return "en"
 
 
 # === Entry Point ===
