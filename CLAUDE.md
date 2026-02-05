@@ -183,7 +183,8 @@ sphere-bot/
 │       ├── openai_service.py   # GPT-4o-mini + profession/skills in matching
 │       ├── whisper_service.py  # Voice transcription
 │       ├── embedding_service.py # text-embedding-3-small
-│       └── speed_dating_service.py # AI Speed Dating conversation generator
+│       ├── speed_dating_service.py # AI Speed Dating conversation generator
+│       └── event_parser_service.py # LLM URL parser for event info
 ├── scripts/
 │   ├── test_extraction.py      # CLI for testing extraction prompts
 │   ├── auto_matching.py        # Original auto-matching (deprecated)
@@ -193,7 +194,8 @@ sphere-bot/
 │   ├── 003_vector_embeddings.sql # pgvector + match_candidates()
 │   ├── 004_sphere_city.sql     # experience_level, city on matches
 │   ├── 005_speed_dating.sql    # AI Speed Dating cache table
-│   └── 006_match_feedback.sql  # Match feedback (👍/👎)
+│   ├── 006_match_feedback.sql  # Match feedback (👍/👎)
+│   └── 007_event_info.sql      # Event info JSONB (schedule, speakers)
 └── .credentials/keys.md        # All credentials (gitignored)
 ```
 
@@ -557,6 +559,14 @@ pkill -f event_matching
     - Added to `core/domain/models.py` User class
     - Added to `infrastructure/database/user_repository.py` `_to_model()`
     - Now "Why this match" uses all profile data
+
+13. **Event Info System** (NEW)
+    - JSONB field `event_info` in events table
+    - LLM URL parser: fetch page → GPT extracts schedule, speakers, topics
+    - New buttons in event management: ℹ️ Info, 🔗 Import URL, ✏️ Edit, 📢 Broadcast
+    - Rich event card display with schedule preview, speakers list
+    - Files: `infrastructure/ai/event_parser_service.py`, `007_event_info.sql`
+    - FSM: `EventInfoStates` for import and broadcast flows
 
 ---
 
