@@ -569,6 +569,36 @@ pkill -f event_matching
     - Files: `infrastructure/ai/event_parser_service.py`, `007_event_info.sql`
     - FSM: `EventInfoStates` for import and broadcast flows
 
+### February 5, 2026 - Session 2
+
+14. **Admin Commands Added**
+    - `/stats [code]` - Event statistics (participants, matches, feedback)
+    - `/participants [code]` - List participants with details
+    - `/broadcast <text>` - Send message to all event participants
+    - `/event [code]` - Show event info or list all active events
+
+15. **Demo Command** `/demo`
+    - Interactive walkthrough of all bot features
+    - Shows: QR flow → Onboarding → Profile → Matching → Match card
+    - Great for presentations and onboarding new users
+    - "Try it now" button starts real onboarding
+
+16. **Reset Fixed**
+    - `/reset` now fully clears: events, matches, all profile fields
+    - Deletes from `event_participants` table
+    - Deletes user's matches
+    - Clears embeddings, city, profession, etc.
+
+17. **Auto-Matching on Demand**
+    - When user clicks Matches and has none → automatically runs matching
+    - After onboarding: embeddings generated → matching runs in background
+    - User sees matches immediately, no need to wait
+
+18. **No Matches CTA**
+    - When no matches found, shows tip: "Add more info about yourself"
+    - Buttons: ✏️ Add more info | 🔄 Try again | ◀️ Menu
+    - "Try again" retries matching
+
 ---
 
 ### February 2026 - AI Speed Dating
