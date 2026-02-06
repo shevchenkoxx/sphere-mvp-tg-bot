@@ -36,23 +36,29 @@ from adapters.telegram.loader import user_service, event_service, voice_service,
 from infrastructure.database.user_repository import SupabaseUserRepository
 from adapters.telegram.keyboards import get_main_menu_keyboard
 from config.settings import settings
+from config.features import Features
+from core.utils.language import detect_lang, get_language_name
 
 logger = logging.getLogger(__name__)
+
+
+def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
+    """Callback for background tasks — logs unhandled exceptions."""
+    if task.cancelled():
+        logger.warning(f"Background task cancelled for user {user_id}")
+        return
+    exc = task.exception()
+    if exc:
+        logger.error(
+            f"Background task failed for user {user_id}: {exc}",
+            exc_info=exc,
+        )
 
 router = Router(name="onboarding_audio")
 
 
-# === Language Detection ===
-
-def detect_language(message: Message) -> str:
-    """Always return English as default language for all users."""
-    # Always use English regardless of Telegram language settings
-    return "en"
-
-
-def get_language_name(lang: str) -> str:
-    """Get full language name for prompts."""
-    return "Russian" if lang == "ru" else "English"
+# Language detection imported from core.utils.language
+# detect_lang() and get_language_name() are centralized there
 
 
 # === FSM States ===
@@ -119,7 +125,7 @@ async def start_audio_onboarding(
     """
     # Auto-detect language from Telegram if not provided
     if lang is None:
-        lang = detect_language(message)
+        lang = detect_lang(message)
 
     # Save context
     await state.update_data(
@@ -260,6 +266,15 @@ async def process_audio(message: Message, state: FSMContext):
     """Process voice message and extract profile"""
     data = await state.get_data()
     lang = data.get("language", "en")
+
+    # Validate voice duration
+    if message.voice.duration > Features.MAX_VOICE_DURATION:
+        max_dur = Features.MAX_VOICE_DURATION
+        if lang == "ru":
+            await message.answer(f"Голосовое слишком длинное (максимум {max_dur} сек). Попробуй покороче!")
+        else:
+            await message.answer(f"Voice message too long (max {max_dur}s). Please try a shorter one!")
+        return
 
     # Status message
     status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
@@ -406,6 +421,10 @@ async def process_followup_voice(message: Message, state: FSMContext):
     profile_data = data.get("profile_data", {})
     missing_fields = data.get("missing_fields", [])
     lang = data.get("language", "en")
+
+    if message.voice.duration > Features.MAX_VOICE_DURATION:
+        await message.answer("Voice too long. Please try shorter!" if lang == "en" else "Слишком длинное. Покороче!")
+        return
 
     status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
 
@@ -828,7 +847,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         )
 
         # Generate vector embeddings and run matching in background (non-blocking)
-        async def generate_embeddings_and_match(user_obj, event_code):
+        async def generate_embeddings_and_match(user_obj, event_code, chat_id):
             try:
                 # Step 1: Generate embeddings
                 result = await embedding_service.generate_embeddings(user_obj)
@@ -846,7 +865,6 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                     # Step 2: Run matching if user is in an event
                     if event_code:
                         try:
-                            # Re-fetch user with embeddings
                             updated_user = await user_repo.get_by_id(user_obj.id)
                             if updated_user and updated_user.current_event_id:
                                 matches = await matching_service.find_matches_vector(
@@ -856,16 +874,39 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                                 )
                                 logger.info(f"Auto-created {len(matches) if matches else 0} matches for user {user_obj.id}")
                         except Exception as me:
-                            logger.error(f"Background matching failed for user {user_obj.id}: {me}")
+                            logger.error(f"Background matching failed for user {user_obj.id}: {me}", exc_info=True)
                 else:
                     logger.warning(f"Embeddings returned None for user {user_obj.id}")
+                    if chat_id:
+                        try:
+                            await bot.send_message(
+                                chat_id,
+                                "Your profile is saved, but matching optimization is still loading. "
+                                "Try /find_matches in a minute for best results."
+                            )
+                        except Exception:
+                            pass
             except Exception as e:
-                logger.error(f"Background embedding generation failed for user {user_obj.id}: {e}")
+                logger.error(f"Background embedding generation failed for user {user_obj.id}: {e}", exc_info=True)
+                if chat_id:
+                    try:
+                        await bot.send_message(
+                            chat_id,
+                            "Profile saved! Matching is temporarily slower — try /find_matches in a minute."
+                        )
+                    except Exception:
+                        pass
 
-        # Fire and forget - don't block the flow
+        # Fire and forget with error tracking
         import asyncio
         pending_event_code = data.get("pending_event")
-        asyncio.create_task(generate_embeddings_and_match(user, pending_event_code))
+        chat_id = message_or_callback.message.chat.id if hasattr(message_or_callback, 'message') else message_or_callback.chat.id
+        task = asyncio.create_task(
+            generate_embeddings_and_match(user, pending_event_code, chat_id)
+        )
+        task.add_done_callback(
+            lambda t: _on_background_task_done(t, user_id=str(user.id))
+        )
 
     # Handle event join
     pending_event = data.get("pending_event")
@@ -1307,7 +1348,7 @@ async def test_extract_command(message: Message, state: FSMContext):
         await message.answer("⛔ Admin only command")
         return
 
-    lang = detect_language(message)
+    lang = detect_lang(message)
     if lang == "ru":
         text = (
             "🔬 <b>Тест экстракции</b>\n\n"
@@ -1328,7 +1369,7 @@ async def test_extract_command(message: Message, state: FSMContext):
 @router.message(TestExtractStates.waiting_voice, F.voice)
 async def test_extract_voice(message: Message, state: FSMContext):
     """Process voice for extraction test"""
-    lang = detect_language(message)
+    lang = detect_lang(message)
 
     status = await message.answer("🔬 Processing extraction test..." if lang == "en" else "🔬 Тестирую экстракцию...")
 
@@ -1389,7 +1430,7 @@ async def test_extract_voice(message: Message, state: FSMContext):
 async def cancel_test_extract(message: Message, state: FSMContext):
     """Cancel test extraction"""
     await state.clear()
-    await message.answer("✓ Cancelled" if detect_language(message) == "en" else "✓ Отменено")
+    await message.answer("✓ Cancelled" if detect_lang(message) == "en" else "✓ Отменено")
 
 
 @router.message(TestExtractStates.waiting_voice, F.text)
@@ -1399,7 +1440,7 @@ async def test_extract_text_fallback(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    lang = detect_language(message)
+    lang = detect_lang(message)
     await message.answer(
         "🎤 Send a voice message for extraction test" if lang == "en"
         else "🎤 Отправь голосовое для теста экстракции"

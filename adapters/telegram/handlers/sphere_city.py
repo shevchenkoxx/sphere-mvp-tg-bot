@@ -24,14 +24,11 @@ from adapters.telegram.keyboards.inline import (
     SPHERE_CITIES,
 )
 
+from core.utils.language import detect_lang
+
 logger = logging.getLogger(__name__)
 
 router = Router(name="sphere_city")
-
-
-def detect_lang(callback_or_message) -> str:
-    """Always return English as default language."""
-    return "en"
 
 
 # === FSM States ===

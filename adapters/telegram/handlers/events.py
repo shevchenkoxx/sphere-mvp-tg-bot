@@ -19,20 +19,15 @@ from adapters.telegram.keyboards import (
     get_event_info_keyboard,
 )
 from adapters.telegram.states import EventStates, EventInfoStates
+from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="events")
 
-
-def detect_lang_callback(callback: CallbackQuery) -> str:
-    """Always return English as default language."""
-    return "en"
-
-
-def detect_lang_message(message: Message) -> str:
-    """Always return English as default language."""
-    return "en"
+# detect_lang works for both Message and CallbackQuery
+detect_lang_callback = detect_lang
+detect_lang_message = detect_lang
 
 
 # === JOIN EVENT BY CODE ===

@@ -11,12 +11,17 @@ import sys
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
 from adapters.telegram.loader import bot, dp
 from adapters.telegram.handlers import routers
+from adapters.telegram.middleware import ThrottlingMiddleware
 from config.features import features
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("bot.log", encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -42,6 +47,11 @@ async def main():
     logger.info("Feature Flags:")
     for key, value in features.to_dict().items():
         logger.info(f"  {key}: {value}")
+
+    # Register rate limiting middleware
+    dp.message.middleware(ThrottlingMiddleware())
+    dp.callback_query.middleware(ThrottlingMiddleware())
+    logger.info("Rate limiting middleware registered")
 
     # Register Telegram routers
     for router in routers:

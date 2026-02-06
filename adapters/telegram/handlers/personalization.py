@@ -33,17 +33,11 @@ from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
 )
 from config.settings import settings
+from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="personalization")
-
-
-# === Language Detection ===
-
-def detect_language(message_or_callback) -> str:
-    """Always return English as default language."""
-    return "en"
 
 
 # === Entry Point ===
@@ -60,7 +54,7 @@ async def start_personalization(
     Called from onboarding handlers after profile is saved.
     """
     if lang is None:
-        lang = detect_language(message)
+        lang = detect_lang(message)
 
     # Save context
     await state.update_data(

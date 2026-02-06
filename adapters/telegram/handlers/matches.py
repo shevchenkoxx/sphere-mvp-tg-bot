@@ -26,15 +26,11 @@ from adapters.telegram.keyboards import (
 )
 from adapters.telegram.states.onboarding import MatchesPhotoStates
 from config.features import Features
+from core.utils.language import detect_lang
 import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-
-def detect_lang(message_or_callback) -> str:
-    """Always return English as default language."""
-    return "en"
 
 
 @router.message(Command("matches"))
@@ -118,8 +114,10 @@ async def find_matches_command(message: Message):
         await show_new_matches(message, matches, event.name, lang)
 
     except Exception as e:
+        logger.error(f"find_matches failed for user {user.id}: {e}", exc_info=True)
         await status.edit_text(
-            f"Error: {str(e)[:100]}" if lang == "en" else f"Ошибка: {str(e)[:100]}"
+            "Something went wrong. Please try again later." if lang == "en"
+            else "Что-то пошло не так. Попробуй позже."
         )
 
 
@@ -625,9 +623,10 @@ async def retry_matching(callback: CallbackQuery):
         await show_matches(callback.message, user.id, lang=lang, edit=True)
 
     except Exception as e:
-        logger.error(f"Retry matching failed: {e}")
+        logger.error(f"Retry matching failed: {e}", exc_info=True)
         await callback.message.edit_text(
-            f"Error: {str(e)[:100]}" if lang == "en" else f"Ошибка: {str(e)[:100]}",
+            "Something went wrong. Please try again." if lang == "en"
+            else "Что-то пошло не так. Попробуй ещё раз.",
             reply_markup=get_back_to_menu_keyboard(lang)
         )
 
@@ -937,4 +936,4 @@ async def notify_about_match(
             reply_markup=get_match_keyboard(match_id)
         )
     except Exception as e:
-        print(f"Failed to notify user {user_telegram_id}: {e}")
+        logger.error(f"Failed to notify user {user_telegram_id}: {e}")

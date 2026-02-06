@@ -20,13 +20,9 @@ from adapters.telegram.keyboards import (
 )
 from adapters.telegram.states import OnboardingStates
 from adapters.telegram.config import ONBOARDING_VERSION
+from core.utils.language import detect_lang
 
 router = Router()
-
-
-def detect_lang(message: Message) -> str:
-    """Always return English as default language."""
-    return "en"
 
 
 @router.message(CommandStart(deep_link=True))
@@ -348,9 +344,8 @@ async def start_real_onboarding_from_demo(callback: CallbackQuery, state: FSMCon
 
 # === MAIN MENU CALLBACKS ===
 
-def detect_lang_callback(callback: CallbackQuery) -> str:
-    """Always return English as default language."""
-    return "en"
+# detect_lang works for both Message and CallbackQuery
+detect_lang_callback = detect_lang
 
 
 @router.callback_query(F.data == "back_to_menu")

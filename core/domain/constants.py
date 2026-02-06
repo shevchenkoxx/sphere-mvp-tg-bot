@@ -45,6 +45,24 @@ MAX_BIO_LENGTH = 500
 # Event code settings
 EVENT_CODE_LENGTH = 8
 
+# === Matching Constants ===
+EMBEDDING_DIMENSION = 1536
+VECTOR_SIMILARITY_THRESHOLD = 0.65
+EMBEDDING_WEIGHTS = {
+    "profile": 0.40,
+    "interests": 0.35,
+    "expertise": 0.25,
+}
+DEFAULT_MATCH_THRESHOLD = 0.6
+DEFAULT_MATCH_LIMIT = 10
+VECTOR_CANDIDATE_LIMIT = 10
+
+# === Rate Limiting (requests per interval) ===
+RATE_LIMIT_COMMANDS = 5          # general commands per minute
+RATE_LIMIT_MATCHING = 3          # /find_matches per minute
+RATE_LIMIT_VOICE = 5             # voice messages per minute
+RATE_LIMIT_INTERVAL_SECONDS = 60
+
 
 def get_interest_display(interest_key: str, lang: str = "ru") -> str:
     """Get display text for an interest"""

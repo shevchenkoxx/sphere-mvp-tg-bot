@@ -28,19 +28,13 @@ from adapters.telegram.keyboards.inline import (
     get_goals_keyboard,
 )
 from adapters.telegram.states.onboarding import ProfileEditStates
+from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
 router = Router()
 
-
-def detect_lang(callback: CallbackQuery) -> str:
-    """Always return English as default language."""
-    return "en"
-
-
-def detect_lang_message(message: Message) -> str:
-    """Always return English as default language."""
-    return "en"
+# detect_lang works for both Message and CallbackQuery
+detect_lang_message = detect_lang
 
 
 # === LLM PROMPT FOR CONVERSATIONAL EDIT ===
