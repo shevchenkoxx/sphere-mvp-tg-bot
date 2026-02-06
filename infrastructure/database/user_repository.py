@@ -118,8 +118,11 @@ class SupabaseUserRepository(IUserRepository):
         return self._to_model(data)
 
     @run_sync
-    def _update_sync(self, user_id: UUID, user_data: UserUpdate) -> Optional[dict]:
-        update_dict = user_data.model_dump(exclude_unset=True, exclude_none=True)
+    def _update_sync(self, user_id: UUID, user_data) -> Optional[dict]:
+        if isinstance(user_data, dict):
+            update_dict = {k: v for k, v in user_data.items() if v is not None}
+        else:
+            update_dict = user_data.model_dump(exclude_unset=True, exclude_none=True)
         if not update_dict:
             return None
         response = supabase.table("users").update(update_dict).eq("id", str(user_id)).execute()
