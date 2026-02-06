@@ -26,6 +26,14 @@ class MatchStatus(str, Enum):
     EXPIRED = "expired"
 
 
+class MeetupStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 class MessagePlatform(str, Enum):
     """Platform abstraction for future multi-messenger support"""
     TELEGRAM = "telegram"
@@ -237,3 +245,27 @@ class OnboardingData(BaseModel):
     selected_goals: List[str] = Field(default_factory=list)
     bio: Optional[str] = None
     pending_event_code: Optional[str] = None  # Event to join after onboarding
+
+
+# === MEETUP PROPOSAL ===
+
+class MeetupProposal(BaseModel):
+    """Structured meetup proposal between matched users"""
+    id: UUID
+    short_id: str
+    match_id: UUID
+    proposer_id: UUID
+    receiver_id: UUID
+    event_id: Optional[UUID] = None
+    time_slots: List[int]
+    location: str
+    ai_why_meet: Optional[str] = None
+    ai_topics: Optional[List[str]] = None
+    status: MeetupStatus = MeetupStatus.PENDING
+    accepted_time_slot: Optional[int] = None
+    created_at: Optional[datetime] = None
+    responded_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

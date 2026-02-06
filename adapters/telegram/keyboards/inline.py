@@ -167,23 +167,31 @@ def get_match_keyboard(
     match_id: str,
     current_index: int = 0,
     total_matches: int = 1,
-    lang: str = "en"
+    lang: str = "en",
+    partner_username: str = None,
 ) -> InlineKeyboardMarkup:
     """Match action keyboard with pagination and feedback"""
     builder = InlineKeyboardBuilder()
 
-    # Row 1: Action buttons (Chat + Profile)
-    chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
+    # Row 1: Meet + Profile
+    meet_text = "☕ Meet"
     profile_text = "👤 Profile" if lang == "en" else "👤 Профиль"
-    builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
+    builder.button(text=meet_text, callback_data=f"meet_{match_id}")
     builder.button(text=profile_text, callback_data=f"view_profile_{match_id}")
     builder.adjust(2)
 
-    # Row 2: AI Speed Dating button
+    # Row 2: Chat (moved, still accessible)
+    if partner_username:
+        chat_text = f"💬 Chat @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+    else:
+        chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
+    builder.row(InlineKeyboardButton(text=chat_text, callback_data=f"chat_match_{match_id}"))
+
+    # Row 3: AI Speed Dating button
     speed_text = "⚡ AI Speed Dating" if lang == "en" else "⚡ AI Знакомство"
     builder.row(InlineKeyboardButton(text=speed_text, callback_data=f"speed_dating_{match_id}"))
 
-    # Row 3: Feedback buttons
+    # Row 4: Feedback buttons
     feedback_label = "Match quality:" if lang == "en" else "Качество матча:"
     builder.row(
         InlineKeyboardButton(text=f"{feedback_label} 👍", callback_data=f"feedback_good_{match_id}"),
@@ -516,6 +524,87 @@ def get_feedback_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMark
         builder.button(text="👍", callback_data=f"feedback_good_{match_id}")
         builder.button(text="👎", callback_data=f"feedback_bad_{match_id}")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+# === MEETUP PROPOSALS ===
+
+# Available time slots in minutes
+MEETUP_TIME_SLOTS = [5, 10, 15, 20, 30, 45, 60]
+
+
+def get_meetup_time_keyboard(selected: List[int] = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Multi-select time slot keyboard for meetup proposals"""
+    if selected is None:
+        selected = []
+
+    builder = InlineKeyboardBuilder()
+
+    for i, minutes in enumerate(MEETUP_TIME_SLOTS):
+        is_selected = minutes in selected
+        label = f"{minutes} min"
+        if is_selected:
+            label = f"✓ {label}"
+        builder.button(text=label, callback_data=f"mt_{i}")
+
+    builder.adjust(4, 3)  # 4 in first row, 3 in second
+
+    # Done button (only if at least 1 selected)
+    if selected:
+        done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="mt_done"))
+
+    # Cancel
+    cancel_text = "✕ Cancel" if lang == "en" else "✕ Отмена"
+    builder.row(InlineKeyboardButton(text=cancel_text, callback_data="mt_cancel"))
+
+    return builder.as_markup()
+
+
+def get_meetup_preview_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Preview keyboard before sending meetup proposal"""
+    builder = InlineKeyboardBuilder()
+
+    send_text = "Send →" if lang == "en" else "Отправить →"
+    edit_text = "Edit location" if lang == "en" else "Изменить место"
+    cancel_text = "✕ Cancel" if lang == "en" else "✕ Отмена"
+
+    builder.button(text=send_text, callback_data="mt_send")
+    builder.button(text=edit_text, callback_data="mt_editloc")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=cancel_text, callback_data="mt_cancel"))
+
+    return builder.as_markup()
+
+
+def get_meetup_receiver_keyboard(short_id: str, time_slots: List[int], lang: str = "en") -> InlineKeyboardMarkup:
+    """Receiver keyboard: pick a time slot to accept or decline"""
+    builder = InlineKeyboardBuilder()
+
+    # Time slot buttons (accept with specific time)
+    for i, minutes in enumerate(time_slots):
+        builder.button(text=f"✓ {minutes} min", callback_data=f"ma_{short_id}_{i}")
+
+    builder.adjust(min(len(time_slots), 3))
+
+    # Decline
+    decline_text = "✕ Decline" if lang == "en" else "✕ Отклонить"
+    builder.row(InlineKeyboardButton(text=decline_text, callback_data=f"md_{short_id}"))
+
+    return builder.as_markup()
+
+
+def get_meetup_confirmation_keyboard(short_id: str, partner_username: str = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Post-accept confirmation keyboard with Copy for DM option"""
+    builder = InlineKeyboardBuilder()
+
+    if partner_username:
+        chat_text = f"💬 Chat @{partner_username}"
+        builder.button(text=chat_text, callback_data=f"mc_{short_id}")
+
+    menu_text = "← Menu" if lang == "en" else "← Меню"
+    builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))
+
     return builder.as_markup()
 
 

@@ -409,7 +409,8 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         match_id=str(match.id),
         current_index=index,
         total_matches=total_matches,
-        lang=lang
+        lang=lang,
+        partner_username=partner.username,
     )
 
     # Send photo with profile as caption (if photo exists)

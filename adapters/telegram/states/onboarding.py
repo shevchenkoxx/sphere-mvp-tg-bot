@@ -60,3 +60,10 @@ class PersonalizationStates(StatesGroup):
 class MatchesPhotoStates(StatesGroup):
     """FSM states for photo request in matches flow"""
     waiting_photo = State()  # Waiting for selfie when user opens matches without photo
+
+
+class MeetupStates(StatesGroup):
+    """FSM states for meetup proposal flow (proposer side)"""
+    selecting_times = State()
+    entering_location = State()
+    previewing = State()

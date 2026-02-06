@@ -17,7 +17,9 @@ from infrastructure.ai import OpenAIService, WhisperVoiceService
 from infrastructure.ai.embedding_service import EmbeddingService
 from infrastructure.ai.speed_dating_service import SpeedDatingService
 from infrastructure.ai.event_parser_service import EventParserService
+from infrastructure.ai.meetup_ai_service import MeetupAIService
 from infrastructure.database.speed_dating_repository import SpeedDatingRepository
+from infrastructure.database.meetup_repository import MeetupRepository
 
 # Core services
 from core.services import UserService, EventService, MatchingService
@@ -41,10 +43,12 @@ voice_service = WhisperVoiceService()
 embedding_service = EmbeddingService()
 speed_dating_service = SpeedDatingService()
 event_parser_service = EventParserService()
+meetup_ai_service = MeetupAIService()
 
 
 # === ADDITIONAL REPOSITORIES ===
 speed_dating_repo = SpeedDatingRepository()
+meetup_repo = MeetupRepository()
 
 
 # === BUSINESS SERVICES ===

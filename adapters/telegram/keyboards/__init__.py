@@ -34,6 +34,12 @@ from adapters.telegram.keyboards.inline import (
     get_feedback_keyboard,
     # Event info
     get_event_info_keyboard,
+    # Meetup proposals
+    get_meetup_time_keyboard,
+    get_meetup_preview_keyboard,
+    get_meetup_receiver_keyboard,
+    get_meetup_confirmation_keyboard,
+    MEETUP_TIME_SLOTS,
 )
 
 __all__ = [
@@ -72,4 +78,10 @@ __all__ = [
     "get_feedback_keyboard",
     # Event info
     "get_event_info_keyboard",
+    # Meetup proposals
+    "get_meetup_time_keyboard",
+    "get_meetup_preview_keyboard",
+    "get_meetup_receiver_keyboard",
+    "get_meetup_confirmation_keyboard",
+    "MEETUP_TIME_SLOTS",
 ]
