@@ -157,8 +157,8 @@ class MatchingService:
             return candidates
 
         except Exception as e:
-            logger.warning(f"Vector search failed, will use fallback: {e}")
-            return []
+            logger.warning(f"Vector search failed, using base score fallback: {e}")
+            return await self._fallback_base_score_candidates(user, event_id, limit)
 
     async def _fallback_base_score_candidates(
         self,

@@ -20,7 +20,7 @@ class EmbeddingService:
     """Generate embeddings for vector-based matching"""
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=20.0)
         self.model = "text-embedding-3-small"  # 1536 dims, cheap, fast
 
     def _build_profile_text(self, user: User) -> str:

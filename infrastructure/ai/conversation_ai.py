@@ -32,7 +32,7 @@ class OpenAIConversationAI(IConversationAI):
         max_tokens: int = 500,
         temperature: float = 0.7
     ):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0)
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature

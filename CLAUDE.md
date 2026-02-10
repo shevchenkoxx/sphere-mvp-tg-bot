@@ -144,8 +144,9 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 1. **No in-app messaging** - must leave bot to contact match
 2. **No match actions** - can't say "met them" or "not interested"
 3. **No event discovery** - only via QR codes
-4. **Language not saved** - detected but not persisted
+4. **Language always "en"** - detect_lang() hardcoded, not persisted
 5. **LinkedIn integration** - linkedin_url, linkedin_data fields unused
+6. **FSM in memory** - MemoryStorage() loses state on bot restart (Railway deploy)
 
 ---
 
@@ -189,7 +190,9 @@ sphere-bot/
 ├── scripts/
 │   ├── test_extraction.py      # CLI for testing extraction prompts
 │   ├── auto_matching.py        # Original auto-matching (deprecated)
-│   └── event_matching_test.py  # Event matching with admin notifications
+│   ├── event_matching_test.py  # Event matching with admin notifications
+│   ├── backfill_embeddings.py  # Generate embeddings for users missing them
+│   └── test_matching.py        # End-to-end matching pipeline test
 ├── supabase/migrations/
 │   ├── 002_enhanced_profiles.sql
 │   ├── 003_vector_embeddings.sql # pgvector + match_candidates()
@@ -473,6 +476,61 @@ ONBOARDING_MODE=audio
 ---
 
 ## Recent Session Changes
+
+### February 10, 2026 - Pre-Release Hardening
+
+**Release target: February 12, 2026**
+
+**Bug fixes (6 items):**
+
+1. **Null-check in start_chat_with_match** (`matches.py`)
+   - Added null checks on `user` and `partner` to prevent crash when partner is deleted
+
+2. **Vector search fallback** (`matching_service.py`)
+   - `find_vector_candidates()` now calls `_fallback_base_score_candidates()` on exception instead of returning empty list
+
+3. **OpenAI API timeouts** (5 AI services)
+   - `openai_service.py`: timeout=30s
+   - `speed_dating_service.py`: timeout=30s
+   - `conversation_ai.py`: timeout=30s
+   - `whisper_service.py`: timeout=60s (sync, larger files)
+   - `embedding_service.py`: timeout=20s (already had asyncio.wait_for, now also client-level)
+
+4. **Graceful shutdown** (`main.py`)
+   - Moved `bot.session.close()` to outer try/finally (was inside while loop = closed on every retry)
+   - Session now always closes on exit, including on exceptions
+
+5. **Reset error handling** (`user_service.py`)
+   - Wrapped Supabase delete operations in try/except with logging
+   - Reset continues even if cleanup of old matches/events fails
+
+6. **"No matches" UX** (`matches.py`)
+   - Now shows specific reason: no event joined / not enough participants / profile incomplete / just try later
+   - Different messages for each case in both EN and RU
+
+**Data fixes:**
+- Backfilled embeddings for 25/28 users who were missing them (all 28 now have embeddings)
+- Cleaned up test matches
+
+**New scripts:**
+- `scripts/backfill_embeddings.py` - one-off script to generate embeddings for all users
+- `scripts/test_matching.py` - end-to-end test of vector matching pipeline
+
+**Systems tested (all OK):**
+- Supabase DB connection + REST API
+- Telegram Bot API (@Matchd_bot)
+- OpenAI API (models endpoint)
+- pgvector extension (v0.8.0) + match_candidates() function
+- All 8 database tables present
+- Full matching pipeline: vector search -> LLM re-ranking -> match creation
+- All Python files compile without errors
+
+**DB state:**
+- 28 users (all onboarded, all with embeddings)
+- 2 events: TEST2024 (26 participants), POSTSW24 (2 participants)
+- 0 matches (cleaned for release)
+
+---
 
 ### February 4, 2026 - Post Software Event Prep
 

@@ -16,7 +16,7 @@ class SpeedDatingService:
     """Service for generating AI speed dating conversation previews"""
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0)
         self.model = "gpt-4o-mini"
 
     def _build_persona(self, user: User, lang: str = "en") -> str:

@@ -254,20 +254,53 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
     # Still no matches after trying
     if not matches:
+        user = await user_service.get_user(user_id) if not locals().get('user') else user
+
+        # Determine specific reason
+        has_event = user and user.current_event_id
+        has_profile = user and user.bio and user.looking_for
+        participant_count = 0
+        if has_event:
+            try:
+                participants = await event_service.get_event_participants(user.current_event_id)
+                participant_count = len(participants) if participants else 0
+            except Exception:
+                pass
+
         if lang == "ru":
-            text = (
-                "<b>💫 Твои матчи</b>\n\n"
-                "Пока нет подходящих матчей.\n\n"
-                "💡 <b>Совет:</b> Добавь больше информации о себе — "
-                "чем ищешь, чем можешь помочь. Это поможет найти релевантных людей!"
-            )
+            text = "<b>💫 Твои матчи</b>\n\n"
+            if not has_event:
+                text += "Ты ещё не присоединился к ивенту.\nСканируй QR-код или присоединись через ссылку!"
+            elif participant_count <= 1:
+                text += "Пока на ивенте мало участников.\nМатчи появятся, когда присоединятся другие!"
+            elif not has_profile:
+                text += (
+                    "Профиль пока не заполнен до конца.\n\n"
+                    "💡 <b>Совет:</b> Добавь информацию — чем ищешь, чем можешь помочь. "
+                    "Это поможет найти релевантных людей!"
+                )
+            else:
+                text += (
+                    "Пока нет подходящих матчей.\n\n"
+                    "💡 Попробуй позже — новые участники присоединяются постоянно!"
+                )
         else:
-            text = (
-                "<b>💫 Your Matches</b>\n\n"
-                "No matches found yet.\n\n"
-                "💡 <b>Tip:</b> Add more details about yourself — "
-                "what you're looking for, how you can help. This helps find better matches!"
-            )
+            text = "<b>💫 Your Matches</b>\n\n"
+            if not has_event:
+                text += "You haven't joined an event yet.\nScan a QR code or join via link!"
+            elif participant_count <= 1:
+                text += "Not many people at this event yet.\nMatches will appear when others join!"
+            elif not has_profile:
+                text += (
+                    "Your profile isn't complete yet.\n\n"
+                    "💡 <b>Tip:</b> Add what you're looking for and how you can help. "
+                    "This helps find better matches!"
+                )
+            else:
+                text += (
+                    "No matches found yet.\n\n"
+                    "💡 Try again later — new people are joining all the time!"
+                )
 
         # Create keyboard with "Add more info" button
         from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -461,9 +494,21 @@ async def start_chat_with_match(callback: CallbackQuery):
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
     )
+
+    if not user:
+        msg = "User not found" if lang == "en" else "Пользователь не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
     partner_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
     partner = await user_service.get_user(partner_id)
-    partner_mention = f"@{partner.username}" if partner and partner.username else ""
+
+    if not partner:
+        msg = "Partner profile not found" if lang == "en" else "Профиль партнёра не найден"
+        await callback.answer(msg, show_alert=True)
+        return
+
+    partner_mention = f"@{partner.username}" if partner.username else ""
 
     if lang == "ru":
         text = (

@@ -14,6 +14,9 @@ from core.domain.constants import (
 )
 from core.interfaces.repositories import IUserRepository
 from core.interfaces.ai import IAIService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -71,10 +74,13 @@ class UserService:
         user = await self.user_repo.get_by_platform_id(platform, platform_user_id)
         if user:
             from infrastructure.database.supabase_client import supabase
-            # Delete from event_participants
-            supabase.table("event_participants").delete().eq("user_id", str(user.id)).execute()
-            # Delete user's matches
-            supabase.table("matches").delete().or_(f"user_a_id.eq.{user.id},user_b_id.eq.{user.id}").execute()
+            try:
+                # Delete from event_participants
+                supabase.table("event_participants").delete().eq("user_id", str(user.id)).execute()
+                # Delete user's matches
+                supabase.table("matches").delete().or_(f"user_a_id.eq.{user.id},user_b_id.eq.{user.id}").execute()
+            except Exception as e:
+                logger.error(f"Failed to clean up data for user {user.id}: {e}", exc_info=True)
 
         # Reset profile fields
         reset_data = {

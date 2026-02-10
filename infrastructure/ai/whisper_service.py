@@ -19,7 +19,7 @@ class WhisperVoiceService(IVoiceService):
     """OpenAI Whisper-based voice transcription service"""
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = OpenAI(api_key=settings.openai_api_key, timeout=60.0)
 
     async def download_file(self, file_url: str) -> str:
         """Download file from URL to temp location"""

@@ -67,50 +67,49 @@ async def main():
     logger.info("✅ Sphere Bot started!")
 
     retries = 0
-    while retries < MAX_RETRIES:
-        try:
-            await dp.start_polling(bot)
-            break  # Normal exit
+    try:
+        while retries < MAX_RETRIES:
+            try:
+                await dp.start_polling(bot)
+                break  # Normal exit
 
-        except TelegramConflictError:
-            retries += 1
-            if retries >= MAX_RETRIES:
-                logger.error(
-                    "❌ Another bot instance is running with the same token.\n"
-                    "   This can happen when:\n"
-                    "   - Bot is running locally AND on Railway\n"
-                    "   - Multiple Railway deployments\n"
-                    "   - Previous instance didn't shut down properly\n\n"
-                    "   Solutions:\n"
-                    "   1. Stop other instances\n"
-                    "   2. Wait 1-2 minutes for Telegram to release the connection\n"
-                    "   3. Regenerate bot token in @BotFather"
-                )
+            except TelegramConflictError:
+                retries += 1
+                if retries >= MAX_RETRIES:
+                    logger.error(
+                        "❌ Another bot instance is running with the same token.\n"
+                        "   This can happen when:\n"
+                        "   - Bot is running locally AND on Railway\n"
+                        "   - Multiple Railway deployments\n"
+                        "   - Previous instance didn't shut down properly\n\n"
+                        "   Solutions:\n"
+                        "   1. Stop other instances\n"
+                        "   2. Wait 1-2 minutes for Telegram to release the connection\n"
+                        "   3. Regenerate bot token in @BotFather"
+                    )
+                    sys.exit(1)
+                else:
+                    logger.warning(
+                        f"⚠️ Conflict detected (another instance running). "
+                        f"Retry {retries}/{MAX_RETRIES} in {RETRY_DELAY}s..."
+                    )
+                    await asyncio.sleep(RETRY_DELAY)
+
+            except TelegramUnauthorizedError:
+                logger.error("❌ Bot token was revoked or is invalid.")
                 sys.exit(1)
-            else:
-                logger.warning(
-                    f"⚠️ Conflict detected (another instance running). "
-                    f"Retry {retries}/{MAX_RETRIES} in {RETRY_DELAY}s..."
-                )
-                await asyncio.sleep(RETRY_DELAY)
 
-        except TelegramUnauthorizedError:
-            logger.error("❌ Bot token was revoked or is invalid.")
-            sys.exit(1)
-
-        except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
-            retries += 1
-            if retries < MAX_RETRIES:
-                logger.info(f"Retrying in {RETRY_DELAY}s... ({retries}/{MAX_RETRIES})")
-                await asyncio.sleep(RETRY_DELAY)
-            else:
-                raise
-        finally:
-            pass
-
-    await bot.session.close()
-    logger.info("Bot stopped.")
+            except Exception as e:
+                logger.error(f"❌ Unexpected error: {e}")
+                retries += 1
+                if retries < MAX_RETRIES:
+                    logger.info(f"Retrying in {RETRY_DELAY}s... ({retries}/{MAX_RETRIES})")
+                    await asyncio.sleep(RETRY_DELAY)
+                else:
+                    raise
+    finally:
+        await bot.session.close()
+        logger.info("Bot session closed.")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ class OpenAIService(IAIService):
     """OpenAI GPT-based AI service for user analysis and matching"""
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0)
         self.model = "gpt-4o-mini"  # Fast and cheap, good for MVP
 
     async def generate_user_summary(self, user_data: Dict[str, Any]) -> str:
