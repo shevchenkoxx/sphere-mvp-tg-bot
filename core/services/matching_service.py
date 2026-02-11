@@ -224,10 +224,17 @@ class MatchingService:
         for candidate, vector_score in candidates:
             # Skip if already matched
             if await self.match_repo.exists(event_id, user.id, candidate.id):
+                logger.info(f"Skipping {candidate.display_name or candidate.id} — already matched")
                 continue
 
             # Deep LLM analysis
             result = await self.analyze_pair(user, candidate, event_name)
+
+            if result:
+                logger.info(
+                    f"LLM score for {user.display_name} ↔ {candidate.display_name}: "
+                    f"{result.compatibility_score:.2f} (threshold={self.threshold}, vector={vector_score:.2f})"
+                )
 
             if result and result.compatibility_score >= self.threshold:
                 # Create match record

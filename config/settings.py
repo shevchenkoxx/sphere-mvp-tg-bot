@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # App Settings
     admin_telegram_ids: List[int] = []
-    default_match_threshold: float = 0.6
+    default_match_threshold: float = 0.4
     max_matches_per_event: int = 10
 
     # Environment
