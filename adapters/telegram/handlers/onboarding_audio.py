@@ -36,6 +36,7 @@ from core.prompts.audio_onboarding import (
     AUDIO_CONFIRMATION_FOOTER_RU,
     WHISPER_PROMPT_EN,
     WHISPER_PROMPT_RU,
+    TRANSCRIPT_CORRECTION_PROMPT,
 )
 from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot, embedding_service
 from infrastructure.database.user_repository import SupabaseUserRepository
@@ -50,6 +51,27 @@ logger = logging.getLogger(__name__)
 def _whisper_prompt(lang: str) -> str:
     """Get Whisper domain-vocabulary prompt for the given language."""
     return WHISPER_PROMPT_RU if lang == "ru" else WHISPER_PROMPT_EN
+
+
+async def _correct_transcription(text: str) -> str:
+    """Quick LLM pass to fix Whisper transcription errors."""
+    from openai import AsyncOpenAI
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=15.0)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": TRANSCRIPT_CORRECTION_PROMPT.format(transcription=text)}],
+            max_tokens=len(text) + 200,
+            temperature=0.1,
+        )
+        corrected = response.choices[0].message.content.strip()
+        if corrected and len(corrected) > 10:
+            if corrected != text:
+                logger.info(f"Transcript corrected: '{text[:80]}...' → '{corrected[:80]}...'")
+            return corrected
+    except Exception as e:
+        logger.warning(f"Transcript correction failed, using raw: {e}")
+    return text
 
 
 def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
@@ -306,6 +328,9 @@ async def process_audio(message: Message, state: FSMContext):
             )
             return
 
+        # LLM correction pass — fix Whisper mishearings
+        transcription = await _correct_transcription(transcription)
+
         # Update progress
         try:
             await status.edit_text(
@@ -460,6 +485,8 @@ async def process_followup_voice(message: Message, state: FSMContext):
         transcription = await voice_service.download_and_transcribe(
             file_url, language=lang, prompt=_whisper_prompt(lang)
         )
+        if transcription:
+            transcription = await _correct_transcription(transcription)
 
         if transcription:
             updated_profile = await merge_followup_into_profile(
@@ -725,6 +752,8 @@ async def handle_new_voice_in_confirmation(message: Message, state: FSMContext):
         transcription = await voice_service.download_and_transcribe(
             file_url, language=lang, prompt=_whisper_prompt(lang)
         )
+        if transcription:
+            transcription = await _correct_transcription(transcription)
 
         if transcription:
             await status.delete()
@@ -761,6 +790,8 @@ async def handle_adding_details_voice(message: Message, state: FSMContext):
         transcription = await voice_service.download_and_transcribe(
             file_url, language=lang, prompt=_whisper_prompt(lang)
         )
+        if transcription:
+            transcription = await _correct_transcription(transcription)
 
         if transcription:
             await status.delete()
@@ -1461,7 +1492,7 @@ async def test_extract_voice(message: Message, state: FSMContext):
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
 
-        # Transcribe
+        # Transcribe + correct
         transcription = await voice_service.download_and_transcribe(
             file_url, language=lang, prompt=_whisper_prompt(lang)
         )
@@ -1469,6 +1500,8 @@ async def test_extract_voice(message: Message, state: FSMContext):
         if not transcription:
             await status.edit_text("❌ Could not transcribe audio" if lang == "en" else "❌ Не удалось транскрибировать")
             return
+
+        transcription = await _correct_transcription(transcription)
 
         # Extract with raw=True to get full response
         result = await extract_profile_from_transcription(

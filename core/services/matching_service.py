@@ -96,9 +96,14 @@ class MatchingService:
         """
         # Quick pre-filter
         base_score = self.calculate_base_score(user_a, user_b)
+        min_base = self.threshold * 0.5  # relaxed pre-filter
 
         # Skip if base score is too low
-        if base_score < self.threshold * 0.7:
+        if base_score < min_base:
+            logger.info(
+                f"Pre-filter skip: {user_a.display_name} ↔ {user_b.display_name} "
+                f"base_score={base_score:.2f} < {min_base:.2f}"
+            )
             return None
 
         # Deep AI analysis
@@ -111,18 +116,14 @@ class MatchingService:
             event_context=event_context
         )
 
-        # Check if above threshold
-        if result.compatibility_score >= self.threshold:
-            return result
-
-        return None
+        return result
 
     async def find_vector_candidates(
         self,
         user: User,
         event_id: UUID,
         limit: int = 10,
-        similarity_threshold: float = 0.65
+        similarity_threshold: float = 0.45
     ) -> List[Tuple[User, float]]:
         """
         Find candidate matches using vector similarity search.

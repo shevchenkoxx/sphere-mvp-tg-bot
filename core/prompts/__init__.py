@@ -22,6 +22,7 @@ from core.prompts.audio_onboarding import (
     AUDIO_CONFIRMATION_HEADER_RU,
     AUDIO_CONFIRMATION_FOOTER,
     AUDIO_CONFIRMATION_FOOTER_RU,
+    TRANSCRIPT_CORRECTION_PROMPT,
 )
 
 __all__ = [

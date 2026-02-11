@@ -225,3 +225,20 @@ AUDIO_CONFIRMATION_HEADER_RU = "Отлично! Вот твой профиль:\
 
 AUDIO_CONFIRMATION_FOOTER = "\nAll good? Say \"yes\" to confirm or record another message to update."
 AUDIO_CONFIRMATION_FOOTER_RU = "\nВсё верно? Скажи \"да\" для подтверждения или запиши новое сообщение."
+
+
+# Post-transcription correction prompt — fast LLM pass to fix Whisper errors
+TRANSCRIPT_CORRECTION_PROMPT = """Fix speech-to-text errors in this transcription of a networking event voice intro.
+
+TRANSCRIPTION:
+{transcription}
+
+RULES:
+- Fix obvious misheard words using context (e.g. "phones" → "funds", "bloc chain" → "blockchain", "founder raising" → "fundraising")
+- Fix garbled proper nouns, company names, tech terms
+- Do NOT rephrase, summarize, or change meaning — only fix errors
+- Do NOT add punctuation that changes meaning
+- Keep the EXACT same language (if Russian, output Russian)
+- If the transcription looks clean, return it unchanged
+
+Return ONLY the corrected text, nothing else."""
