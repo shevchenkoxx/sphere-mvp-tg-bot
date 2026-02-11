@@ -58,8 +58,8 @@ DEFAULT_MATCH_LIMIT = 10
 VECTOR_CANDIDATE_LIMIT = 10
 
 # === Rate Limiting (requests per interval) ===
-RATE_LIMIT_COMMANDS = 5          # general commands per minute
-RATE_LIMIT_MATCHING = 3          # /find_matches per minute
+RATE_LIMIT_COMMANDS = 15         # general commands per minute
+RATE_LIMIT_MATCHING = 5          # /find_matches per minute
 RATE_LIMIT_VOICE = 5             # voice messages per minute
 RATE_LIMIT_INTERVAL_SECONDS = 60
 

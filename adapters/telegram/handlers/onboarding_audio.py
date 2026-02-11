@@ -30,8 +30,12 @@ from core.prompts.audio_onboarding import (
     AUDIO_INTRO_PROMPT,
     AUDIO_EXTRACTION_PROMPT,
     AUDIO_VALIDATION_PROMPT,
-    AUDIO_CONFIRMATION_TEMPLATE,
-    AUDIO_CONFIRMATION_TEMPLATE_RU,
+    AUDIO_CONFIRMATION_HEADER,
+    AUDIO_CONFIRMATION_HEADER_RU,
+    AUDIO_CONFIRMATION_FOOTER,
+    AUDIO_CONFIRMATION_FOOTER_RU,
+    WHISPER_PROMPT_EN,
+    WHISPER_PROMPT_RU,
 )
 from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot, embedding_service
 from infrastructure.database.user_repository import SupabaseUserRepository
@@ -41,6 +45,11 @@ from config.features import Features
 from core.utils.language import detect_lang, get_language_name
 
 logger = logging.getLogger(__name__)
+
+
+def _whisper_prompt(lang: str) -> str:
+    """Get Whisper domain-vocabulary prompt for the given language."""
+    return WHISPER_PROMPT_RU if lang == "ru" else WHISPER_PROMPT_EN
 
 
 def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
@@ -285,8 +294,10 @@ async def process_audio(message: Message, state: FSMContext):
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
 
-        # Transcribe
-        transcription = await voice_service.download_and_transcribe(file_url)
+        # Transcribe with language hint + domain vocabulary
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
 
         if not transcription or len(transcription) < 20:
             await status.edit_text(
@@ -432,7 +443,9 @@ async def process_followup_voice(message: Message, state: FSMContext):
     try:
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-        transcription = await voice_service.download_and_transcribe(file_url)
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
 
         if transcription:
             updated_profile = await merge_followup_into_profile(
@@ -553,22 +566,68 @@ async def show_profile_confirmation(
     profile_data: dict,
     lang: str
 ):
-    """Show extracted profile for confirmation"""
+    """Show extracted profile for confirmation with rich formatting"""
 
-    # Format interests
+    is_ru = lang == "ru"
+    header = AUDIO_CONFIRMATION_HEADER_RU if is_ru else AUDIO_CONFIRMATION_HEADER
+    footer = AUDIO_CONFIRMATION_FOOTER_RU if is_ru else AUDIO_CONFIRMATION_FOOTER
+
+    display_name = profile_data.get("display_name") or message.from_user.first_name
+    profession = profile_data.get("profession")
+    company = profile_data.get("company")
+    location = profile_data.get("location")
+    about = profile_data.get("about")
+    looking_for = profile_data.get("looking_for")
+    can_help_with = profile_data.get("can_help_with")
     interests = profile_data.get("interests", [])
-    interests_display = " ".join([f"#{i}" for i in interests[:5]]) if interests else ""
+    skills = profile_data.get("skills", [])
 
-    # Choose template
-    template = AUDIO_CONFIRMATION_TEMPLATE_RU if lang == "ru" else AUDIO_CONFIRMATION_TEMPLATE
+    lines = [header]
 
-    text = template.format(
-        display_name=profile_data.get("display_name") or message.from_user.first_name,
-        about=profile_data.get("about") or "—",
-        looking_for=profile_data.get("looking_for") or "—",
-        can_help_with=profile_data.get("can_help_with") or "—",
-        interests_display=interests_display
-    )
+    # Name
+    lines.append(f"👤 **{display_name}**")
+
+    # Role @ Company
+    if profession and company:
+        lines.append(f"💼 {profession} @ {company}")
+    elif profession:
+        lines.append(f"💼 {profession}")
+    elif company:
+        lines.append(f"💼 {company}")
+
+    # City
+    if location:
+        city = location.split(",")[0].strip()
+        lines.append(f"📍 {city}")
+
+    # About
+    if about:
+        lines.append(f"\n📝 {about}")
+
+    # Looking for
+    if looking_for:
+        label = "Ищу" if is_ru else "Looking for"
+        lines.append(f"\n🔍 **{label}:** {looking_for}")
+
+    # Can help with
+    if can_help_with:
+        label = "Могу помочь" if is_ru else "Can help with"
+        lines.append(f"💪 **{label}:** {can_help_with}")
+
+    # Hashtags: merge interests + skills
+    tags = []
+    for i in interests[:5]:
+        tags.append(f"#{i}")
+    for s in skills[:5]:
+        tag = s.replace(" ", "_").lower()
+        if f"#{tag}" not in tags:
+            tags.append(f"#{tag}")
+    if tags:
+        lines.append(f"\n🏷 {' '.join(tags[:8])}")
+
+    lines.append(footer)
+
+    text = "\n".join(lines)
 
     await message.answer(text, reply_markup=get_audio_confirm_keyboard(lang))
     await state.set_state(AudioOnboarding.confirming)
@@ -649,7 +708,9 @@ async def handle_new_voice_in_confirmation(message: Message, state: FSMContext):
     try:
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-        transcription = await voice_service.download_and_transcribe(file_url)
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
 
         if transcription:
             await status.delete()
@@ -683,7 +744,9 @@ async def handle_adding_details_voice(message: Message, state: FSMContext):
     try:
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-        transcription = await voice_service.download_and_transcribe(file_url)
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
 
         if transcription:
             await status.delete()
@@ -800,16 +863,21 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
     data = await state.get_data()
     lang = data.get("language", "ru")
 
-    # Build bio from extracted data
-    bio_parts = []
+    # Build bio from extracted data (clean newline-separated format)
+    bio_lines = []
     if profile_data.get("about"):
-        bio_parts.append(profile_data["about"])
-    if profile_data.get("profession"):
-        bio_parts.append(f"🏢 {profile_data['profession']}")
-    if profile_data.get("company"):
-        bio_parts.append(f"@ {profile_data['company']}")
+        bio_lines.append(profile_data["about"])
+    if profile_data.get("profession") and profile_data.get("company"):
+        bio_lines.append(f"💼 {profile_data['profession']} @ {profile_data['company']}")
+    elif profile_data.get("profession"):
+        bio_lines.append(f"💼 {profile_data['profession']}")
+    elif profile_data.get("company"):
+        bio_lines.append(f"💼 {profile_data['company']}")
+    if profile_data.get("location"):
+        city = profile_data["location"].split(",")[0].strip()
+        bio_lines.append(f"📍 {city}")
 
-    bio = " | ".join(bio_parts)[:500] if bio_parts else ""
+    bio = "\n".join(bio_lines)[:500] if bio_lines else ""
 
     # Extract city from location
     city = profile_data.get("location")
@@ -1380,7 +1448,9 @@ async def test_extract_voice(message: Message, state: FSMContext):
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
 
         # Transcribe
-        transcription = await voice_service.download_and_transcribe(file_url)
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
 
         if not transcription:
             await status.edit_text("❌ Could not transcribe audio" if lang == "en" else "❌ Не удалось транскрибировать")

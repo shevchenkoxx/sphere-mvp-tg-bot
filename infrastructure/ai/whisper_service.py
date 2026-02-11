@@ -34,7 +34,7 @@ class WhisperVoiceService(IVoiceService):
                     return path
         return None
 
-    async def transcribe(self, audio_file_path: str, language: str = None) -> str:
+    async def transcribe(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:
         """Transcribe audio file to text. Language=None for auto-detection."""
         try:
             # Run sync OpenAI call in executor to not block event loop
@@ -43,7 +43,8 @@ class WhisperVoiceService(IVoiceService):
                 None,
                 self._transcribe_sync,
                 audio_file_path,
-                language
+                language,
+                prompt
             )
         except Exception as e:
             logger.error(f"Transcription error: {e}")
@@ -56,7 +57,7 @@ class WhisperVoiceService(IVoiceService):
                 except OSError:
                     pass
 
-    def _transcribe_sync(self, audio_file_path: str, language: str = None) -> str:
+    def _transcribe_sync(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:
         """Synchronous transcription - runs in executor"""
         with open(audio_file_path, "rb") as audio_file:
             params = {
@@ -65,13 +66,15 @@ class WhisperVoiceService(IVoiceService):
             }
             if language:
                 params["language"] = language
+            if prompt:
+                params["prompt"] = prompt
 
             transcript = self.client.audio.transcriptions.create(**params)
             return transcript.text
 
-    async def download_and_transcribe(self, file_url: str, language: str = None) -> str:
+    async def download_and_transcribe(self, file_url: str, language: str = None, prompt: str = None) -> str:
         """Download audio from URL and transcribe. Language=None for auto-detect."""
         file_path = await self.download_file(file_url)
         if file_path:
-            return await self.transcribe(file_path, language)
+            return await self.transcribe(file_path, language, prompt)
         return None

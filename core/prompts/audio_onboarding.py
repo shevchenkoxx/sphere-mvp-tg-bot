@@ -6,6 +6,27 @@ Language handling: English is the default. Russian supported.
 Language is auto-detected from Telegram settings.
 """
 
+# Whisper transcription prompts — domain vocabulary hints.
+# These are NOT instructions; Whisper treats them as "preceding context"
+# so it knows which words to expect and spell correctly.
+WHISPER_PROMPT_EN = (
+    "Hi, my name is Alexander Petrov. I'm a Senior Product Manager "
+    "at a tech startup, working on AI, machine learning, and SaaS solutions. "
+    "I'm looking for co-founders, angel investors, and blockchain developers. "
+    "I can help with fundraising, venture capital, UX design, growth hacking, "
+    "B2B sales, and product-market fit. I'm passionate about Web3, DeFi, "
+    "cryptocurrency, and decentralized finance."
+)
+
+WHISPER_PROMPT_RU = (
+    "Привет, меня зовут Александр Петров. Я продакт-менеджер в стартапе, "
+    "работаю с искусственным интеллектом, машинным обучением и SaaS. "
+    "Ищу кофаундеров, инвесторов и блокчейн-разработчиков. "
+    "Могу помочь с фандрайзингом, венчурным капиталом, UX-дизайном, "
+    "growth-маркетингом, B2B-продажами и product-market fit. "
+    "Увлекаюсь Web3, DeFi, криптовалютами и децентрализованными финансами."
+)
+
 # LLM prompt to generate personalized intro (replaces static guide)
 AUDIO_INTRO_PROMPT = """You are a friendly networking bot helping someone at a {event_context}.
 
@@ -139,6 +160,9 @@ CRITICAL RULES:
 - "startups" does NOT imply crypto/investing
 - "about", "looking_for", "can_help_with" must be from their ACTUAL words
 - confidence_score: 1.0 = explicit, 0.7 = clearly implied, 0.5 = inferred (risky)
+- **"about" MUST be written in FIRST PERSON** ("I build...", "I work at...", "I'm passionate about...") — NEVER third person ("They are involved...", "He works at...")
+- **Correct obvious transcription errors** based on context. Speech-to-text often mishears domain-specific words (e.g. "phones" → "funds" when talking about investing, "bloc chain" → "blockchain"). Use surrounding context to fix these.
+- **For "display_name"**: extract the person's FULL NAME as spoken (e.g. "My name is Artem Shevchenko" → "Artem Shevchenko"). If no name is clearly stated, set display_name to empty string "" — the system will fall back to their Telegram name.
 
 Return the full chain of thought, then the JSON at the end.
 Mark the JSON section clearly with "## JSON:" header."""
@@ -192,26 +216,12 @@ Return ONLY the question text."""
 
 
 # Confirmation message template
-AUDIO_CONFIRMATION_TEMPLATE = """Got it! Here's your profile:
+# NOTE: These are now format-string fragments. The actual assembly
+# happens in show_profile_confirmation() which conditionally includes
+# sections only when data is present.
 
-👤 **{display_name}**
-{about}
+AUDIO_CONFIRMATION_HEADER = "Got it! Here's your profile:\n"
+AUDIO_CONFIRMATION_HEADER_RU = "Отлично! Вот твой профиль:\n"
 
-🔍 **Looking for:** {looking_for}
-💪 **Can help with:** {can_help_with}
-
-{interests_display}
-
-All good? Say "yes" to confirm or record another message to update."""
-
-AUDIO_CONFIRMATION_TEMPLATE_RU = """Отлично! Вот твой профиль:
-
-👤 **{display_name}**
-{about}
-
-🔍 **Ищу:** {looking_for}
-💪 **Могу помочь:** {can_help_with}
-
-{interests_display}
-
-Всё верно? Скажи "да" для подтверждения или запиши новое сообщение."""
+AUDIO_CONFIRMATION_FOOTER = "\nAll good? Say \"yes\" to confirm or record another message to update."
+AUDIO_CONFIRMATION_FOOTER_RU = "\nВсё верно? Скажи \"да\" для подтверждения или запиши новое сообщение."
