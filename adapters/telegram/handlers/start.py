@@ -394,7 +394,7 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "my_profile")
-async def show_profile(callback: CallbackQuery):
+async def show_profile(callback: CallbackQuery, state: FSMContext):
     """Show user profile - detailed with hashtags"""
     lang = detect_lang_callback(callback)
 
@@ -451,6 +451,16 @@ async def show_profile(callback: CallbackQuery):
         add_photo = "📸 Add photo to help matches find you" if lang == "en" else "📸 Добавь фото, чтобы тебя узнали"
         text += f"\n<i>{add_photo}</i>"
 
+    # Inline edit hint
+    hint = (
+        "\n\n<i>💡 Просто напиши что изменить, например:\n"
+        "\"добавь crypto в интересы\" или \"ищу инвесторов\"</i>"
+        if lang == "ru" else
+        "\n\n<i>💡 Just type what to change, e.g.:\n"
+        "\"add crypto to interests\" or \"looking for investors\"</i>"
+    )
+    text += hint
+
     # Show photo if available
     if user.photo_url:
         try:
@@ -469,6 +479,11 @@ async def show_profile(callback: CallbackQuery):
             await callback.message.edit_text(text, reply_markup=get_profile_with_edit_keyboard(lang))
     else:
         await callback.message.edit_text(text, reply_markup=get_profile_with_edit_keyboard(lang))
+
+    # Set state so typing auto-edits profile
+    from adapters.telegram.states.onboarding import ProfileEditStates
+    await state.set_state(ProfileEditStates.viewing_profile)
+    await state.update_data(language=lang)
 
     await callback.answer()
 

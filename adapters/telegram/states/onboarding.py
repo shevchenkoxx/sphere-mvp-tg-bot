@@ -47,6 +47,7 @@ class ProfileEditStates(StatesGroup):
     entering_value = State()          # Entering new value (text or voice)
     confirming_changes = State()      # Preview and confirm
     conversational = State()          # LLM conversation mode
+    viewing_profile = State()         # Viewing profile — can type to edit inline
 
 
 class PersonalizationStates(StatesGroup):

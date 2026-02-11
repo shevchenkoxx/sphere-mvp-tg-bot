@@ -691,3 +691,120 @@ async def cancel_edit(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(text, reply_markup=get_edit_continue_keyboard(lang))
     await callback.answer()
+
+
+# === INLINE EDIT FROM PROFILE VIEW ===
+
+@router.message(ProfileEditStates.viewing_profile, F.text, ~F.text.startswith("/"))
+async def inline_profile_edit(message: Message, state: FSMContext):
+    """User typed while viewing profile — auto-interpret and apply changes."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    request_text = message.text
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+    if not user:
+        return
+
+    status = await message.answer("🤔 ..." if lang == "ru" else "🤔 ...")
+
+    try:
+        prompt = PROFILE_EDIT_PROMPT.format(
+            display_name=user.display_name or user.first_name or "User",
+            bio=user.bio or "(empty)",
+            looking_for=user.looking_for or "(empty)",
+            can_help_with=user.can_help_with or "(empty)",
+            interests=", ".join(user.interests) if user.interests else "(none)",
+            goals=", ".join(user.goals) if user.goals else "(none)",
+            request=request_text,
+            language="Russian" if lang == "ru" else "English"
+        )
+
+        response = await ai_service.chat(prompt=prompt, model="gpt-4o-mini")
+
+        json_str = response.strip()
+        if json_str.startswith("```"):
+            json_str = json_str.split("```")[1]
+            if json_str.startswith("json"):
+                json_str = json_str[4:]
+
+        changes = json.loads(json_str)
+    except Exception as e:
+        logger.error(f"Inline edit LLM error: {e}")
+        await status.edit_text(
+            "Не удалось понять. Попробуй по-другому." if lang == "ru"
+            else "Couldn't understand. Try rephrasing."
+        )
+        return
+
+    # Build update dict
+    update_data = {}
+    if changes.get("bio"):
+        update_data["bio"] = changes["bio"]
+    if changes.get("looking_for"):
+        update_data["looking_for"] = changes["looking_for"]
+    if changes.get("can_help_with"):
+        update_data["can_help_with"] = changes["can_help_with"]
+    if changes.get("interests"):
+        update_data["interests"] = changes["interests"]
+    if changes.get("goals"):
+        update_data["goals"] = changes["goals"]
+
+    if not update_data:
+        await status.edit_text(
+            "Не нашёл изменений. Попробуй по-другому." if lang == "ru"
+            else "No changes detected. Try rephrasing."
+        )
+        return
+
+    # Apply changes
+    try:
+        updated_user = await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id),
+            **update_data
+        )
+
+        # Regenerate embeddings in background
+        if updated_user:
+            asyncio.create_task(generate_embeddings_background(updated_user))
+
+        summary = changes.get("summary", "Updated" if lang == "en" else "Обновлено")
+        await status.edit_text(f"✅ {summary}")
+
+    except Exception as e:
+        logger.error(f"Inline edit save error: {e}")
+        await status.edit_text(
+            "Ошибка сохранения." if lang == "ru" else "Save error."
+        )
+
+
+@router.message(ProfileEditStates.viewing_profile, F.voice)
+async def inline_profile_edit_voice(message: Message, state: FSMContext):
+    """User sent voice while viewing profile — transcribe and apply."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    try:
+        voice_file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{voice_file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url, language=lang)
+        if not transcription:
+            await message.answer(
+                "Не расслышал. Попробуй текстом." if lang == "ru"
+                else "Couldn't hear that. Try typing."
+            )
+            return
+    except Exception as e:
+        logger.error(f"Inline voice edit error: {e}")
+        await message.answer(
+            "Ошибка. Попробуй текстом." if lang == "ru" else "Error. Try typing."
+        )
+        return
+
+    # Reuse text handler by creating a fake-ish flow
+    message.text = transcription
+    await inline_profile_edit(message, state)
