@@ -210,9 +210,10 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     """Display user's matches with detailed profiles and pagination"""
     matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
 
-    # Filter by event if specified
+    # Filter by event if specified (use str() to avoid UUID type mismatch)
     if event_id:
-        matches = [m for m in matches if m.event_id == event_id]
+        event_id_str = str(event_id)
+        matches = [m for m in matches if str(m.event_id) == event_id_str]
 
     # If no matches, try to create them automatically
     if not matches:
@@ -247,7 +248,8 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
                 # Re-fetch matches from DB
                 matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
                 if event_id:
-                    matches = [m for m in matches if m.event_id == event_id]
+                    event_id_str = str(event_id)
+                    matches = [m for m in matches if str(m.event_id) == event_id_str]
 
             except Exception as e:
                 logger.error(f"Auto-matching failed for user {user_id}: {e}")
@@ -666,7 +668,7 @@ async def retry_matching(callback: CallbackQuery):
             )
 
         # Show results
-        await show_matches(callback.message, user.id, lang=lang, edit=True)
+        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
 
     except Exception as e:
         logger.error(f"Retry matching failed: {e}", exc_info=True)
