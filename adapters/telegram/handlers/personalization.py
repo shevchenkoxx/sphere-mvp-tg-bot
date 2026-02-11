@@ -238,9 +238,11 @@ async def show_adaptive_buttons_step(message: Message, state: FSMContext, lang: 
     header = buttons_data.get("header", "")
 
     if not buttons or len(buttons) < 2:
-        # Fallback: skip to next step if button generation failed
+        # Fallback: skip to save if button generation failed
+        # (Step 4 ideal connection question temporarily disabled)
         logger.warning(f"Adaptive buttons generation failed for user {user_id}")
-        await show_ideal_connection_step(message, state, lang)
+        # await show_ideal_connection_step(message, state, lang)
+        await save_personalization_data(message, state, lang)
         return
 
     # Save buttons for later reference
@@ -268,89 +270,91 @@ async def process_adaptive_choice(callback: CallbackQuery, state: FSMContext):
         selected = buttons[btn_index]
         await state.update_data(personalization_preference=selected)
 
-    # Move to Step 4: Open-ended question
+    # Step 4 (ideal connection question) temporarily disabled — skip to save
+    # await show_ideal_connection_step(callback.message, state, lang)
     await callback.message.edit_text(
         "✓ Отлично!" if lang == "ru" else "✓ Great!"
     )
-    await show_ideal_connection_step(callback.message, state, lang)
-    await callback.answer()
-
-
-# === Step 4: Open-Ended Question ===
-
-async def show_ideal_connection_step(message: Message, state: FSMContext, lang: str):
-    """Show open-ended question about ideal connection."""
-    data = await state.get_data()
-
-    # Generate personalized question based on mode
-    question = await generate_ideal_connection_question(
-        connection_mode=data.get("connection_mode", "exchange"),
-        passion_themes=data.get("passion_themes", []),
-        personalization_preference=data.get("personalization_preference", ""),
-        lang=lang
-    )
-
-    if lang == "ru":
-        text = f"💭 <b>Последний вопрос!</b>\n\n{question}\n\n<i>Напиши текстом или голосовым</i>"
-    else:
-        text = f"💭 <b>Last question!</b>\n\n{question}\n\n<i>Type or send a voice message</i>"
-
-    await message.answer(text, reply_markup=get_skip_personalization_keyboard(lang))
-    await state.set_state(PersonalizationStates.waiting_ideal_connection)
-
-
-@router.message(PersonalizationStates.waiting_ideal_connection, F.text)
-async def process_ideal_connection_text(message: Message, state: FSMContext):
-    """Process text answer about ideal connection."""
-    data = await state.get_data()
-    lang = data.get("personalization_lang", "en")
-
-    ideal_text = message.text.strip()
-
-    await state.update_data(ideal_connection=ideal_text)
-
-    # Save and finish
-    await save_personalization_data(message, state, lang)
-
-
-@router.message(PersonalizationStates.waiting_ideal_connection, F.voice)
-async def process_ideal_connection_voice(message: Message, state: FSMContext):
-    """Process voice answer about ideal connection."""
-    data = await state.get_data()
-    lang = data.get("personalization_lang", "en")
-
-    status = await message.answer("🎤 Слушаю..." if lang == "ru" else "🎤 Listening...")
-
-    try:
-        file = await bot.get_file(message.voice.file_id)
-        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-        transcription = await voice_service.download_and_transcribe(file_url)
-
-        if transcription:
-            await status.delete()
-            await state.update_data(ideal_connection=transcription)
-            await save_personalization_data(message, state, lang)
-        else:
-            await status.edit_text(
-                "Не расслышал. Напиши текстом?" if lang == "ru"
-                else "Couldn't hear that. Type it out?"
-            )
-    except Exception as e:
-        logger.error(f"Ideal connection voice error: {e}")
-        await status.edit_text(
-            "Напиши текстом" if lang == "ru" else "Please type instead"
-        )
-
-
-@router.callback_query(PersonalizationStates.waiting_ideal_connection, F.data == "skip_personalization_step")
-async def skip_ideal_connection_step(callback: CallbackQuery, state: FSMContext):
-    """Skip ideal connection question."""
-    data = await state.get_data()
-    lang = data.get("personalization_lang", "en")
-
-    await callback.message.edit_text("👌")
     await save_personalization_data(callback.message, state, lang)
     await callback.answer()
+
+
+# === Step 4: Open-Ended Question (TEMPORARILY DISABLED) ===
+# Uncomment below to re-enable the "Last question!" step.
+
+# async def show_ideal_connection_step(message: Message, state: FSMContext, lang: str):
+#     """Show open-ended question about ideal connection."""
+#     data = await state.get_data()
+#
+#     # Generate personalized question based on mode
+#     question = await generate_ideal_connection_question(
+#         connection_mode=data.get("connection_mode", "exchange"),
+#         passion_themes=data.get("passion_themes", []),
+#         personalization_preference=data.get("personalization_preference", ""),
+#         lang=lang
+#     )
+#
+#     if lang == "ru":
+#         text = f"💭 <b>Последний вопрос!</b>\n\n{question}\n\n<i>Напиши текстом или голосовым</i>"
+#     else:
+#         text = f"💭 <b>Last question!</b>\n\n{question}\n\n<i>Type or send a voice message</i>"
+#
+#     await message.answer(text, reply_markup=get_skip_personalization_keyboard(lang))
+#     await state.set_state(PersonalizationStates.waiting_ideal_connection)
+#
+#
+# @router.message(PersonalizationStates.waiting_ideal_connection, F.text)
+# async def process_ideal_connection_text(message: Message, state: FSMContext):
+#     """Process text answer about ideal connection."""
+#     data = await state.get_data()
+#     lang = data.get("personalization_lang", "en")
+#
+#     ideal_text = message.text.strip()
+#
+#     await state.update_data(ideal_connection=ideal_text)
+#
+#     # Save and finish
+#     await save_personalization_data(message, state, lang)
+#
+#
+# @router.message(PersonalizationStates.waiting_ideal_connection, F.voice)
+# async def process_ideal_connection_voice(message: Message, state: FSMContext):
+#     """Process voice answer about ideal connection."""
+#     data = await state.get_data()
+#     lang = data.get("personalization_lang", "en")
+#
+#     status = await message.answer("🎤 Слушаю..." if lang == "ru" else "🎤 Listening...")
+#
+#     try:
+#         file = await bot.get_file(message.voice.file_id)
+#         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+#         transcription = await voice_service.download_and_transcribe(file_url)
+#
+#         if transcription:
+#             await status.delete()
+#             await state.update_data(ideal_connection=transcription)
+#             await save_personalization_data(message, state, lang)
+#         else:
+#             await status.edit_text(
+#                 "Не расслышал. Напиши текстом?" if lang == "ru"
+#                 else "Couldn't hear that. Type it out?"
+#             )
+#     except Exception as e:
+#         logger.error(f"Ideal connection voice error: {e}")
+#         await status.edit_text(
+#             "Напиши текстом" if lang == "ru" else "Please type instead"
+#         )
+#
+#
+# @router.callback_query(PersonalizationStates.waiting_ideal_connection, F.data == "skip_personalization_step")
+# async def skip_ideal_connection_step(callback: CallbackQuery, state: FSMContext):
+#     """Skip ideal connection question."""
+#     data = await state.get_data()
+#     lang = data.get("personalization_lang", "en")
+#
+#     await callback.message.edit_text("👌")
+#     await save_personalization_data(callback.message, state, lang)
+#     await callback.answer()
 
 
 # === Save & Finish ===
