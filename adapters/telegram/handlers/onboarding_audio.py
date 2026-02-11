@@ -286,8 +286,8 @@ async def process_audio(message: Message, state: FSMContext):
             await message.answer(f"Voice message too long (max {max_dur}s). Please try a shorter one!")
         return
 
-    # Status message
-    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
+    # Status message with progress updates
+    status = await message.answer("🎤 Transcribing..." if lang == "en" else "🎤 Расшифровываю...")
 
     try:
         # Get voice file
@@ -306,6 +306,14 @@ async def process_audio(message: Message, state: FSMContext):
             )
             return
 
+        # Update progress
+        try:
+            await status.edit_text(
+                "✨ Building your profile..." if lang == "en" else "✨ Создаю профиль..."
+            )
+        except Exception:
+            pass
+
         # Extract profile data
         profile_data = await extract_profile_from_transcription(
             transcription,
@@ -321,25 +329,31 @@ async def process_audio(message: Message, state: FSMContext):
 
         await status.delete()
 
-        # Validate profile completeness
-        validation = await validate_profile_completeness(profile_data, lang)
+        # Skip LLM validation — check completeness locally (faster)
+        has_about = bool(profile_data.get("about"))
+        has_looking = bool(profile_data.get("looking_for"))
+        has_help = bool(profile_data.get("can_help_with"))
 
-        if validation["is_complete"]:
-            # Profile is complete, show confirmation
+        if has_about and (has_looking or has_help):
             await show_profile_confirmation(message, state, profile_data, lang)
         else:
-            # Missing important info, ask follow-up
-            follow_up = validation.get("follow_up_question")
-            if follow_up:
-                await state.update_data(missing_fields=validation["missing_fields"])
-                await message.answer(follow_up)
-                await state.set_state(AudioOnboarding.waiting_followup)
+            # Missing important info — ask a simple follow-up (no LLM call)
+            missing = []
+            if not has_looking:
+                missing.append("looking_for")
+            if not has_help:
+                missing.append("can_help_with")
+            await state.update_data(missing_fields=missing)
+
+            if lang == "ru":
+                question = "Отлично! А кого ты хотел бы встретить здесь и чем можешь помочь другим?"
             else:
-                # No follow-up generated, just show what we have
-                await show_profile_confirmation(message, state, profile_data, lang)
+                question = "Great intro! Who would you like to meet here, and how can you help others?"
+            await message.answer(question)
+            await state.set_state(AudioOnboarding.waiting_followup)
 
     except Exception as e:
-        logger.error(f"Audio processing error: {e}")
+        logger.error(f"Audio processing error: {e}", exc_info=True)
         await status.edit_text(
             "Something went wrong. Please try again." if lang == "en"
             else "Что-то пошло не так. Попробуй ещё раз."
@@ -1269,7 +1283,7 @@ async def extract_profile_from_transcription(
     from openai import AsyncOpenAI
     from config.settings import settings
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0)
 
     prompt = AUDIO_EXTRACTION_PROMPT.format(
         transcription=transcription,
@@ -1281,7 +1295,7 @@ async def extract_profile_from_transcription(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,  # Increased for chain-of-thought
+            max_tokens=1200,  # Chain-of-thought + JSON
             temperature=0.1  # Low for consistent extraction
         )
 
