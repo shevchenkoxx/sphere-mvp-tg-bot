@@ -202,8 +202,8 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         await callback.answer()
         return
 
+    await callback.answer()  # Answer early to avoid Telegram timeout
     await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
-    await callback.answer()
 
 
 async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None):
@@ -646,6 +646,9 @@ async def retry_matching(callback: CallbackQuery):
         await callback.answer(msg, show_alert=True)
         return
 
+    # Answer callback IMMEDIATELY to avoid Telegram 30s timeout
+    await callback.answer()
+
     # Show loading
     await callback.message.edit_text(
         "🔄 Searching for matches..." if lang == "en" else "🔄 Ищу матчи..."
@@ -677,8 +680,6 @@ async def retry_matching(callback: CallbackQuery):
             else "Что-то пошло не так. Попробуй ещё раз.",
             reply_markup=get_back_to_menu_keyboard(lang)
         )
-
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("match_prev_"))
