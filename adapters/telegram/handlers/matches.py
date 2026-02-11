@@ -341,12 +341,22 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
             await message.answer(error_msg, reply_markup=get_main_menu_keyboard(lang))
         return
 
+    # Get current user for "both here" check
+    current_user = await user_service.get_user(user_id)
+
     # Build partner profile display - rich card style
     name = partner.display_name or partner.first_name or ("Anonymous" if lang == "en" else "Аноним")
     header = "Match" if lang == "en" else "Матч"
 
     # Header with match counter
-    text = f"<b>💫 {header} {index + 1}/{total_matches}</b>\n\n"
+    text = f"<b>💫 {header} {index + 1}/{total_matches}</b>"
+
+    # "Both here" badge — same event
+    if (current_user and current_user.current_event_id and partner.current_event_id
+            and str(current_user.current_event_id) == str(partner.current_event_id)):
+        badge = "  📍 Вы оба здесь!" if lang == "ru" else "  📍 You're both here!"
+        text += badge
+    text += "\n\n"
 
     # Name with username
     text += f"<b>{name}</b>"
@@ -986,3 +996,46 @@ async def notify_about_match(
         )
     except Exception as e:
         logger.error(f"Failed to notify user {user_telegram_id}: {e}")
+
+
+async def send_followup_checkin(
+    user_telegram_id: int,
+    user_name: str,
+    match_count: int,
+    event_name: str,
+    lang: str = "en"
+):
+    """Send follow-up check-in message after matches were delivered"""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        text = (
+            f"👋 <b>{user_name}, как тебе {event_name}?</b>\n\n"
+            f"Ты получил {match_count} матчей. Уже с кем-то пообщался?\n\n"
+            "• Если встретились — оцени матч 👍/👎 в карточке\n"
+            "• Хочешь больше матчей? Дополни профиль и я найду ещё!\n"
+        )
+        builder.button(text="💫 Мои матчи", callback_data="my_matches")
+        builder.button(text="✏️ Дополнить профиль", callback_data="my_profile")
+        builder.button(text="🔄 Найти ещё", callback_data="retry_matching")
+    else:
+        text = (
+            f"👋 <b>{user_name}, how's {event_name}?</b>\n\n"
+            f"You got {match_count} matches. Met anyone yet?\n\n"
+            "• If you've met — rate the match 👍/👎 on the card\n"
+            "• Want more matches? Update your profile and I'll find more!\n"
+        )
+        builder.button(text="💫 My Matches", callback_data="my_matches")
+        builder.button(text="✏️ Update Profile", callback_data="my_profile")
+        builder.button(text="🔄 Find More", callback_data="retry_matching")
+    builder.adjust(1)
+
+    try:
+        await bot.send_message(
+            user_telegram_id,
+            text,
+            reply_markup=builder.as_markup()
+        )
+    except Exception as e:
+        logger.error(f"Failed to send follow-up to {user_telegram_id}: {e}")

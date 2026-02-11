@@ -5,6 +5,7 @@ Core business logic for finding compatible people.
 
 from typing import List, Tuple, Optional
 from uuid import UUID
+import asyncio
 import logging
 from core.domain.models import (
     User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchType, MatchStatus
@@ -218,27 +219,43 @@ class MatchingService:
             logger.info(f"No candidates found for {user.display_name or user.id}")
             return []
 
-        logger.info(f"Found {len(candidates)} candidates for LLM re-ranking")
-
-        # Stage 2: LLM deep analysis (thorough)
-        matches = []
+        # Filter out already-matched candidates
+        new_candidates = []
         for candidate, vector_score in candidates:
-            # Skip if already matched
             if await self.match_repo.exists(event_id, user.id, candidate.id):
                 logger.info(f"Skipping {candidate.display_name or candidate.id} — already matched")
                 continue
+            new_candidates.append((candidate, vector_score))
 
-            # Deep LLM analysis
+        if not new_candidates:
+            logger.info(f"All {len(candidates)} candidates already matched")
+            return []
+
+        logger.info(f"Running parallel LLM re-ranking for {len(new_candidates)} candidates")
+
+        # Stage 2: PARALLEL LLM deep analysis
+        async def _analyze_one(candidate, vector_score):
             result = await self.analyze_pair(user, candidate, event_name)
-
             if result:
                 logger.info(
-                    f"LLM score for {user.display_name} ↔ {candidate.display_name}: "
-                    f"{result.compatibility_score:.2f} (threshold={self.threshold}, vector={vector_score:.2f})"
+                    f"LLM score: {user.display_name} ↔ {candidate.display_name}: "
+                    f"{result.compatibility_score:.2f} (threshold={self.threshold}, vec={vector_score:.2f})"
                 )
+            return candidate, vector_score, result
 
+        results = await asyncio.gather(
+            *[_analyze_one(c, vs) for c, vs in new_candidates],
+            return_exceptions=True
+        )
+
+        # Process results and create match records
+        matches = []
+        for item in results:
+            if isinstance(item, Exception):
+                logger.error(f"LLM analysis failed for a candidate: {item}")
+                continue
+            candidate, vector_score, result = item
             if result and result.compatibility_score >= self.threshold:
-                # Create match record
                 match_create = MatchCreate(
                     event_id=event_id,
                     user_a_id=user.id,
@@ -249,8 +266,6 @@ class MatchingService:
                     icebreaker=result.icebreaker
                 )
                 created_match = await self.match_repo.create(match_create)
-
-                # Create result with match_id for notifications
                 result_with_id = MatchResultWithId(
                     compatibility_score=result.compatibility_score,
                     match_type=result.match_type,

@@ -180,12 +180,13 @@ def get_match_keyboard(
     builder.button(text=profile_text, callback_data=f"view_profile_{match_id}")
     builder.adjust(2)
 
-    # Row 2: Chat (moved, still accessible)
+    # Row 2: Chat — deep link to open DM directly
     if partner_username:
-        chat_text = f"💬 Chat @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+        chat_text = f"💬 Write @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+        builder.row(InlineKeyboardButton(text=chat_text, url=f"https://t.me/{partner_username}"))
     else:
         chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
-    builder.row(InlineKeyboardButton(text=chat_text, callback_data=f"chat_match_{match_id}"))
+        builder.row(InlineKeyboardButton(text=chat_text, callback_data=f"chat_match_{match_id}"))
 
     # Row 3: AI Speed Dating button
     speed_text = "⚡ AI Speed Dating" if lang == "en" else "⚡ AI Знакомство"

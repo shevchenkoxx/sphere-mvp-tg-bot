@@ -846,3 +846,66 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     )
 
     await state.clear()
+
+
+@router.message(Command("followup"))
+async def admin_followup(message: Message):
+    """
+    /followup [event_code] - Send follow-up check-in to all event participants who have matches
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip() if len(parts) > 1 else None
+
+    if not event_code:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            event_code = event.code if event else None
+
+    if not event_code:
+        await message.answer("Usage: /followup EVENT_CODE")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+    if not participants:
+        await message.answer("No participants in this event")
+        return
+
+    await message.answer(f"Sending follow-up to {len(participants)} participants...")
+
+    from adapters.telegram.handlers.matches import send_followup_checkin
+
+    sent = 0
+    skipped = 0
+    for p in participants:
+        if not p.platform_user_id:
+            skipped += 1
+            continue
+        matches = await matching_service.get_user_matches(p.id)
+        if not matches:
+            skipped += 1
+            continue
+        lang = "ru"  # most users are RU for now
+        name = p.display_name or p.first_name or "there"
+        await send_followup_checkin(
+            user_telegram_id=int(p.platform_user_id),
+            user_name=name,
+            match_count=len(matches),
+            event_name=event.name or event_code,
+            lang=lang
+        )
+        sent += 1
+
+    await message.answer(f"✅ Follow-up sent: {sent}, skipped: {skipped} (no matches or no TG ID)")
