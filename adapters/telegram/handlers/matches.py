@@ -970,7 +970,8 @@ async def notify_about_match(
     explanation: str,
     icebreaker: str,
     match_id: str,
-    lang: str = "en"
+    lang: str = "en",
+    partner_username: str = None
 ):
     """Send notification about new match"""
     try:
@@ -992,7 +993,9 @@ async def notify_about_match(
         await bot.send_message(
             user_telegram_id,
             text,
-            reply_markup=get_match_keyboard(match_id)
+            reply_markup=get_match_keyboard(
+                match_id, lang=lang, partner_username=partner_username
+            )
         )
     except Exception as e:
         logger.error(f"Failed to notify user {user_telegram_id}: {e}")

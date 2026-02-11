@@ -338,6 +338,9 @@ async def quick_text_step_done(message: Message, state: FSMContext):
         "goals": [],
     }
 
+    # Save to state so confirm handler can read it
+    await state.update_data(profile_data=profile_data)
+
     # Show confirmation
     await show_profile_confirmation(message, state, profile_data, lang)
 
@@ -1049,7 +1052,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                                             explanation=result_with_id.explanation,
                                             icebreaker=result_with_id.icebreaker,
                                             match_id=str(result_with_id.match_id),
-                                            lang=lang
+                                            lang=lang,
+                                            partner_username=partner.username
                                         )
                         except Exception as me:
                             logger.error(f"Background matching failed for user {user_obj.id}: {me}", exc_info=True)
