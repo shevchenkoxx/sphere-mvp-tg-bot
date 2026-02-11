@@ -295,7 +295,31 @@ async def demo_command(message: Message):
     await message.answer(match_text)
     await asyncio.sleep(4)
 
-    # Step 7: Features overview
+    # Step 7: Match notification (what the other person sees)
+    await message.answer(
+        "🔔 <b>Step 6: Match Notification</b>\n\n"
+        "<i>This is what your match receives:</i>"
+    )
+    await asyncio.sleep(1.5)
+
+    notification_text = (
+        f"<b>You have a new match!</b>\n\n"
+        f"Meet <b>{demo_profile['name']}</b>\n\n"
+        f"<i>{demo_match['reason']}</i>\n\n"
+        f"<b>Start with:</b> {demo_match['icebreaker']}"
+    )
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder as DemoBuilder
+    notif_kb = DemoBuilder()
+    notif_kb.button(text="💬 Start Chat", callback_data="demo_noop")
+    notif_kb.button(text="👤 View Profile", callback_data="demo_noop")
+    notif_kb.button(text="⚡ AI Speed Dating", callback_data="demo_noop")
+    notif_kb.adjust(1)
+
+    await message.answer(notification_text, reply_markup=notif_kb.as_markup())
+    await asyncio.sleep(4)
+
+    # Step 8: Features overview
     await message.answer(
         "⚡ <b>Additional Features</b>\n\n"
         "• <b>AI Speed Dating</b> - Preview a simulated conversation with your match\n"
@@ -310,7 +334,7 @@ async def demo_command(message: Message):
     )
     await asyncio.sleep(4)
 
-    # Step 8: CTA
+    # Step 9: CTA
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     builder.button(text="🚀 Try it now!", callback_data="start_real_onboarding")
@@ -324,6 +348,12 @@ async def demo_command(message: Message):
         "Ready to create your profile?",
         reply_markup=builder.as_markup()
     )
+
+
+@router.callback_query(F.data == "demo_noop")
+async def demo_noop_handler(callback: CallbackQuery):
+    """Demo buttons — just acknowledge"""
+    await callback.answer("This is a demo preview", show_alert=False)
 
 
 @router.callback_query(F.data == "start_real_onboarding")

@@ -110,15 +110,21 @@ async def process_event_code(message: Message, state: FSMContext):
             )
 
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+        await state.clear()
     else:
+        # Wrong code — stay in state, let user try again
         if lang == "ru":
-            text = f"❌ {msg}\n\nПопробуй другой код или вернись в меню."
+            text = (
+                f"❌ Код <b>{event_code}</b> не найден.\n\n"
+                "Попробуй ввести другой код или напиши <b>отмена</b>."
+            )
         else:
-            text = f"❌ {msg}\n\nTry another code or go back to menu."
+            text = (
+                f"❌ Code <b>{event_code}</b> not found.\n\n"
+                "Try another code or type <b>cancel</b>."
+            )
 
-        await message.answer(text, reply_markup=get_back_to_menu_keyboard(lang))
-
-    await state.clear()
+        await message.answer(text)
 
 
 # === EVENT CREATION (admin only) ===
