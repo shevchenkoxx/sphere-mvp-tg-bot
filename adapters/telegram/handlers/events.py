@@ -897,7 +897,7 @@ async def admin_followup(message: Message):
         if not matches:
             skipped += 1
             continue
-        lang = "ru"  # most users are RU for now
+        lang = "en"  # follow-up always in English
         name = p.display_name or p.first_name or "there"
         await send_followup_checkin(
             user_telegram_id=int(p.platform_user_id),

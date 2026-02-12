@@ -948,18 +948,34 @@ async def handle_feedback(callback: CallbackQuery):
 
         logger.info(f"Feedback saved: user={user.id}, match={match_id}, type={feedback_type}")
 
-        if feedback_type == "good":
-            msg = "Thanks! 👍" if lang == "en" else "Спасибо! 👍"
-        else:
-            msg = "Got it, will improve! 👎" if lang == "en" else "Понял, улучшим! 👎"
+        await callback.answer()
 
-        await callback.answer(msg)
+        # Send warm thank you message
+        if feedback_type == "good":
+            thank_text = (
+                "Thanks for the feedback! 🙌\n\n"
+                "Glad this match clicked — hope you have a great conversation! "
+                "If you've already met, that's amazing. Keep connecting!"
+            ) if lang == "en" else (
+                "Спасибо за фидбэк! 🙌\n\n"
+                "Рад, что матч зашёл — надеюсь, вы классно пообщаетесь! "
+                "Если уже встретились — круто, продолжай в том же духе!"
+            )
+        else:
+            thank_text = (
+                "Thanks for the honest feedback! 🙏\n\n"
+                "This helps me find better matches for you next time. "
+                "Try updating your profile or hit 🔄 Find More — I'll do better!"
+            ) if lang == "en" else (
+                "Спасибо за честный фидбэк! 🙏\n\n"
+                "Это поможет найти лучшие матчи в следующий раз. "
+                "Попробуй обновить профиль или нажми 🔄 — я постараюсь лучше!"
+            )
+        await callback.message.answer(thank_text)
 
     except Exception as e:
         logger.error(f"Feedback save error: {e}")
-        # Still show confirmation to user even if DB fails
-        msg = "Thanks for feedback!" if lang == "en" else "Спасибо за отзыв!"
-        await callback.answer(msg)
+        await callback.answer("Thanks for feedback!" if lang == "en" else "Спасибо за отзыв!")
 
 
 # === NOTIFICATIONS ===
@@ -1008,30 +1024,20 @@ async def send_followup_checkin(
     event_name: str,
     lang: str = "en"
 ):
-    """Send follow-up check-in message after matches were delivered"""
+    """Send follow-up check-in message after matches were delivered (always English)"""
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     builder = InlineKeyboardBuilder()
-    if lang == "ru":
-        text = (
-            f"👋 <b>{user_name}, как тебе {event_name}?</b>\n\n"
-            f"Ты получил {match_count} матчей. Уже с кем-то пообщался?\n\n"
-            "• Если встретились — оцени матч 👍/👎 в карточке\n"
-            "• Хочешь больше матчей? Дополни профиль и я найду ещё!\n"
-        )
-        builder.button(text="💫 Мои матчи", callback_data="my_matches")
-        builder.button(text="✏️ Дополнить профиль", callback_data="my_profile")
-        builder.button(text="🔄 Найти ещё", callback_data="retry_matching")
-    else:
-        text = (
-            f"👋 <b>{user_name}, how's {event_name}?</b>\n\n"
-            f"You got {match_count} matches. Met anyone yet?\n\n"
-            "• If you've met — rate the match 👍/👎 on the card\n"
-            "• Want more matches? Update your profile and I'll find more!\n"
-        )
-        builder.button(text="💫 My Matches", callback_data="my_matches")
-        builder.button(text="✏️ Update Profile", callback_data="my_profile")
-        builder.button(text="🔄 Find More", callback_data="retry_matching")
+    text = (
+        f"👋 <b>{user_name}, how's {event_name} going?</b>\n\n"
+        f"You got {match_count} match{'es' if match_count != 1 else ''}. Met anyone yet?\n\n"
+        "• Already met? Rate the match 👍/👎 on the card\n"
+        "• Want more? Update your profile and I'll find even better matches!\n"
+        "\n🎁 <i>Remember: successful matches enter the draw for a free dinner from Sphere!</i>"
+    )
+    builder.button(text="💫 My Matches", callback_data="my_matches")
+    builder.button(text="✏️ Update Profile", callback_data="my_profile")
+    builder.button(text="🔄 Find More", callback_data="retry_matching")
     builder.adjust(1)
 
     try:
