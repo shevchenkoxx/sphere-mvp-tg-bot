@@ -486,8 +486,12 @@ async def admin_broadcast(message: Message):
 @router.message(Command("event"))
 async def admin_event_info(message: Message):
     """
-    /event <code> - Show event details
+    /event <code> - Show event details (admin only)
     """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         # List all active events
