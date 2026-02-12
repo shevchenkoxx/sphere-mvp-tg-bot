@@ -208,14 +208,28 @@ async def generate_onboarding_intro(
 
 @router.callback_query(AudioOnboarding.waiting_audio, F.data == "audio_ready")
 async def audio_ready(callback: CallbackQuery, state: FSMContext):
-    """User is ready to record"""
+    """User is ready to record — keep questions visible"""
     data = await state.get_data()
     lang = data.get("language", "ru")
 
     if lang == "ru":
-        text = "🎤 Отлично! Записывай голосовое сообщение.\n\nГовори свободно 30-60 секунд о себе."
+        text = (
+            "🎤 <b>Записывай голосовое!</b> (30-60 сек)\n\n"
+            "<b>Расскажи:</b>\n"
+            "   🙋 <i>Кто ты и чем занимаешься?</i>\n"
+            "   🔍 <i>Кого хочешь встретить?</i>\n"
+            "   💡 <i>Чем можешь помочь другим?</i>\n\n"
+            "Говори свободно и естественно 🎙"
+        )
     else:
-        text = "🎤 Great! Record your voice message.\n\nSpeak freely for 30-60 seconds about yourself."
+        text = (
+            "🎤 <b>Record your voice message!</b> (30-60 sec)\n\n"
+            "<b>Include:</b>\n"
+            "   🙋 <i>Who are you and what do you do?</i>\n"
+            "   🔍 <i>What kind of people do you want to meet?</i>\n"
+            "   💡 <i>How can you help others?</i>\n\n"
+            "Just speak naturally 🎙"
+        )
 
     await callback.message.edit_text(text)
     await callback.answer()

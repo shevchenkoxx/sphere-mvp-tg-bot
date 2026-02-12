@@ -29,7 +29,8 @@ class MatchingService:
         self.match_repo = match_repo
         self.event_repo = event_repo
         self.ai_service = ai_service
-        self.threshold = settings.default_match_threshold
+        # Cap threshold at 0.4 — higher values reject too many valid matches
+        self.threshold = min(settings.default_match_threshold, 0.4)
 
     def calculate_base_score(self, user_a: User, user_b: User) -> float:
         """
