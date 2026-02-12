@@ -3,7 +3,7 @@
 ## Overview
 Telegram bot for meaningful connections at events. Users scan QR → quick voice onboarding → AI matching → meet interesting people.
 
-**Bot:** @Matchd_bot
+**Bot:** @Spheresocial_bot
 **Repo:** https://github.com/shevchenkoxx/sphere-mvp-tg-bot
 **Deploy:** Railway (auto-deploy from main branch)
 
@@ -37,7 +37,7 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ### Testing
 - **Production event: `POSTSW24`** (Post Software - Feb 4, 2026)
-- Deep link: `t.me/Matchd_bot?start=event_POSTSW24`
+- Deep link: `t.me/Spheresocial_bot?start=event_POSTSW24`
 - QR code: `POSTSW24_QR.png` in project root
 - Test event: `TEST2024`
 - Reset profile: `/reset` in bot (needs DEBUG=true or admin)
@@ -480,6 +480,49 @@ ONBOARDING_MODE=audio
 
 ## Recent Session Changes
 
+### February 12, 2026 - SXN Event Day Session 4 (Pre-Event Final)
+
+**Bot renamed:** @Matchd_bot → @Spheresocial_bot
+
+**Round 4 fixes (this session):**
+
+1. **Chat button → direct TG chat** — `get_profile_view_keyboard()` now accepts `partner_username`, uses URL button `https://t.me/{username}` when available (same pattern as match card keyboard). Also fixed `get_meetup_confirmation_keyboard()` to use URL button instead of callback.
+2. **Anytime in meetup time picker** — Added `0` = "Anytime" to `MEETUP_TIME_SLOTS`. New `_format_time_slot()` helper in meetup.py. Receiver keyboard, preview, confirmation all display "Anytime" correctly.
+3. **Matching prompt softened** — Removed strict "NEVER infer" rules. Now allows smart approximation within same domain. Prevents cross-domain leaps (leadership ≠ design). Weights: VALUE EXCHANGE 0.4, TOPIC RELEVANCE 0.35, GOALS 0.25.
+4. **Invitations section** — New "📩 Invitations" button in main menu with pending count badge. Handler `show_invitations` lists pending meetup proposals with accept/decline buttons. New `get_received_pending()` method in meetup_repository.
+5. **Bot username switch** — All hardcoded `Matchd_bot` → `Spheresocial_bot` in start.py + CLAUDE.md.
+
+**Round 3 fixes (previous in this session):**
+6. **Instagram @sphere.match** — clickable HTML link with full Instagram URL
+7. **Remove Moscow from cities** — removed from SPHERE_CITIES
+8. **Remove all text truncation** — 6 locations in matches.py, 3 in start.py — full text shown
+9. **Photo handlers in onboarding** — added for `confirming` and `adding_details` states
+10. **experience_level saved to DB** — was extracted but lost, now saved in `save_audio_profile()`
+11. **Tighter matching (now softened)** — strict VALUE EXCHANGE only, no inferred synergy
+12. **Live profile refresh** — edits existing profile message instead of sending new
+
+**Round 2 fixes (previous in this session):**
+13. Confirmation footer text → "Just send a message and I'll add new details"
+14. Giveaway Date Dinner text + +2 chances restored
+15. Refer a Friend "Make matches sharper" copy with 6 categories + QR code
+16. Keep profile visible when adding details
+17. Photo display during match pagination (delete+resend)
+18. Fix double message when loading matches
+19. Chat button photo message handling
+20. Delayed optimization — check if user has matches
+21. SHOW_TOP_MATCHES 3→5
+22. Welcome giveaway teaser updated
+
+**Key files modified this session:**
+- `adapters/telegram/keyboards/inline.py` — profile view URL button, menu invitations, Anytime, meetup confirmation URL
+- `adapters/telegram/handlers/start.py` — invitations handler, back_to_menu badge, bot username
+- `adapters/telegram/handlers/meetup.py` — _format_time_slot(), Anytime display
+- `adapters/telegram/handlers/matches.py` — profile view partner_username
+- `infrastructure/ai/openai_service.py` — softened matching prompt
+- `infrastructure/database/meetup_repository.py` — get_received_pending()
+
+---
+
 ### February 12, 2026 - SXN Event Day (Live Event)
 
 **Event: SXN - SeXXXess Night: Digital Intimacy & Dating Apps (Warsaw)**
@@ -559,7 +602,7 @@ ONBOARDING_MODE=audio
 
 **Systems tested (all OK):**
 - Supabase DB connection + REST API
-- Telegram Bot API (@Matchd_bot)
+- Telegram Bot API (@Spheresocial_bot)
 - OpenAI API (models endpoint)
 - pgvector extension (v0.8.0) + match_candidates() function
 - All 8 database tables present
@@ -600,7 +643,7 @@ pkill -f event_matching
 1. **Event POSTSW24 Created**
    - Code: `POSTSW24`
    - QR: `POSTSW24_QR.png`
-   - Deep link: `t.me/Matchd_bot?start=event_POSTSW24`
+   - Deep link: `t.me/Spheresocial_bot?start=event_POSTSW24`
 
 2. **Photo Request Moved to Matches Tab**
    - Removed selfie request from onboarding

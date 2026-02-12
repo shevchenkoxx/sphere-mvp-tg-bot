@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def _format_time_slot(minutes: int, lang: str = "en") -> str:
+    """Format a single time slot value for display (0 = Anytime)."""
+    if minutes == 0:
+        return "Anytime" if lang == "en" else "Любое время"
+    return f"{minutes} min"
+
+
 # ─────────────────────────────────────────────
 # PROPOSER FLOW
 # ─────────────────────────────────────────────
@@ -206,7 +213,7 @@ async def receive_location(message: Message, state: FSMContext):
 
     # Build preview card
     partner_name = partner.display_name or partner.first_name or "Match"
-    times_str = ", ".join([f"{m} min" for m in sorted(selected_times)])
+    times_str = ", ".join([_format_time_slot(m, lang) for m in sorted(selected_times)])
 
     preview = (
         f"<b>☕ Meetup invitation preview</b>\n"
@@ -274,7 +281,7 @@ async def send_meetup_proposal(callback: CallbackQuery, state: FSMContext):
     partner = await user_service.get_user(partner_id)
     proposer_name = user.display_name or user.first_name or "Someone"
     partner_name = partner.display_name or partner.first_name or "Match"
-    times_str = ", ".join([f"{m} min" for m in proposal.time_slots])
+    times_str = ", ".join([_format_time_slot(m, lang) for m in proposal.time_slots])
 
     invitation_text = (
         f"<b>☕ Meetup invitation!</b>\n"
@@ -431,7 +438,7 @@ async def accept_meetup(callback: CallbackQuery):
         f"<b>✅ Meetup confirmed!</b>\n"
         f"{'─' * 20}\n\n"
         f"<b>{proposer_name}</b> + <b>{receiver_name}</b>\n\n"
-        f"<b>Time:</b> {accepted_minutes} min\n"
+        f"<b>Time:</b> {_format_time_slot(accepted_minutes, lang)}\n"
         f"<b>Location:</b> {proposal.location}\n"
     )
 
@@ -462,7 +469,7 @@ async def accept_meetup(callback: CallbackQuery):
         proposer_notification = (
             f"<b>✅ {receiver_name} accepted your meetup!</b>\n"
             f"{'─' * 20}\n\n"
-            f"<b>Time:</b> {accepted_minutes} min\n"
+            f"<b>Time:</b> {_format_time_slot(accepted_minutes, lang)}\n"
             f"<b>Location:</b> {proposal.location}\n"
         )
 
@@ -569,7 +576,7 @@ async def copy_for_dm(callback: CallbackQuery):
 
     dm_text = (
         f"Hey! We matched and I'd love to chat.\n\n"
-        f"Meetup: {proposal.accepted_time_slot or proposal.time_slots[0]} min @ {proposal.location}\n"
+        f"Meetup: {_format_time_slot(proposal.accepted_time_slot if proposal.accepted_time_slot is not None else proposal.time_slots[0])} @ {proposal.location}\n"
     )
     if topics_text:
         dm_text += f"\nTopics:\n{topics_text}"

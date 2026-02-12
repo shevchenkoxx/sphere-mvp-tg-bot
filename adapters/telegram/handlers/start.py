@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 
 from core.domain.models import MessagePlatform
 from core.domain.constants import get_interest_display, get_goal_display
-from adapters.telegram.loader import user_service, event_service, bot
+from adapters.telegram.loader import user_service, event_service, bot, meetup_repo
 from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
     get_join_event_keyboard,
@@ -556,6 +556,87 @@ async def refer_a_friend(callback: CallbackQuery):
     await callback.answer()
 
 
+# === INVITATIONS ===
+
+@router.callback_query(F.data == "my_invitations")
+async def show_invitations(callback: CallbackQuery):
+    """Show pending meetup invitations received by this user."""
+    lang = detect_lang_callback(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM, str(callback.from_user.id)
+    )
+    if not user:
+        await callback.answer("Profile not found", show_alert=True)
+        return
+
+    invitations = await meetup_repo.get_received_pending(user.id)
+
+    # Filter out expired
+    invitations = [inv for inv in invitations if not meetup_repo.is_expired(inv)]
+
+    if not invitations:
+        text = (
+            "<b>📩 Invitations</b>\n\n"
+            "No pending invitations right now.\n"
+            "When someone sends you a meetup proposal, it will appear here!"
+            if lang == "en" else
+            "<b>📩 Приглашения</b>\n\n"
+            "Нет активных приглашений.\n"
+            "Когда кто-то отправит тебе предложение встречи, оно появится здесь!"
+        )
+        await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+        await callback.answer()
+        return
+
+    # Show each invitation with accept/decline buttons
+    text = (
+        f"<b>📩 Invitations ({len(invitations)})</b>\n\n"
+        if lang == "en" else
+        f"<b>📩 Приглашения ({len(invitations)})</b>\n\n"
+    )
+
+    await callback.message.edit_text(text.strip(), reply_markup=get_back_to_menu_keyboard(lang))
+    await callback.answer()
+
+    # Send each invitation as a separate message with buttons
+    from adapters.telegram.keyboards.inline import get_meetup_receiver_keyboard
+    for inv in invitations:
+        proposer = await user_service.get_user(inv.proposer_id)
+        proposer_name = (proposer.display_name or proposer.first_name or "Someone") if proposer else "Someone"
+
+        times_str = ", ".join([
+            ("Anytime" if lang == "en" else "Любое время") if m == 0 else f"{m} min"
+            for m in inv.time_slots
+        ])
+
+        inv_text = (
+            f"<b>☕ {proposer_name}</b> wants to meet!\n"
+            f"{'─' * 20}\n"
+        )
+        if inv.ai_why_meet:
+            inv_text += f"\n<i>{inv.ai_why_meet}</i>\n"
+        if inv.ai_topics:
+            inv_text += "\n<b>Topics:</b>\n"
+            for i, topic in enumerate(inv.ai_topics, 1):
+                inv_text += f"  {i}. {topic}\n"
+        inv_text += (
+            f"\n<b>Time:</b> {times_str}\n"
+            f"<b>Location:</b> {inv.location}\n"
+        )
+
+        try:
+            await bot.send_message(
+                callback.message.chat.id,
+                inv_text,
+                reply_markup=get_meetup_receiver_keyboard(inv.short_id, inv.time_slots, lang),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send invitation card {inv.short_id}: {e}")
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""
@@ -574,6 +655,18 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     lang = detect_lang_callback(callback)
     text = "What would you like to do?" if lang == "en" else "Что делаем?"
 
+    # Get pending invitations count for badge
+    pending_inv = 0
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM, str(callback.from_user.id)
+        )
+        if user:
+            invitations = await meetup_repo.get_received_pending(user.id)
+            pending_inv = len([inv for inv in invitations if not meetup_repo.is_expired(inv)])
+    except Exception:
+        pass
+
     # Handle photo messages (from profile view or refer QR)
     if callback.message.photo:
         try:
@@ -582,13 +675,13 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
             pass
         await bot.send_message(
             callback.message.chat.id, text,
-            reply_markup=get_main_menu_keyboard(lang),
+            reply_markup=get_main_menu_keyboard(lang, pending_invitations=pending_inv),
             parse_mode="HTML"
         )
     else:
         await callback.message.edit_text(
             text,
-            reply_markup=get_main_menu_keyboard(lang)
+            reply_markup=get_main_menu_keyboard(lang, pending_invitations=pending_inv)
         )
     await callback.answer()
 

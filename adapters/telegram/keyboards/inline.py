@@ -224,13 +224,17 @@ def get_chat_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_profile_view_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMarkup:
+def get_profile_view_keyboard(match_id: str, lang: str = "en", partner_username: str = None) -> InlineKeyboardMarkup:
     """Keyboard for viewing match profile - back to match and menu"""
     builder = InlineKeyboardBuilder()
-    chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
     back_text = "← Back" if lang == "en" else "← Назад"
     menu_text = "← Menu" if lang == "en" else "← Меню"
-    builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
+    if partner_username:
+        chat_text = f"💬 Write @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+        builder.row(InlineKeyboardButton(text=chat_text, url=f"https://t.me/{partner_username}"))
+    else:
+        chat_text = "💬 Chat" if lang == "en" else "💬 Написать"
+        builder.button(text=chat_text, callback_data=f"chat_match_{match_id}")
     builder.button(text=back_text, callback_data="back_to_matches")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))
@@ -239,20 +243,23 @@ def get_profile_view_keyboard(match_id: str, lang: str = "en") -> InlineKeyboard
 
 # === MAIN MENU ===
 
-def get_main_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> InlineKeyboardMarkup:
     """Main menu keyboard - clean and simple"""
     builder = InlineKeyboardBuilder()
+    inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
     if lang == "ru":
         builder.button(text="👤 Профиль", callback_data="my_profile")
         builder.button(text="🎉 Ивенты", callback_data="my_events")
         builder.button(text="💫 Матчи", callback_data="my_matches")
+        builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🎉 Events", callback_data="my_events")
         builder.button(text="💫 Matches", callback_data="my_matches")
+        builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
-    builder.adjust(2, 2)
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
@@ -565,8 +572,8 @@ def get_feedback_keyboard(match_id: str, lang: str = "en") -> InlineKeyboardMark
 
 # === MEETUP PROPOSALS ===
 
-# Available time slots in minutes
-MEETUP_TIME_SLOTS = [5, 10, 15, 20, 30, 45, 60]
+# Available time slots in minutes (0 = Anytime)
+MEETUP_TIME_SLOTS = [5, 10, 15, 20, 30, 45, 60, 0]
 
 
 def get_meetup_time_keyboard(selected: List[int] = None, lang: str = "en") -> InlineKeyboardMarkup:
@@ -578,12 +585,15 @@ def get_meetup_time_keyboard(selected: List[int] = None, lang: str = "en") -> In
 
     for i, minutes in enumerate(MEETUP_TIME_SLOTS):
         is_selected = minutes in selected
-        label = f"{minutes} min"
+        if minutes == 0:
+            label = "Anytime" if lang == "en" else "Любое время"
+        else:
+            label = f"{minutes} min"
         if is_selected:
             label = f"✓ {label}"
         builder.button(text=label, callback_data=f"mt_{i}")
 
-    builder.adjust(4, 3)  # 4 in first row, 3 in second
+    builder.adjust(4, 4)  # 4 in first row, 4 in second (7 time + Anytime)
 
     # Done button (only if at least 1 selected)
     if selected:
@@ -619,7 +629,8 @@ def get_meetup_receiver_keyboard(short_id: str, time_slots: List[int], lang: str
 
     # Time slot buttons (accept with specific time)
     for i, minutes in enumerate(time_slots):
-        builder.button(text=f"✓ {minutes} min", callback_data=f"ma_{short_id}_{i}")
+        label = ("Anytime" if lang == "en" else "Любое время") if minutes == 0 else f"{minutes} min"
+        builder.button(text=f"✓ {label}", callback_data=f"ma_{short_id}_{i}")
 
     builder.adjust(min(len(time_slots), 3))
 
@@ -631,12 +642,12 @@ def get_meetup_receiver_keyboard(short_id: str, time_slots: List[int], lang: str
 
 
 def get_meetup_confirmation_keyboard(short_id: str, partner_username: str = None, lang: str = "en") -> InlineKeyboardMarkup:
-    """Post-accept confirmation keyboard with Copy for DM option"""
+    """Post-accept confirmation keyboard with direct chat link"""
     builder = InlineKeyboardBuilder()
 
     if partner_username:
         chat_text = f"💬 Chat @{partner_username}"
-        builder.button(text=chat_text, callback_data=f"mc_{short_id}")
+        builder.row(InlineKeyboardButton(text=chat_text, url=f"https://t.me/{partner_username}"))
 
     menu_text = "← Menu" if lang == "en" else "← Меню"
     builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))

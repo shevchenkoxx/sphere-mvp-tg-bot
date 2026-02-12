@@ -28,5 +28,5 @@ git add -A && git commit -m "MESSAGE" && git push origin main
 ## Post-deploy
 
 - Wait ~1-2 minutes for Railway deployment
-- Test bot: t.me/Matchd_bot
+- Test bot: t.me/Spheresocial_bot
 - Check Railway logs if issues

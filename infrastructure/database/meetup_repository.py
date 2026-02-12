@@ -180,6 +180,23 @@ class MeetupRepository:
         )
         return self._to_model(data) if data else None
 
+    @run_sync
+    def _get_received_pending_sync(self, receiver_id: UUID) -> list:
+        response = (
+            supabase.table("meetup_proposals")
+            .select("*")
+            .eq("receiver_id", str(receiver_id))
+            .eq("status", "pending")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return response.data or []
+
+    async def get_received_pending(self, receiver_id: UUID) -> List[MeetupProposal]:
+        """Get all pending proposals received by a user."""
+        rows = await self._get_received_pending_sync(receiver_id)
+        return [self._to_model(r) for r in rows]
+
     def is_expired(self, proposal: MeetupProposal) -> bool:
         if not proposal.expires_at:
             return False

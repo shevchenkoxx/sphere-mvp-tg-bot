@@ -669,14 +669,14 @@ async def view_match_profile(callback: CallbackQuery):
                 chat_id=callback.message.chat.id,
                 photo=partner.photo_url,
                 caption=caption_text,
-                reply_markup=get_profile_view_keyboard(match_id, lang),
+                reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username),
                 parse_mode="HTML"
             )
         except Exception:
             # Fallback to just text
-            await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
+            await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username))
     else:
-        await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang))
+        await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username))
 
     await callback.answer()
 

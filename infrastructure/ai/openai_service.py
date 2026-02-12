@@ -143,7 +143,7 @@ Language: same as bio text."""
 
         prompt = f"""Analyze compatibility between two people for networking at an event.
 
-CRITICAL: Base analysis ONLY on what users ACTUALLY stated. Do NOT invent or assume.
+Base analysis on what users stated. You may approximate when profiles are short, but stay within the same domain.
 
 === PERSON A: {name_a} ===
 Bio: {bio_a or 'Not provided'}
@@ -168,21 +168,27 @@ Interests: {', '.join(interests_b) if interests_b else 'None'}
 {f'Event: "{event_context}"' if event_context else ''}
 
 SCORING CRITERIA (in order of importance):
-1. VALUE EXCHANGE (0.5 weight): Does A's "looking_for" EXPLICITLY match B's "can_help" or vice versa?
-   - ONLY count matches where the EXACT need is stated. Example: A says "looking for investors" and B says "can help with fundraising" = match.
-   - Do NOT infer needs that are not explicitly stated. If A never mentions "design", don't match them with a designer.
-   - Direct explicit match: +0.5 | Partial keyword overlap: +0.25 | No explicit overlap: 0
-2. INTERESTS OVERLAP (0.3 weight): Shared EXPLICIT interests from the tags?
-   - 2+ shared: +0.3 | 1 shared: +0.15 | None: 0
-3. GOALS ALIGNMENT (0.2 weight): Similar networking goals + same industry?
-   - Same goals + same industry: +0.2 | Just same goals: +0.1 | None: 0
+1. VALUE EXCHANGE (0.4 weight): Does A's "looking_for" match B's "can_help" or vice versa?
+   - Direct match: +0.4 | Closely related: +0.2 | No overlap: 0
+   - Example: "looking for investors" + "can help with fundraising" = direct match
+   - Example: "building AI startup" + "product manager" = closely related (same domain)
+2. TOPIC RELEVANCE (0.35 weight): Are they in the same domain / working on related things?
+   - Same field + shared interests: +0.35 | Adjacent fields: +0.15 | Unrelated: 0
+   - Use bio, profession, interests, and passion to judge domain overlap
+3. GOALS ALIGNMENT (0.25 weight): Compatible networking goals + complementary strengths?
+   - Strong fit: +0.25 | Partial: +0.1 | None: 0
 
-CRITICAL RULES:
-- NEVER infer what someone "might need" — only use what they EXPLICITLY stated in "looking_for"
-- If person A never mentions design/UX/creative, do NOT match them with a designer based on "professional synergy"
-- Match based on STATED needs, not assumed complementarity
-- Score >= 0.5 means clear, explicit value exchange
-- Score < 0.4 = don't waste their time
+APPROXIMATION RULES:
+- You CAN approximate when profiles are vague or short — people often don't describe everything
+- "AI startup founder" likely needs tech talent, funding, growth advice — reasonable inferences
+- BUT stay within the same domain. Don't connect unrelated fields based on generic words
+  - BAD: "leadership" in bio → match with designer (leadership exists in every field)
+  - BAD: "tech" → match with fashion designer who once used Figma
+  - GOOD: "AI founder" → match with ML engineer (same domain)
+  - GOOD: "looking for co-founder" → match with someone who "wants to join a startup"
+- When in doubt, keep score moderate (0.4-0.5) and be honest in explanation
+- Score >= 0.6 means strong, clear connection
+- Score < 0.35 = don't waste their time
 
 LANGUAGE: {lang_instruction}
 
@@ -195,9 +201,9 @@ Return JSON:
 }}
 
 IMPORTANT:
-- ONLY reference skills/needs that are EXPLICITLY stated in profiles
+- Reference what's stated or reasonably inferred from profiles — stay in their domain
 - Icebreaker should be ACTION-oriented, not small talk
-- Score honestly - bad matches hurt user trust
+- Score honestly — bad matches hurt user trust, but don't under-score good topic overlap
 Respond with valid JSON only."""
 
         try:
