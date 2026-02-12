@@ -16,7 +16,7 @@ class Features:
     # === MATCHING ===
     MATCHING_ENABLED: bool = os.getenv("MATCHING_ENABLED", "true").lower() == "true"
     AUTO_MATCH_ON_JOIN: bool = os.getenv("AUTO_MATCH_ON_JOIN", "true").lower() == "true"
-    SHOW_TOP_MATCHES: int = int(os.getenv("SHOW_TOP_MATCHES", "3"))
+    SHOW_TOP_MATCHES: int = int(os.getenv("SHOW_TOP_MATCHES", "5"))
     MIN_MATCH_SCORE: float = float(os.getenv("MIN_MATCH_SCORE", "0.5"))
 
     # === DEEP PROFILING ===

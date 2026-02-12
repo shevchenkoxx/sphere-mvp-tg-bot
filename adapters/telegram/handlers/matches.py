@@ -220,18 +220,13 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
         # Check if user is in an event
         if user and user.current_event_id:
-            # Show loading message
+            # Show loading message (only for new messages, not edits to avoid double-flash)
             loading_text = (
                 "✨ Sphere is finding your best matches..."
             ) if lang == "en" else (
                 "✨ Sphere подбирает для тебя лучшие матчи..."
             )
-            if edit:
-                try:
-                    await message.edit_text(loading_text)
-                except Exception:
-                    pass
-            else:
+            if not edit:
                 status_msg = await message.answer(loading_text)
 
             try:
@@ -490,13 +485,19 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     )
 
     # Send photo with profile as caption (if photo exists)
-    if partner.photo_url and not edit:
+    if partner.photo_url:
         # Telegram caption limit is 1024 chars - truncate if needed
         caption_text = text
         if len(caption_text) > 1024:
             caption_text = caption_text[:1020] + "..."
 
         try:
+            if edit:
+                # For pagination: delete old message, send new with photo
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
             await bot.send_photo(
                 chat_id=message.chat.id,
                 photo=partner.photo_url,
@@ -511,7 +512,15 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
     # Text-only (no photo or photo failed)
     if edit:
-        await message.edit_text(text, reply_markup=keyboard)
+        try:
+            await message.edit_text(text, reply_markup=keyboard)
+        except Exception:
+            # If edit fails (e.g. was a photo message), delete and send new
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await bot.send_message(message.chat.id, text, reply_markup=keyboard, parse_mode="HTML")
     else:
         await message.answer(text, reply_markup=keyboard)
 
@@ -566,7 +575,19 @@ async def start_chat_with_match(callback: CallbackQuery):
             f"<b>Start with:</b> <i>{match.icebreaker}</i>"
         )
 
-    await callback.message.edit_text(text, reply_markup=get_chat_keyboard(match_id, lang))
+    # Handle photo messages (can't edit_text on a photo) — delete and send new
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await bot.send_message(
+            callback.message.chat.id, text,
+            reply_markup=get_chat_keyboard(match_id, lang),
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(text, reply_markup=get_chat_keyboard(match_id, lang))
     await callback.answer()
 
 

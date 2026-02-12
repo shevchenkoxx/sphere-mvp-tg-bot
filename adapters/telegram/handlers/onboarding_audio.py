@@ -89,18 +89,26 @@ def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
         )
 
 async def _delayed_optimization_message(chat_id: int, user_id: str, lang: str = "en"):
-    """Send a delayed optimization message 10 min after profile save, if user is inactive."""
+    """Send a delayed optimization message 10 min after profile save, if user has no matches yet."""
     try:
         await asyncio.sleep(600)  # 10 minutes
 
-        # Check if user was active recently (skip if active in last 9 min)
+        # Check if user already has matches — if so, skip (they're already engaged)
         user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
-        if user and user.updated_at:
-            from datetime import datetime, timezone, timedelta
+        if not user:
+            return
+
+        from core.domain.models import MatchStatus
+        matches = await matching_service.get_user_matches(user.id, MatchStatus.PENDING)
+        if matches:
+            return  # User already has matches, no need to nudge
+
+        # Also check if user was active recently via updated_at
+        if user.updated_at:
+            from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             if isinstance(user.updated_at, str):
-                from datetime import datetime as dt
-                updated = dt.fromisoformat(user.updated_at.replace("Z", "+00:00"))
+                updated = datetime.fromisoformat(user.updated_at.replace("Z", "+00:00"))
             else:
                 updated = user.updated_at if user.updated_at.tzinfo else user.updated_at.replace(tzinfo=timezone.utc)
             if (now - updated).total_seconds() < 540:  # 9 min
@@ -826,7 +834,7 @@ async def confirm_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(AudioOnboarding.confirming, F.data == "audio_add_details")
 async def add_details(callback: CallbackQuery, state: FSMContext):
-    """User wants to add more details to profile"""
+    """User wants to add more details to profile — keep profile visible, send new message"""
     data = await state.get_data()
     lang = data.get("language", "ru")
 
@@ -841,7 +849,14 @@ async def add_details(callback: CallbackQuery, state: FSMContext):
             "You can send a voice message or type."
         )
 
-    await callback.message.edit_text(text)
+    # Remove buttons from profile message but keep the text visible
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    # Send new message so user can still see their profile above
+    await callback.message.answer(text)
     await state.set_state(AudioOnboarding.adding_details)
     await callback.answer()
 

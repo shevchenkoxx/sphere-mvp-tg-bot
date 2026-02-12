@@ -61,7 +61,7 @@ I'll find you the best people to meet — just record a quick voice intro (30-60
 Just relax and speak naturally — this is all about making meaningful connections!
 
 🎁 <b>Sphere × Valentine's Day Giveaway</b>
-Rate your matches and win a prize! Details in the menu ✨"""
+Win a Date Dinner in top Warsaw restaurant! Details in the menu ✨"""
 
 AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать в <b>Sphere</b> 👋
 
@@ -78,7 +78,7 @@ AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать �
 Говори свободно и естественно — здесь важны живые люди, а не формальности!
 
 🎁 <b>Sphere × Valentine's Day Giveaway</b>
-Оцени свои матчи и выиграй приз! Подробности в меню ✨"""
+Выиграй Date Dinner в топовом ресторане Варшавы! Подробности в меню ✨"""
 
 # Fallback static guides (used if LLM fails)
 AUDIO_GUIDE_PROMPT = AUDIO_WELCOME_EN
@@ -243,8 +243,8 @@ Return ONLY the question text."""
 AUDIO_CONFIRMATION_HEADER = "Got it! Here's your profile:\n"
 AUDIO_CONFIRMATION_HEADER_RU = "Отлично! Вот твой профиль:\n"
 
-AUDIO_CONFIRMATION_FOOTER = "\nAll good? Say \"yes\" to confirm or record another message to update."
-AUDIO_CONFIRMATION_FOOTER_RU = "\nВсё верно? Скажи \"да\" для подтверждения или запиши новое сообщение."
+AUDIO_CONFIRMATION_FOOTER = "\nJust send a message and I'll add new details to your profile.\nOr tap a button below 👇"
+AUDIO_CONFIRMATION_FOOTER_RU = "\nПросто напиши сообщение и я добавлю детали в твой профиль.\nИли нажми кнопку ниже 👇"
 
 
 # Post-transcription correction prompt — fast LLM pass to fix Whisper errors

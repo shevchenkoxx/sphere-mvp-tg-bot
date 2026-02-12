@@ -433,19 +433,21 @@ async def giveaway_info(callback: CallbackQuery):
     if lang == "ru":
         text = (
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
-            "Собери шансы и выиграй приз!\n\n"
+            "Собери шансы и выиграй Date Dinner в топовом ресторане Варшавы (раскроем завтра в инсте)!\n\n"
             '✅ 1 шанс — зарегистрируйся по QR\n'
-            '🎟🎟🎟🎟🎟 +5 шансов — репост <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&utm_source=qr">Stories с @sphere</a>\n'
-            '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n\n'
+            '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с @sphere.match\n'
+            '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n'
+            '🎟🎟 +2 шанса — оцени свой match\n\n'
             "Удачи! 🍀"
         )
     else:
         text = (
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
-            "Collect chances and win a prize!\n\n"
+            "Collect chances and win a Date Dinner in top Warsaw dining place (reveal tomorrow in insta)!\n\n"
             '✅ 1 chance — register via QR\n'
-            '🎟🎟🎟🎟🎟 +5 chances — repost <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&utm_source=qr">Stories with @sphere</a>\n'
-            '🎟🎟🎟 +3 chances — refer a friend /each friend\n\n'
+            '🎟🎟🎟🎟🎟 +5 chances — repost Stories with @sphere.match\n'
+            '🎟🎟🎟 +3 chances — refer a friend /each friend\n'
+            '🎟🎟 +2 chances — rate your match\n\n'
             "Good luck! 🍀"
         )
 
@@ -455,7 +457,20 @@ async def giveaway_info(callback: CallbackQuery):
     builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
     builder.adjust(1)
 
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
+    # Handle photo messages (coming back from Refer a Friend QR page)
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await bot.send_message(
+            callback.message.chat.id, text,
+            reply_markup=builder.as_markup(),
+            disable_web_page_preview=True,
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
     await callback.answer()
 
 
@@ -465,27 +480,33 @@ async def refer_a_friend(callback: CallbackQuery):
     lang = detect_lang_callback(callback)
     user_tg_id = callback.from_user.id
 
+    ref_link = f"https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}"
+
     if lang == "ru":
         text = (
-            "🔗 <b>Приведи друга</b>\n\n"
-            "За каждого друга — +3 шанса в Giveaway!\n\n"
-            "🔥 <b>Популярные темы:</b>\n"
-            "🚀 Startup Founders\n"
-            "💼 Investors & VCs\n"
-            "🎨 Creative Professionals\n\n"
-            "Отправь эту ссылку другу:\n"
-            f"<code>https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}</code>"
+            "🔥 <b>Сделай свои матчи точнее</b>\n\n"
+            "Sphere становится умнее с каждым новым участником.\n"
+            "Сейчас мы особенно ищем людей из:\n\n"
+            "🤖 AI & Tech · 🚀 Venture & Startups\n"
+            "🪙 Crypto & Web3 · 🎨 Creative & Design\n"
+            "🧬 Health & Biohacking · 📊 Finance & Trading\n\n"
+            "Знаешь кого-то интересного из этих миров?\n"
+            "Пригласи их — качество твоих матчей вырастет.\n\n"
+            "🎟🎟🎟 +3 шанса в Giveaway за каждого друга!\n\n"
+            f"Отправь эту ссылку:\n<code>{ref_link}</code>"
         )
     else:
         text = (
-            "🔗 <b>Refer a Friend</b>\n\n"
-            "+3 chances per friend in the Giveaway!\n\n"
-            "🔥 <b>Popular topics:</b>\n"
-            "🚀 Startup Founders\n"
-            "💼 Investors & VCs\n"
-            "🎨 Creative Professionals\n\n"
-            "Share this link with a friend:\n"
-            f"<code>https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}</code>"
+            "🔥 <b>Make your matches sharper</b>\n\n"
+            "Sphere gets smarter with every person who joins.\n"
+            "Right now we're especially looking for people in:\n\n"
+            "🤖 AI & Tech · 🚀 Venture & Startups\n"
+            "🪙 Crypto & Web3 · 🎨 Creative & Design\n"
+            "🧬 Health & Biohacking · 📊 Finance & Trading\n\n"
+            "Know someone interesting from these worlds?\n"
+            "Invite them — your match quality goes up.\n\n"
+            "🎟🎟🎟 +3 chances in the Giveaway per friend!\n\n"
+            f"Share this link:\n<code>{ref_link}</code>"
         )
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -493,7 +514,45 @@ async def refer_a_friend(callback: CallbackQuery):
     builder.button(text="◀️ Back", callback_data="giveaway_info")
     builder.adjust(1)
 
-    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    # Generate QR code for the referral link
+    try:
+        import qrcode
+        import io
+        from aiogram.types import BufferedInputFile
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(ref_link)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+
+        qr_file = BufferedInputFile(buf.read(), filename="referral_qr.png")
+
+        # Delete old message, send photo + text
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+
+        await bot.send_photo(
+            chat_id=callback.message.chat.id,
+            photo=qr_file,
+            caption=text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"QR generation failed: {e}")
+        # Fallback to text-only
+        try:
+            await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        except Exception:
+            await callback.message.answer(text, reply_markup=builder.as_markup())
+
     await callback.answer()
 
 
@@ -514,10 +573,23 @@ async def back_to_menu(callback: CallbackQuery, state: FSMContext):
 
     lang = detect_lang_callback(callback)
     text = "What would you like to do?" if lang == "en" else "Что делаем?"
-    await callback.message.edit_text(
-        text,
-        reply_markup=get_main_menu_keyboard(lang)
-    )
+
+    # Handle photo messages (from profile view or refer QR)
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await bot.send_message(
+            callback.message.chat.id, text,
+            reply_markup=get_main_menu_keyboard(lang),
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_main_menu_keyboard(lang)
+        )
     await callback.answer()
 
 
