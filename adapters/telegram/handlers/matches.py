@@ -637,8 +637,26 @@ async def view_match_profile(callback: CallbackQuery):
 
 @router.callback_query(F.data == "back_to_matches")
 async def back_to_matches(callback: CallbackQuery):
-    """Go back to matches list"""
-    await list_matches_callback(callback)
+    """Go back to matches list — handle photo messages gracefully"""
+    lang = detect_lang(callback)
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM, str(callback.from_user.id)
+    )
+    if not user:
+        await callback.answer("Profile not found", show_alert=True)
+        return
+
+    # If current message is a photo (from view_profile), delete and send new text
+    if callback.message.photo:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.answer()
+        await show_matches(callback.message, user.id, lang=lang, edit=False, event_id=user.current_event_id)
+    else:
+        await callback.answer()
+        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
 
 
 @router.callback_query(F.data == "retry_matching")
@@ -1009,6 +1027,7 @@ async def notify_about_match(
         await bot.send_message(
             user_telegram_id,
             text,
+            parse_mode="HTML",
             reply_markup=get_match_keyboard(
                 match_id, lang=lang, partner_username=partner_username
             )
@@ -1044,6 +1063,7 @@ async def send_followup_checkin(
         await bot.send_message(
             user_telegram_id,
             text,
+            parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
     except Exception as e:
