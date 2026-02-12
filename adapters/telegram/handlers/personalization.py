@@ -405,9 +405,9 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
     )
 
     if lang == "ru":
-        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\nИщу для тебя интересных людей..."
+        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Ищу для тебя интересных людей...\n⏳ <i>Обычно это занимает 10-15 секунд</i>"
     else:
-        text = "🎉 <b>Great! Your profile is ready!</b>\n\nFinding interesting people for you..."
+        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Finding interesting people for you...\n⏳ <i>This usually takes 10-15 seconds</i>"
 
     await message.answer(text)
 

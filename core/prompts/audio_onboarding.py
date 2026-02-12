@@ -58,7 +58,7 @@ I'll find you the best people to meet — just record a quick voice intro (30-60
 
 Just relax and speak naturally — this is all about making meaningful connections!
 
-🎁 <b>Today's bonus:</b> successful matches enter a draw for a <b>free dinner date from Sphere</b> at a top restaurant ✨"""
+🎁 <b>Today's bonus:</b> successful matches enter a draw for a <b>free dinner date from Sphere</b> at a top restaurant in Warsaw ✨"""
 
 AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать в <b>Sphere</b> 👋
 
@@ -72,7 +72,7 @@ AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать �
 
 Говори свободно и естественно — здесь важны живые люди, а не формальности!
 
-🎁 <b>Бонус дня:</b> успешные матчи участвуют в розыгрыше <b>бесплатного ужина от Sphere</b> в крутом ресторане ✨"""
+🎁 <b>Бонус дня:</b> успешные матчи участвуют в розыгрыше <b>бесплатного ужина от Sphere</b> в крутом ресторане Варшавы ✨"""
 
 # Fallback static guides (used if LLM fails)
 AUDIO_GUIDE_PROMPT = AUDIO_WELCOME_EN

@@ -381,6 +381,15 @@ detect_lang_callback = detect_lang
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""
+    # Delete profile photo message if it exists
+    data = await state.get_data()
+    photo_msg_id = data.get("profile_photo_msg_id")
+    if photo_msg_id:
+        try:
+            await bot.delete_message(callback.message.chat.id, photo_msg_id)
+        except Exception:
+            pass
+
     # Clear any active FSM state
     await state.clear()
 
@@ -465,7 +474,7 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
     if user.photo_url:
         try:
             await callback.message.delete()
-            await bot.send_photo(
+            photo_msg = await bot.send_photo(
                 chat_id=callback.message.chat.id,
                 photo=user.photo_url,
                 caption=f"👤 {name}"
@@ -475,6 +484,12 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
                 text=text,
                 reply_markup=get_profile_with_edit_keyboard(lang)
             )
+            # Save photo message ID so we can delete it when leaving profile
+            from adapters.telegram.states.onboarding import ProfileEditStates
+            await state.set_state(ProfileEditStates.viewing_profile)
+            await state.update_data(language=lang, profile_photo_msg_id=photo_msg.message_id)
+            await callback.answer()
+            return
         except Exception:
             await callback.message.edit_text(text, reply_markup=get_profile_with_edit_keyboard(lang))
     else:
