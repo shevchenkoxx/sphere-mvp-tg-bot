@@ -21,9 +21,9 @@ routers = [
     profile_edit.router,  # Profile editing - before start.py
     sphere_city.router,   # Sphere City - before start.py
     meetup.router,        # Meetup proposals - has FSM states, must be before start.py
+    matches.router,       # Matches - has FSM states (MatchFeedbackStates), must be before start.py
     events.router,        # Event joining - has state handler, must be before start.py
-    start.router,
-    matches.router,
+    start.router,         # Last: has catch-all handlers
 ]
 
 __all__ = ["routers", "ONBOARDING_VERSION"]

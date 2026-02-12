@@ -5,6 +5,9 @@ from adapters.telegram.states.onboarding import (
     ChatStates,
     ProfileEditStates,
     PersonalizationStates,
+    MatchFeedbackStates,
+    MatchesPhotoStates,
+    MeetupStates,
 )
 
 __all__ = [
@@ -14,4 +17,7 @@ __all__ = [
     "ChatStates",
     "ProfileEditStates",
     "PersonalizationStates",
+    "MatchFeedbackStates",
+    "MatchesPhotoStates",
+    "MeetupStates",
 ]

@@ -358,16 +358,22 @@ async def demo_noop_handler(callback: CallbackQuery):
 
 @router.callback_query(F.data == "start_real_onboarding")
 async def start_real_onboarding_from_demo(callback: CallbackQuery, state: FSMContext):
-    """Start real onboarding after demo"""
+    """Start real onboarding after demo.
+    Note: callback.message.from_user is the bot, not the user.
+    We patch first_name from callback.from_user so onboarding identifies the real user.
+    """
     from adapters.telegram.config import ONBOARDING_VERSION
+
+    # Patch: callback.message.from_user is the bot. Override with real user info.
+    msg = callback.message
+    msg.from_user = callback.from_user
 
     if ONBOARDING_VERSION == "audio":
         from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-        # Create a fake message object from callback
-        await start_audio_onboarding(callback.message, state)
+        await start_audio_onboarding(msg, state)
     else:
         from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-        await start_conversational_onboarding(callback.message, state)
+        await start_conversational_onboarding(msg, state)
 
     await callback.answer()
 
@@ -633,7 +639,6 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
                     "Or switch to 🏙️ Sphere City in the Events section."
                 )
             await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
-            await callback.answer()
 
 
 @router.callback_query(F.data == "toggle_matching_mode")

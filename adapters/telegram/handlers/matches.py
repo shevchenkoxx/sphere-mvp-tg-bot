@@ -22,12 +22,10 @@ from adapters.telegram.keyboards import (
     get_matches_menu_keyboard,
     get_speed_dating_result_keyboard,
     get_matches_photo_keyboard,
-    get_feedback_keyboard,
 )
 from adapters.telegram.states.onboarding import MatchesPhotoStates, MatchFeedbackStates
 from config.features import Features
 from core.utils.language import detect_lang
-from aiogram.filters import StateFilter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -279,6 +277,13 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
             except Exception as e:
                 logger.error(f"Auto-matching failed for user {user_id}: {e}")
+
+            # Clean up loading message if we sent one
+            if not edit and 'status_msg' in locals():
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
 
     # Still no matches after trying
     if not matches:
@@ -772,8 +777,6 @@ async def match_counter_click(callback: CallbackQuery):
 async def speed_dating_preview(callback: CallbackQuery):
     """Generate or show AI speed dating conversation preview"""
     lang = detect_lang(callback)
-    import logging
-    logger = logging.getLogger(__name__)
 
     # Parse callback data: speed_dating_{id} or speed_dating_regen_{id}
     data = callback.data
@@ -976,6 +979,12 @@ async def handle_feedback(callback: CallbackQuery, state: FSMContext):
 
     lang = detect_lang(callback)
 
+    # Guard: prevent double-click race condition
+    current_state = await state.get_state()
+    if current_state == MatchFeedbackStates.waiting_voice_feedback.state:
+        await callback.answer("Already recorded!" if lang == "en" else "Уже записано!")
+        return
+
     # Parse callback: feedback_good_{match_id} or feedback_bad_{match_id}
     parts = callback.data.split("_")
     feedback_type = parts[1]  # "good" or "bad"
@@ -1002,6 +1011,12 @@ async def handle_feedback(callback: CallbackQuery, state: FSMContext):
         logger.info(f"Feedback saved: user={user.id}, match={match_id}, type={feedback_type}")
 
         await callback.answer()
+
+        # Remove feedback buttons from the match card to prevent re-click
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
 
         # Ask for voice feedback
         if lang == "ru":
@@ -1045,7 +1060,10 @@ async def skip_voice_feedback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
 
     skip_text = "Got it! 👍" if lang == "en" else "Принято! 👍"
-    await callback.message.edit_text(skip_text)
+    try:
+        await callback.message.edit_text(skip_text)
+    except Exception:
+        pass  # Already edited (double-click) — harmless
     await callback.answer()
 
 
@@ -1058,6 +1076,11 @@ async def handle_voice_feedback(message: Message, state: FSMContext):
     data = await state.get_data()
     match_id = data.get("feedback_match_id")
     lang = data.get("feedback_lang", "en")
+
+    if not match_id:
+        await state.clear()
+        await message.answer("Something went wrong. Please try again." if lang == "en" else "Что-то пошло не так. Попробуй ещё раз.")
+        return
 
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
@@ -1113,6 +1136,11 @@ async def handle_text_in_voice_feedback(message: Message, state: FSMContext):
     match_id = data.get("feedback_match_id")
     lang = data.get("feedback_lang", "en")
 
+    if not match_id:
+        await state.clear()
+        await message.answer("Something went wrong. Please try again." if lang == "en" else "Что-то пошло не так. Попробуй ещё раз.")
+        return
+
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
         str(message.from_user.id)
@@ -1138,6 +1166,16 @@ async def handle_text_in_voice_feedback(message: Message, state: FSMContext):
 
     thank_text = "Записали! Спасибо за фидбэк 🙏" if lang == "ru" else "Got it! Thanks for the feedback 🙏"
     await message.answer(thank_text)
+
+
+@router.message(MatchFeedbackStates.waiting_voice_feedback)
+async def handle_unexpected_in_voice_feedback(message: Message, state: FSMContext):
+    """Catch non-voice, non-text messages (photo/sticker/etc) in feedback state"""
+    lang = detect_lang(message)
+    if lang == "ru":
+        await message.answer("🎤 Запиши голосовое сообщение или напиши текст")
+    else:
+        await message.answer("🎤 Send a voice message or type your feedback")
 
 
 # === NOTIFICATIONS ===
