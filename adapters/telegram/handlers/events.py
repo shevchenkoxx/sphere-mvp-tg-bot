@@ -1030,6 +1030,78 @@ async def admin_matchall(message: Message):
         await message.answer(f"✅ Done: {matched} matched, {skipped} skipped, {errors} errors")
 
 
+@router.message(Command("notify"))
+async def admin_notify_matches(message: Message):
+    """
+    /notify [event_code] - Send polite reminder about matches to all participants
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip().upper() if len(parts) > 1 else None
+
+    if not event_code:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM, str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            ev = await event_service.get_event_by_id(user.current_event_id)
+            event_code = ev.code if ev else None
+
+    if not event_code:
+        await message.answer("Usage: /notify EVENT_CODE")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    participants = await event_service.get_event_participants(event.id)
+    if not participants:
+        await message.answer("No participants")
+        return
+
+    sent = 0
+    no_matches = 0
+
+    for p in participants:
+        try:
+            all_matches = await matching_service.get_user_matches(p.id)
+            event_matches = [m for m in all_matches if str(m.event_id) == str(event.id)] if all_matches else []
+
+            if not event_matches:
+                no_matches += 1
+                continue
+
+            name = p.display_name or p.first_name or "there"
+            count = len(event_matches)
+
+            text = (
+                f"Hey {name}! 👋\n\n"
+                f"Just a friendly reminder — you have <b>{count}</b> match{'es' if count > 1 else ''} "
+                f"at <b>{event.name}</b>!\n\n"
+                f"Don't miss the chance to connect with interesting people tonight. "
+                f"Check your matches and say hi 💬"
+            )
+
+            await bot.send_message(
+                int(p.platform_user_id),
+                text,
+                reply_markup=get_main_menu_keyboard("en"),
+                parse_mode="HTML"
+            )
+            sent += 1
+        except Exception as e:
+            logger.warning(f"Failed to notify {p.platform_user_id}: {e}")
+
+    await message.answer(
+        f"📩 Notified: {sent} | No matches: {no_matches} | Total: {len(participants)}"
+    )
+
+
 @router.message(Command("checkmatches"))
 async def admin_checkmatches(message: Message):
     """
