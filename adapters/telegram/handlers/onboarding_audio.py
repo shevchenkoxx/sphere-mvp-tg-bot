@@ -231,7 +231,7 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
             "Just speak naturally 🎙"
         )
 
-    await callback.message.edit_text(text)
+    await callback.message.edit_text(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -1033,7 +1033,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
                                 # Send notifications for each match
                                 if matches and chat_id:
-                                    from adapters.telegram.handlers.matches import notify_about_match
+                                    from adapters.telegram.handlers.matches import notify_about_match, notify_admin_new_matches
+                                    user_name = updated_user.display_name or updated_user.first_name or "Someone"
                                     for partner, result_with_id in matches[:3]:
                                         partner_name = partner.display_name or partner.first_name or "Someone"
                                         await notify_about_match(
@@ -1045,6 +1046,22 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                                             lang=lang,
                                             partner_username=partner.username
                                         )
+                                    # Notify admin
+                                    admin_info = [
+                                        (
+                                            p.display_name or p.first_name or "?",
+                                            p.username,
+                                            r.compatibility_score if hasattr(r, 'compatibility_score') else "?",
+                                            str(r.match_id)
+                                        )
+                                        for p, r in matches
+                                    ]
+                                    await notify_admin_new_matches(
+                                        user_name=user_name,
+                                        user_username=updated_user.username,
+                                        matches_info=admin_info,
+                                        event_name=event_code
+                                    )
                         except Exception as me:
                             logger.error(f"Background matching failed for user {user_obj.id}: {me}", exc_info=True)
                 else:
@@ -1108,7 +1125,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
     """Show top 3 matches after onboarding and notify matched users"""
     from config.features import Features
-    from adapters.telegram.handlers.matches import notify_about_match
+    from adapters.telegram.handlers.matches import notify_about_match, notify_admin_new_matches
 
     try:
         # Use vector matching if user has embeddings (faster, more efficient)
@@ -1158,6 +1175,23 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
                     logger.info(f"Notified user {matched_user.platform_user_id} about new match with {user.id}")
                 except Exception as e:
                     logger.error(f"Failed to notify user {matched_user.platform_user_id}: {e}")
+
+        # Notify admin about all new matches
+        admin_matches_info = [
+            (
+                m_user.display_name or m_user.first_name or "?",
+                m_user.username,
+                m_result.compatibility_score if hasattr(m_result, 'compatibility_score') else "?",
+                str(m_result.match_id)
+            )
+            for m_user, m_result in matches
+        ]
+        await notify_admin_new_matches(
+            user_name=new_user_name,
+            user_username=user.username or tg_username,
+            matches_info=admin_matches_info,
+            event_name=event.name
+        )
 
         # Format top matches message
         if lang == "ru":

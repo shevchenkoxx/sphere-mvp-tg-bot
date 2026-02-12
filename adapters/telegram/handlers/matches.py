@@ -254,6 +254,24 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
                         limit=Features.SHOW_TOP_MATCHES
                     )
 
+                # Notify admin about new matches
+                if new_matches:
+                    user_name = user.display_name or user.first_name or "Someone"
+                    admin_info = [
+                        (
+                            p.display_name or p.first_name or "?",
+                            p.username,
+                            r.compatibility_score if hasattr(r, 'compatibility_score') else "?",
+                            str(r.match_id)
+                        )
+                        for p, r in new_matches
+                    ]
+                    await notify_admin_new_matches(
+                        user_name=user_name,
+                        user_username=user.username,
+                        matches_info=admin_info
+                    )
+
                 # Re-fetch matches from DB
                 matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
                 if event_id:
@@ -1077,3 +1095,39 @@ async def send_followup_checkin(
         )
     except Exception as e:
         logger.error(f"Failed to send follow-up to {user_telegram_id}: {e}")
+
+
+async def notify_admin_new_matches(
+    user_name: str,
+    user_username: str,
+    matches_info: list,
+    event_name: str = None
+):
+    """Notify admin about every new match created.
+    matches_info: list of (partner_name, partner_username, score, match_id)
+    """
+    from config.settings import settings as app_settings
+
+    if not app_settings.admin_telegram_ids:
+        return
+
+    for admin_id in app_settings.admin_telegram_ids:
+        try:
+            lines = [f"🔔 <b>New matches for {user_name}</b> (@{user_username or '?'})"]
+            if event_name:
+                lines.append(f"📍 Event: {event_name}")
+            lines.append("")
+
+            for i, (p_name, p_username, score, m_id) in enumerate(matches_info, 1):
+                score_str = f"{score:.0%}" if isinstance(score, float) else str(score)
+                lines.append(f"{i}. <b>{p_name}</b> (@{p_username or '?'}) — {score_str}")
+
+            lines.append(f"\n📊 Total: {len(matches_info)} matches")
+
+            await bot.send_message(
+                admin_id,
+                "\n".join(lines),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify admin {admin_id} about matches: {e}")

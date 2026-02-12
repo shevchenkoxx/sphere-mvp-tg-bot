@@ -482,14 +482,26 @@ def get_connection_mode_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_adaptive_buttons_keyboard(buttons: list, lang: str = "en") -> InlineKeyboardMarkup:
-    """Create keyboard from LLM-generated personalized buttons"""
+def get_adaptive_buttons_keyboard(buttons: list, lang: str = "en", selected: List[int] = None) -> InlineKeyboardMarkup:
+    """Create multi-select keyboard from LLM-generated personalized buttons"""
+    if selected is None:
+        selected = []
+
     builder = InlineKeyboardBuilder()
 
-    for i, btn_text in enumerate(buttons[:3]):  # Max 3 buttons
-        builder.button(text=btn_text, callback_data=f"adaptive_btn_{i}")
+    for i, btn_text in enumerate(buttons[:4]):  # Max 4 buttons
+        if i in selected:
+            builder.button(text=f"✓ {btn_text}", callback_data=f"adaptive_btn_{i}")
+        else:
+            builder.button(text=btn_text, callback_data=f"adaptive_btn_{i}")
 
     builder.adjust(1)
+
+    # Done button (only if at least 1 selected)
+    if selected:
+        done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="adaptive_done"))
+
     return builder.as_markup()
 
 

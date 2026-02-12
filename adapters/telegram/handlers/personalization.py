@@ -245,13 +245,14 @@ async def show_adaptive_buttons_step(message: Message, state: FSMContext, lang: 
         await save_personalization_data(message, state, lang)
         return
 
-    # Save buttons for later reference
-    await state.update_data(adaptive_buttons=buttons)
+    # Save buttons and header for later reference
+    await state.update_data(adaptive_buttons=buttons, adaptive_header=header, adaptive_selected=[])
 
-    # Show buttons
-    text = f"🎯 <b>{header}</b>" if header else (
-        "🎯 <b>Что тебе ближе сегодня?</b>" if lang == "ru"
-        else "🎯 <b>What resonates with you today?</b>"
+    # Show buttons with multi-select hint
+    hint = " <i>(выбери несколько)</i>" if lang == "ru" else " <i>(pick multiple)</i>"
+    text = f"🎯 <b>{header}</b>{hint}" if header else (
+        f"🎯 <b>Что тебе ближе сегодня?</b>{hint}" if lang == "ru"
+        else f"🎯 <b>What resonates with you today?</b>{hint}"
     )
 
     await message.edit_text(text, reply_markup=get_adaptive_buttons_keyboard(buttons, lang))
@@ -260,18 +261,50 @@ async def show_adaptive_buttons_step(message: Message, state: FSMContext, lang: 
 
 @router.callback_query(PersonalizationStates.choosing_adaptive_option, F.data.startswith("adaptive_btn_"))
 async def process_adaptive_choice(callback: CallbackQuery, state: FSMContext):
-    """Process adaptive button selection."""
+    """Toggle adaptive button selection (multi-select)."""
     btn_index = int(callback.data.replace("adaptive_btn_", ""))
     data = await state.get_data()
     lang = data.get("personalization_lang", "en")
 
     buttons = data.get("adaptive_buttons", [])
-    if btn_index < len(buttons):
-        selected = buttons[btn_index]
-        await state.update_data(personalization_preference=selected)
+    selected_indices = data.get("adaptive_selected", [])
 
-    # Step 4 (ideal connection question) temporarily disabled — skip to save
-    # await show_ideal_connection_step(callback.message, state, lang)
+    # Toggle selection
+    if btn_index in selected_indices:
+        selected_indices.remove(btn_index)
+    else:
+        selected_indices.append(btn_index)
+
+    await state.update_data(adaptive_selected=selected_indices)
+
+    # Rebuild header
+    header = data.get("adaptive_header", "")
+    text = f"🎯 <b>{header}</b>" if header else (
+        "🎯 <b>Что тебе ближе сегодня?</b> <i>(выбери несколько)</i>" if lang == "ru"
+        else "🎯 <b>What resonates with you today?</b> <i>(pick multiple)</i>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_adaptive_buttons_keyboard(buttons, lang, selected=selected_indices)
+    )
+    await callback.answer()
+
+
+@router.callback_query(PersonalizationStates.choosing_adaptive_option, F.data == "adaptive_done")
+async def process_adaptive_done(callback: CallbackQuery, state: FSMContext):
+    """Finalize multi-select adaptive choices."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+
+    buttons = data.get("adaptive_buttons", [])
+    selected_indices = data.get("adaptive_selected", [])
+
+    # Collect selected button texts
+    selected_texts = [buttons[i] for i in selected_indices if i < len(buttons)]
+    preference = " | ".join(selected_texts) if selected_texts else ""
+    await state.update_data(personalization_preference=preference)
+
     await callback.message.edit_text(
         "✓ Отлично!" if lang == "ru" else "✓ Great!"
     )
@@ -405,9 +438,9 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
     )
 
     if lang == "ru":
-        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Ищу для тебя интересных людей...\n⏳ <i>Обычно это занимает 10-15 секунд</i>"
+        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Sphere ищет лучшие матчи для тебя!\n⏳ <i>Обычно это занимает 10-15 секунд</i>"
     else:
-        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Finding interesting people for you...\n⏳ <i>This usually takes 10-15 seconds</i>"
+        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Sphere is searching for the best possible matches for you!\n⏳ <i>This usually takes 10-15 seconds</i>"
 
     await message.answer(text)
 
