@@ -6,7 +6,7 @@ Multilingual: English default, Russian supported.
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.filters import Command, CommandStart, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 
 from core.domain.models import MessagePlatform
@@ -85,7 +85,10 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
 
 @router.message(CommandStart())
 async def start_command(message: Message, state: FSMContext):
-    """Handle regular /start - quick and friendly"""
+    """Handle regular /start - quick and friendly. Clears any stuck state."""
+    # Always clear previous state to unstick users
+    await state.clear()
+
     lang = detect_lang(message)
 
     user = await user_service.get_or_create_user(
@@ -669,3 +672,36 @@ async def stale_audio_callback(callback: CallbackQuery, state: FSMContext):
         await callback.message.delete()
     except Exception:
         pass
+
+
+# === CATCH-ALL: Users stuck without active state ===
+
+@router.message(StateFilter(None), F.text)
+async def catch_stuck_user(message: Message, state: FSMContext):
+    """Handle messages from users with no active FSM state.
+    If onboarding not completed — prompt to restart. Otherwise show menu."""
+    # Skip commands — they have their own handlers
+    if message.text and message.text.startswith("/"):
+        return
+
+    lang = detect_lang(message)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+
+    if not user or not user.onboarding_completed:
+        # User hasn't finished onboarding
+        text = (
+            "Похоже ты не завершил регистрацию.\n"
+            "Нажми /start чтобы начать заново!"
+        ) if lang == "ru" else (
+            "Looks like you haven't finished setting up.\n"
+            "Tap /start to begin!"
+        )
+        await message.answer(text)
+    else:
+        # User completed onboarding but sent random text
+        text = "What would you like to do?" if lang == "en" else "Что делаем?"
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))

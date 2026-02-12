@@ -1240,6 +1240,25 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
 
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
+        # Schedule delayed photo nudge if user has no photo
+        if not user.photo_url:
+            import asyncio
+            chat_id = message.chat.id
+
+            async def photo_nudge():
+                await asyncio.sleep(120)  # 2 min after matches
+                try:
+                    nudge = (
+                        "📸 <b>Quick tip:</b> Adding a photo makes your matches "
+                        "<b>3x more likely</b> to reach out!\n\n"
+                        "Go to 👤 Profile → ✏️ Edit → 📸 Photo"
+                    )
+                    await bot.send_message(chat_id, nudge)
+                except Exception:
+                    pass
+
+            asyncio.create_task(photo_nudge())
+
     except Exception as e:
         logger.error(f"Error showing top matches: {e}")
         text = (

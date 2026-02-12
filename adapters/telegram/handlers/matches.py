@@ -738,19 +738,27 @@ async def retry_matching(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("match_prev_"))
-async def match_prev(callback: CallbackQuery):
+async def match_prev(callback: CallbackQuery, state: FSMContext):
     """Navigate to previous match"""
-    current_index = int(callback.data.replace("match_prev_", ""))
+    await callback.answer()
+    try:
+        current_index = int(callback.data.replace("match_prev_", ""))
+    except ValueError:
+        return
     new_index = max(0, current_index - 1)
-    await list_matches_callback(callback, index=new_index)
+    await list_matches_callback(callback, index=new_index, state=state)
 
 
 @router.callback_query(F.data.startswith("match_next_"))
-async def match_next(callback: CallbackQuery):
+async def match_next(callback: CallbackQuery, state: FSMContext):
     """Navigate to next match"""
-    current_index = int(callback.data.replace("match_next_", ""))
+    await callback.answer()
+    try:
+        current_index = int(callback.data.replace("match_next_", ""))
+    except ValueError:
+        return
     new_index = current_index + 1
-    await list_matches_callback(callback, index=new_index)
+    await list_matches_callback(callback, index=new_index, state=state)
 
 
 @router.callback_query(F.data == "match_counter")
