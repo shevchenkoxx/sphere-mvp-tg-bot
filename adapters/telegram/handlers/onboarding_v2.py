@@ -549,6 +549,17 @@ async def skip_selfie_v2(callback: CallbackQuery, state: FSMContext):
 @router.message(ConversationalOnboarding.waiting_selfie, F.text)
 async def handle_selfie_text_v2(message: Message, state: FSMContext):
     """Handle text when expecting selfie"""
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        elif message.text.startswith("/menu"):
+            from adapters.telegram.handlers.start import menu_command
+            await menu_command(message)
+        else:
+            await message.answer("Onboarding cancelled. Send the command again.")
+        return
     data = await state.get_data()
     lang = data.get("language", "en")
 

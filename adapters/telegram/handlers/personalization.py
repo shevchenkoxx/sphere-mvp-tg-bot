@@ -88,6 +88,17 @@ async def start_personalization(
 @router.message(PersonalizationStates.waiting_passion, F.text)
 async def process_passion_text(message: Message, state: FSMContext):
     """Process text answer to passion question."""
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        elif message.text.startswith("/menu"):
+            from adapters.telegram.handlers.start import menu_command
+            await menu_command(message)
+        else:
+            await message.answer("Flow cancelled. Send the command again.")
+        return
     data = await state.get_data()
     lang = data.get("personalization_lang", "en")
 

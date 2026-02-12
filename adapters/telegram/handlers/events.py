@@ -925,6 +925,100 @@ async def admin_followup(message: Message):
     await message.answer(f"✅ Follow-up sent: {sent}, skipped: {skipped} (no matches or no TG ID)")
 
 
+@router.message(Command("matchall"))
+async def admin_matchall(message: Message):
+    """
+    /matchall [event_code] - Run matching for ALL participants in an event
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip().upper() if len(parts) > 1 else None
+
+    if not event_code:
+        # Try user's current event
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM, str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            event_code = event.code if event else None
+
+    if not event_code:
+        await message.answer("Usage: /matchall EVENT_CODE")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    from config.features import Features
+
+    # Get all participants
+    participants = await event_service.get_event_participants(event.id)
+    if not participants:
+        await message.answer("No participants in this event")
+        return
+
+    status = await message.answer(
+        f"🔄 Running matching for {len(participants)} participants in {event.name}...\n"
+        f"This may take a while."
+    )
+
+    matched = 0
+    skipped = 0
+    errors = 0
+
+    for p in participants:
+        try:
+            user_has_embeddings = p.profile_embedding is not None
+            if not user_has_embeddings:
+                skipped += 1
+                continue
+
+            new_matches = await matching_service.find_matches_vector(
+                user=p,
+                event_id=event.id,
+                limit=Features.SHOW_TOP_MATCHES
+            )
+
+            if new_matches:
+                matched += 1
+                # Notify user about new matches
+                try:
+                    name = p.display_name or p.first_name or "there"
+                    await bot.send_message(
+                        int(p.platform_user_id),
+                        f"💫 <b>New matches at {event.name}!</b>\n\n"
+                        f"Hey {name}, you have {len(new_matches)} new match{'es' if len(new_matches) > 1 else ''}!\n"
+                        f"Check them out 👇",
+                        reply_markup=get_main_menu_keyboard("en"),
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass  # User may have blocked bot
+            else:
+                skipped += 1
+        except Exception as e:
+            logger.error(f"matchall error for user {p.id}: {e}")
+            errors += 1
+
+    try:
+        await status.edit_text(
+            f"✅ <b>Matching complete for {event.name}</b>\n\n"
+            f"👥 Participants: {len(participants)}\n"
+            f"💫 Got new matches: {matched}\n"
+            f"⏭ Skipped (no embeddings/no new): {skipped}\n"
+            f"❌ Errors: {errors}",
+            parse_mode="HTML"
+        )
+    except Exception:
+        await message.answer(f"✅ Done: {matched} matched, {skipped} skipped, {errors} errors")
+
+
 @router.message(Command("checkmatches"))
 async def admin_checkmatches(message: Message):
     """

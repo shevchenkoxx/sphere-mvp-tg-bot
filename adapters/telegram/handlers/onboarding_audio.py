@@ -50,6 +50,32 @@ from core.utils.language import detect_lang, get_language_name
 logger = logging.getLogger(__name__)
 
 
+async def _handle_command_in_fsm(message: Message, state: FSMContext) -> bool:
+    """Check if message is a command during FSM state. If so, clear state and handle it.
+    Returns True if command was handled (caller should return)."""
+    if not message.text or not message.text.startswith("/"):
+        return False
+
+    await state.clear()
+
+    cmd = message.text.split()[0].lower()
+    if cmd in ("/start", "/start@spheresocial_bot"):
+        from adapters.telegram.handlers.start import start_command
+        await start_command(message, state)
+    elif cmd in ("/menu", "/menu@spheresocial_bot"):
+        from adapters.telegram.handlers.start import menu_command
+        await menu_command(message)
+    elif cmd in ("/help", "/help@spheresocial_bot"):
+        from adapters.telegram.handlers.start import help_command
+        await help_command(message)
+    elif cmd in ("/reset", "/reset@spheresocial_bot"):
+        from adapters.telegram.handlers.start import reset_command
+        await reset_command(message, state)
+    else:
+        await message.answer("Onboarding cancelled. Send the command again.")
+    return True
+
+
 def _whisper_prompt(lang: str) -> str:
     """Get Whisper domain-vocabulary prompt for the given language."""
     return WHISPER_PROMPT_RU if lang == "ru" else WHISPER_PROMPT_EN
@@ -591,6 +617,8 @@ async def validate_profile_completeness(profile_data: dict, lang: str) -> dict:
 @router.message(AudioOnboarding.waiting_followup, F.text)
 async def process_followup_text(message: Message, state: FSMContext):
     """Process text answer to follow-up question"""
+    if await _handle_command_in_fsm(message, state):
+        return
     data = await state.get_data()
     profile_data = data.get("profile_data", {})
     missing_fields = data.get("missing_fields", [])
@@ -721,6 +749,8 @@ Return ONLY valid JSON with the fields to update. Keep existing values if not me
 @router.message(AudioOnboarding.waiting_audio, F.text)
 async def handle_text_in_audio_mode(message: Message, state: FSMContext):
     """Handle text when expecting audio"""
+    if await _handle_command_in_fsm(message, state):
+        return
     data = await state.get_data()
     lang = data.get("language", "ru")
 
@@ -883,6 +913,8 @@ async def add_details(callback: CallbackQuery, state: FSMContext):
 @router.message(AudioOnboarding.confirming, F.text)
 async def handle_confirmation_text(message: Message, state: FSMContext):
     """Handle text in confirmation - either confirm or treat as additional details"""
+    if await _handle_command_in_fsm(message, state):
+        return
     data = await state.get_data()
     lang = data.get("language", "ru")
     text_lower = message.text.lower().strip()
@@ -942,6 +974,8 @@ async def handle_new_voice_in_confirmation(message: Message, state: FSMContext):
 @router.message(AudioOnboarding.adding_details, F.text)
 async def handle_adding_details_text(message: Message, state: FSMContext):
     """Handle text when adding details"""
+    if await _handle_command_in_fsm(message, state):
+        return
     await merge_additional_details(message, state, message.text)
 
 
@@ -1481,6 +1515,8 @@ async def skip_selfie(callback: CallbackQuery, state: FSMContext):
 @router.message(AudioOnboarding.waiting_selfie, F.text)
 async def handle_selfie_text(message: Message, state: FSMContext):
     """Handle text when expecting selfie"""
+    if await _handle_command_in_fsm(message, state):
+        return
     data = await state.get_data()
     lang = data.get("language", "ru")
 

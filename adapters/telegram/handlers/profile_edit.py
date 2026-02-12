@@ -331,10 +331,8 @@ async def receive_field_value(message: Message, state: FSMContext):
     if field == "photo":
         if message.photo:
             photo = message.photo[-1]  # Best quality
-            file = await bot.get_file(photo.file_id)
-            photo_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
 
-            await state.update_data(new_value=photo_url)
+            await state.update_data(new_value=photo.file_id)
 
             if lang == "ru":
                 text = "📸 Новое фото получено!\n\nСохранить?"
