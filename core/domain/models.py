@@ -95,6 +95,9 @@ class User(UserBase):
     connection_mode: Optional[str] = None
     personalization_preference: Optional[str] = None
     ideal_connection: Optional[str] = None
+    # Referral tracking
+    referral_count: int = 0
+    referred_by: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -129,6 +132,9 @@ class UserUpdate(BaseModel):
     connection_mode: Optional[str] = None  # 'receive_help' / 'give_help' / 'exchange'
     personalization_preference: Optional[str] = None  # Selected adaptive button text
     ideal_connection: Optional[str] = None  # Free-form description of ideal person to meet
+    # Referral tracking
+    referral_count: Optional[int] = None
+    referred_by: Optional[str] = None
 
 
 # === EVENT ===

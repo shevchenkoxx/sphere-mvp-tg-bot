@@ -271,7 +271,7 @@ RULES:
 Return ONLY valid JSON."""
 
 
-PERSONALIZED_ADAPTIVE_BUTTONS_PROMPT = """Generate 3 specific, context-aware buttons for networking preference.
+PERSONALIZED_ADAPTIVE_BUTTONS_PROMPT = """Generate 5 specific, context-aware buttons for networking preference.
 
 === USER PROFILE ===
 Name: {display_name}
@@ -287,7 +287,7 @@ Extracted Themes: {passion_themes}
 Connection Mode: {connection_mode}
 
 === TASK ===
-Create 3 SPECIFIC buttons that help identify what kind of connection this user wants TODAY.
+Create 5 SPECIFIC buttons that help identify what kind of connection this user wants TODAY.
 
 MODE-SPECIFIC APPROACH:
 - If connection_mode = "give_help" → buttons about WHO they want to help (e.g., "Помочь начинающим предпринимателям", "Поделиться опытом с продуктовыми командами")
@@ -304,7 +304,7 @@ RULES:
 Return JSON:
 {{
   "header": "Question text to show above buttons (1 sentence in {language})",
-  "buttons": ["Button 1 text", "Button 2 text", "Button 3 text"]
+  "buttons": ["Button 1 text", "Button 2 text", "Button 3 text", "Button 4 text", "Button 5 text"]
 }}
 
 Return ONLY valid JSON."""

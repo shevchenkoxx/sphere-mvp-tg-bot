@@ -88,6 +88,44 @@ def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
             exc_info=exc,
         )
 
+async def _delayed_optimization_message(chat_id: int, user_id: str, lang: str = "en"):
+    """Send a delayed optimization message 10 min after profile save, if user is inactive."""
+    try:
+        await asyncio.sleep(600)  # 10 minutes
+
+        # Check if user was active recently (skip if active in last 9 min)
+        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+        if user and user.updated_at:
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone.utc)
+            if isinstance(user.updated_at, str):
+                from datetime import datetime as dt
+                updated = dt.fromisoformat(user.updated_at.replace("Z", "+00:00"))
+            else:
+                updated = user.updated_at if user.updated_at.tzinfo else user.updated_at.replace(tzinfo=timezone.utc)
+            if (now - updated).total_seconds() < 540:  # 9 min
+                return  # User was active recently, skip
+
+        if lang == "ru":
+            text = (
+                "✨ Твой профиль сохранён и матчинг готов!\n\n"
+                "Можешь просто ответить, чтобы продолжить."
+            )
+        else:
+            text = (
+                "✨ Your profile is saved and matching is ready!\n\n"
+                "You can also just reply to continue."
+            )
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💫 Find matches", callback_data="my_matches")]
+        ])
+        await bot.send_message(chat_id, text, reply_markup=kb)
+    except Exception as e:
+        logger.warning(f"Delayed optimization message failed: {e}")
+
+
 router = Router(name="onboarding_audio")
 
 
@@ -231,7 +269,15 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
             "Just speak naturally 🎙"
         )
 
-    await callback.message.edit_text(text, parse_mode="HTML")
+    # Add "Switch to text" button
+    from adapters.telegram.keyboards import get_text_step_keyboard
+    switch_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⌨️ Switch to text" if lang != "ru" else "⌨️ Лучше текстом",
+            callback_data="switch_to_text"
+        )]
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=switch_kb)
     await callback.answer()
 
 
@@ -260,7 +306,8 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
         )
 
     await state.set_state(QuickTextOnboarding.step_about)
-    await callback.message.answer(text)
+    from adapters.telegram.keyboards import get_text_step_keyboard
+    await callback.message.answer(text, reply_markup=get_text_step_keyboard(lang))
     await callback.answer()
 
 
@@ -283,7 +330,8 @@ async def quick_text_step_about(message: Message, state: FSMContext):
         )
 
     await state.set_state(QuickTextOnboarding.step_looking)
-    await message.answer(text)
+    from adapters.telegram.keyboards import get_text_step_keyboard
+    await message.answer(text, reply_markup=get_text_step_keyboard(lang))
 
 
 @router.message(QuickTextOnboarding.step_looking, F.text)
@@ -305,7 +353,8 @@ async def quick_text_step_looking(message: Message, state: FSMContext):
         )
 
     await state.set_state(QuickTextOnboarding.step_help)
-    await message.answer(text)
+    from adapters.telegram.keyboards import get_text_step_keyboard
+    await message.answer(text, reply_markup=get_text_step_keyboard(lang))
 
 
 @router.message(QuickTextOnboarding.step_help, F.text)
@@ -333,6 +382,50 @@ async def quick_text_step_done(message: Message, state: FSMContext):
 
     # Show confirmation
     await show_profile_confirmation(message, state, profile_data, lang)
+
+
+@router.callback_query(QuickTextOnboarding.step_about, F.data == "switch_to_voice")
+@router.callback_query(QuickTextOnboarding.step_looking, F.data == "switch_to_voice")
+@router.callback_query(QuickTextOnboarding.step_help, F.data == "switch_to_voice")
+async def switch_to_voice(callback: CallbackQuery, state: FSMContext):
+    """Switch from text onboarding back to voice recording"""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    if lang == "ru":
+        text = (
+            "🎤 <b>Записывай голосовое!</b> (30-60 сек)\n\n"
+            "<b>Расскажи:</b>\n"
+            "   🙋 <i>Кто ты и чем занимаешься?</i>\n"
+            "   🔍 <i>Кого хочешь встретить?</i>\n"
+            "   💡 <i>Чем можешь помочь другим?</i>\n\n"
+            "Говори свободно и естественно 🎙"
+        )
+    else:
+        text = (
+            "🎤 <b>Record your voice message!</b> (30-60 sec)\n\n"
+            "<b>Include:</b>\n"
+            "   🙋 <i>Who are you and what do you do?</i>\n"
+            "   🔍 <i>What kind of people do you want to meet?</i>\n"
+            "   💡 <i>How can you help others?</i>\n\n"
+            "Just speak naturally 🎙"
+        )
+
+    switch_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="⌨️ Switch to text" if lang != "ru" else "⌨️ Лучше текстом",
+            callback_data="switch_to_text"
+        )]
+    ])
+
+    await state.set_state(AudioOnboarding.waiting_audio)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=switch_kb)
+    await callback.answer()
 
 
 @router.message(AudioOnboarding.waiting_audio, F.voice)
@@ -972,6 +1065,12 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         # Clean up location - take first part if comma-separated
         city = city.split(",")[0].strip()[:100]
 
+    # Auto-location fallback for SXN event
+    if not city:
+        event_code = data.get("pending_event", "")
+        if event_code and "SXN" in event_code.upper():
+            city = "Warsaw"
+
     # Update user with all extracted data (including new fields)
     await user_service.update_user(
         MessagePlatform.TELEGRAM,
@@ -1067,24 +1166,11 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                 else:
                     logger.warning(f"Embeddings returned None for user {user_obj.id}")
                     if chat_id:
-                        try:
-                            await bot.send_message(
-                                chat_id,
-                                "Your profile is saved, but matching optimization is still loading. "
-                                "Try /find_matches in a minute for best results."
-                            )
-                        except Exception:
-                            pass
+                        asyncio.create_task(_delayed_optimization_message(chat_id, str(user_obj.id), lang))
             except Exception as e:
                 logger.error(f"Background embedding generation failed for user {user_obj.id}: {e}", exc_info=True)
                 if chat_id:
-                    try:
-                        await bot.send_message(
-                            chat_id,
-                            "Profile saved! Matching is temporarily slower — try /find_matches in a minute."
-                        )
-                    except Exception:
-                        pass
+                    asyncio.create_task(_delayed_optimization_message(chat_id, str(user_obj.id), lang))
 
         # Fire and forget with error tracking
         import asyncio

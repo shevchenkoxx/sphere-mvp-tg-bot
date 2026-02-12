@@ -186,27 +186,53 @@ async def show_connection_mode_step(message: Message, state: FSMContext, lang: s
             "This helps find people who complement you."
         )
 
-    await message.answer(text, reply_markup=get_connection_mode_keyboard(lang))
+    await state.update_data(connection_modes_selected=[])
+    await message.answer(text, reply_markup=get_connection_mode_keyboard(selected=[], lang=lang))
     await state.set_state(PersonalizationStates.choosing_connection_mode)
 
 
 @router.callback_query(PersonalizationStates.choosing_connection_mode, F.data.startswith("conn_mode_"))
 async def process_connection_mode(callback: CallbackQuery, state: FSMContext):
-    """Process connection mode selection."""
-    mode = callback.data.replace("conn_mode_", "")  # receive_help, give_help, exchange
+    """Process connection mode selection (multi-select, max 2)."""
     data = await state.get_data()
     lang = data.get("personalization_lang", "en")
+    selected = data.get("connection_modes_selected", [])
 
-    await state.update_data(connection_mode=mode)
+    action = callback.data.replace("conn_mode_", "")
 
-    # Show loading
-    await callback.message.edit_text(
-        "✨ Готовлю персональные варианты..." if lang == "ru"
-        else "✨ Preparing personalized options..."
+    # Handle "Done" button
+    if action == "done":
+        # Join selected modes and advance
+        mode = "|".join(selected)
+        await state.update_data(connection_mode=mode)
+
+        await callback.message.edit_text(
+            "✨ Готовлю персональные варианты..." if lang == "ru"
+            else "✨ Preparing personalized options..."
+        )
+
+        await show_adaptive_buttons_step(callback.message, state, lang)
+        await callback.answer()
+        return
+
+    # Toggle selection
+    if action in selected:
+        selected.remove(action)
+    else:
+        if len(selected) >= 2:
+            await callback.answer(
+                "Maximum 2 options!" if lang == "en" else "Максимум 2 варианта!",
+                show_alert=True
+            )
+            return
+        selected.append(action)
+
+    await state.update_data(connection_modes_selected=selected)
+
+    # Rebuild keyboard
+    await callback.message.edit_reply_markup(
+        reply_markup=get_connection_mode_keyboard(selected=selected, lang=lang)
     )
-
-    # Generate adaptive buttons based on context
-    await show_adaptive_buttons_step(callback.message, state, lang)
     await callback.answer()
 
 
@@ -565,33 +591,33 @@ async def generate_adaptive_buttons(
             if connection_mode == "receive_help":
                 return {
                     "header": "Какая помощь тебе нужна?",
-                    "buttons": ["Найти ментора", "Получить фидбек", "Найти партнёра"]
+                    "buttons": ["Найти ментора", "Получить фидбек", "Найти партнёра", "Привлечь инвестиции", "Расширить нетворк"]
                 }
             elif connection_mode == "give_help":
                 return {
                     "header": "Кому ты хочешь помочь?",
-                    "buttons": ["Начинающим", "Командам", "Фаундерам"]
+                    "buttons": ["Начинающим", "Командам", "Фаундерам", "Творческим людям", "Инвесторам"]
                 }
             else:
                 return {
                     "header": "Чем хочешь обменяться?",
-                    "buttons": ["Опытом в продукте", "Идеями для роста", "Контактами"]
+                    "buttons": ["Опытом в продукте", "Идеями для роста", "Контактами", "Навыками маркетинга", "Техническими знаниями"]
                 }
         else:
             if connection_mode == "receive_help":
                 return {
                     "header": "What kind of help do you need?",
-                    "buttons": ["Find a mentor", "Get feedback", "Find a partner"]
+                    "buttons": ["Find a mentor", "Get feedback", "Find a partner", "Raise funding", "Expand network"]
                 }
             elif connection_mode == "give_help":
                 return {
                     "header": "Who do you want to help?",
-                    "buttons": ["Beginners", "Teams", "Founders"]
+                    "buttons": ["Beginners", "Teams", "Founders", "Creatives", "Investors"]
                 }
             else:
                 return {
                     "header": "What do you want to exchange?",
-                    "buttons": ["Product experience", "Growth ideas", "Connections"]
+                    "buttons": ["Product experience", "Growth ideas", "Connections", "Marketing skills", "Technical knowledge"]
                 }
 
 

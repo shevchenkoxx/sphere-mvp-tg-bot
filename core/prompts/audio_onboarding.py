@@ -48,6 +48,8 @@ Return ONLY the message text."""
 # Rich static templates (used instead of LLM for consistent formatting)
 AUDIO_WELCOME_EN = """Hey{name_part}! Welcome to <b>Sphere</b> 👋
 
+<b>The Future of Dating is here</b>
+
 I'll find you the best people to meet — just record a quick voice intro (30-60 sec).
 
 <b>Here's what to include:</b>
@@ -62,6 +64,8 @@ Just relax and speak naturally — this is all about making meaningful connectio
 Rate your matches and win a prize! Details in the menu ✨"""
 
 AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать в <b>Sphere</b> 👋
+
+<b>The Future of Dating is here</b>
 
 Я найду тебе лучших людей для знакомства — просто запиши короткое голосовое (30-60 сек).
 

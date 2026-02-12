@@ -66,7 +66,7 @@ class SupabaseMatchRepository(IMatchRepository):
         if status:
             query = query.eq("status", status.value)
 
-        response = query.order("created_at", desc=True).execute()
+        response = query.order("compatibility_score", desc=True).execute()
         return response.data if response.data else []
 
     async def get_user_matches(self, user_id: UUID, status: Optional[MatchStatus] = None) -> List[Match]:

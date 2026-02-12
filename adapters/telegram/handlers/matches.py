@@ -1012,13 +1012,10 @@ async def handle_feedback(callback: CallbackQuery, state: FSMContext):
 
         await callback.answer()
 
-        # Remove feedback buttons from the match card to prevent re-click
-        try:
-            await callback.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
+        # DON'T remove buttons from match card — keep them for navigation
+        # Instead, send auto-deleting thank-you message
 
-        # Ask for voice feedback
+        # Ask for voice feedback (auto-deletes after 3 seconds)
         if lang == "ru":
             voice_ask = (
                 "Спасибо за оценку! 🙏\n\n"
@@ -1038,14 +1035,16 @@ async def handle_feedback(callback: CallbackQuery, state: FSMContext):
             callback_data="skip_voice_feedback"
         )
 
-        await callback.message.answer(voice_ask, reply_markup=skip_kb.as_markup())
+        voice_ask_msg = await callback.message.answer(voice_ask, reply_markup=skip_kb.as_markup())
 
         # Set state for voice feedback
         await state.set_state(MatchFeedbackStates.waiting_voice_feedback)
         await state.update_data(
             feedback_match_id=match_id,
             feedback_type=feedback_type,
-            feedback_lang=lang
+            feedback_lang=lang,
+            voice_ask_msg_id=voice_ask_msg.message_id,
+            voice_ask_chat_id=voice_ask_msg.chat.id
         )
 
     except Exception as e:
@@ -1055,7 +1054,8 @@ async def handle_feedback(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "skip_voice_feedback")
 async def skip_voice_feedback(callback: CallbackQuery, state: FSMContext):
-    """Skip voice feedback — just clear state and acknowledge"""
+    """Skip voice feedback — auto-delete the ask message after 3s"""
+    import asyncio
     lang = detect_lang(callback)
     await state.clear()
 
@@ -1063,8 +1063,19 @@ async def skip_voice_feedback(callback: CallbackQuery, state: FSMContext):
     try:
         await callback.message.edit_text(skip_text)
     except Exception:
-        pass  # Already edited (double-click) — harmless
+        pass
+
     await callback.answer()
+
+    # Auto-delete after 3 seconds
+    async def _auto_delete():
+        await asyncio.sleep(3)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(_auto_delete())
 
 
 @router.message(MatchFeedbackStates.waiting_voice_feedback, F.voice)
@@ -1121,10 +1132,30 @@ async def handle_voice_feedback(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Voice feedback save error: {e}", exc_info=True)
 
+    # Delete the voice ask message
+    voice_ask_msg_id = data.get("voice_ask_msg_id")
+    voice_ask_chat_id = data.get("voice_ask_chat_id")
+    if voice_ask_msg_id and voice_ask_chat_id:
+        try:
+            await bot.delete_message(voice_ask_chat_id, voice_ask_msg_id)
+        except Exception:
+            pass
+
     await state.clear()
 
+    import asyncio
     thank_text = "Записали! Спасибо за подробный фидбэк 🙏" if lang == "ru" else "Got it! Thanks for the detailed feedback 🙏"
-    await message.answer(thank_text)
+    thank_msg = await message.answer(thank_text)
+
+    # Auto-delete thank-you after 3 seconds
+    async def _auto_delete():
+        await asyncio.sleep(3)
+        try:
+            await thank_msg.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(_auto_delete())
 
 
 @router.message(MatchFeedbackStates.waiting_voice_feedback, F.text)
@@ -1162,10 +1193,30 @@ async def handle_text_in_voice_feedback(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Text feedback save error: {e}", exc_info=True)
 
+    # Delete the voice ask message
+    voice_ask_msg_id = data.get("voice_ask_msg_id")
+    voice_ask_chat_id = data.get("voice_ask_chat_id")
+    if voice_ask_msg_id and voice_ask_chat_id:
+        try:
+            await bot.delete_message(voice_ask_chat_id, voice_ask_msg_id)
+        except Exception:
+            pass
+
     await state.clear()
 
+    import asyncio
     thank_text = "Записали! Спасибо за фидбэк 🙏" if lang == "ru" else "Got it! Thanks for the feedback 🙏"
-    await message.answer(thank_text)
+    thank_msg = await message.answer(thank_text)
+
+    # Auto-delete thank-you after 3 seconds
+    async def _auto_delete():
+        await asyncio.sleep(3)
+        try:
+            await thank_msg.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(_auto_delete())
 
 
 @router.message(MatchFeedbackStates.waiting_voice_feedback)

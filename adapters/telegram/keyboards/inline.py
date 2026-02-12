@@ -467,20 +467,32 @@ def get_speed_dating_result_keyboard(match_id: str, lang: str = "en") -> InlineK
 
 # === PERSONALIZATION ===
 
-def get_connection_mode_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
-    """Keyboard for selecting connection mode in personalization flow"""
+def get_connection_mode_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for selecting connection mode in personalization flow (multi-select, max 2)"""
+    if selected is None:
+        selected = []
+
     builder = InlineKeyboardBuilder()
 
-    if lang == "ru":
-        builder.button(text="🎯 Получить помощь/совет", callback_data="conn_mode_receive_help")
-        builder.button(text="💪 Помочь другим/поделиться", callback_data="conn_mode_give_help")
-        builder.button(text="🔄 Обменяться опытом", callback_data="conn_mode_exchange")
-    else:
-        builder.button(text="🎯 Get help/advice", callback_data="conn_mode_receive_help")
-        builder.button(text="💪 Help others/share", callback_data="conn_mode_give_help")
-        builder.button(text="🔄 Exchange experience", callback_data="conn_mode_exchange")
+    modes = [
+        ("receive_help", "🎯 Get help/advice", "🎯 Получить помощь/совет"),
+        ("give_help", "💪 Help others/share", "💪 Помочь другим/поделиться"),
+        ("exchange", "🔄 Exchange experience", "🔄 Обменяться опытом"),
+    ]
+
+    for mode_key, en_text, ru_text in modes:
+        label = ru_text if lang == "ru" else en_text
+        if mode_key in selected:
+            label = f"✓ {label}"
+        builder.button(text=label, callback_data=f"conn_mode_{mode_key}")
 
     builder.adjust(1)
+
+    # Done button (only if at least 1 selected)
+    if selected:
+        done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="conn_mode_done"))
+
     return builder.as_markup()
 
 
@@ -491,7 +503,7 @@ def get_adaptive_buttons_keyboard(buttons: list, lang: str = "en", selected: Lis
 
     builder = InlineKeyboardBuilder()
 
-    for i, btn_text in enumerate(buttons[:4]):  # Max 4 buttons
+    for i, btn_text in enumerate(buttons[:5]):  # Max 5 buttons
         if i in selected:
             builder.button(text=f"✓ {btn_text}", callback_data=f"adaptive_btn_{i}")
         else:
@@ -504,6 +516,16 @@ def get_adaptive_buttons_keyboard(buttons: list, lang: str = "en", selected: Lis
         done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
         builder.row(InlineKeyboardButton(text=done_text, callback_data="adaptive_done"))
 
+    return builder.as_markup()
+
+
+def get_text_step_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for text onboarding steps — allows switching back to voice"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="🎤 Перейти на голос", callback_data="switch_to_voice")
+    else:
+        builder.button(text="🎤 Switch to voice", callback_data="switch_to_voice")
     return builder.as_markup()
 
 

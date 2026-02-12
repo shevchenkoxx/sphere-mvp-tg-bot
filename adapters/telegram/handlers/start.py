@@ -25,6 +25,25 @@ from core.utils.language import detect_lang
 router = Router()
 
 
+async def _increment_referral_count(referrer_telegram_id: str):
+    """Increment referral_count for the referrer user."""
+    from infrastructure.database.supabase_client import supabase
+    try:
+        # Get current count
+        resp = supabase.table("users").select("referral_count").eq(
+            "platform_user_id", referrer_telegram_id
+        ).eq("platform", "telegram").execute()
+
+        if resp.data:
+            current = resp.data[0].get("referral_count", 0) or 0
+            supabase.table("users").update(
+                {"referral_count": current + 1}
+            ).eq("platform_user_id", referrer_telegram_id).eq("platform", "telegram").execute()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to increment referral count: {e}")
+
+
 @router.message(CommandStart(deep_link=True))
 async def start_with_deep_link(message: Message, command: CommandObject, state: FSMContext):
     """Handle /start with deep link (QR code entry)"""
@@ -40,7 +59,29 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
 
     # Check if deep link is for event
     if args and args.startswith("event_"):
-        event_code = args.replace("event_", "")
+        raw_code = args.replace("event_", "")
+
+        # Parse referral: event_SXN_ref_44420077 → event=SXN, referrer=44420077
+        referrer_tg_id = None
+        if "_ref_" in raw_code:
+            parts = raw_code.split("_ref_")
+            event_code = parts[0]
+            referrer_tg_id = parts[1] if len(parts) > 1 else None
+        else:
+            event_code = raw_code
+
+        # Track referral for new users
+        if referrer_tg_id and not user.onboarding_completed:
+            try:
+                await user_service.update_user(
+                    platform=MessagePlatform.TELEGRAM,
+                    platform_user_id=str(message.from_user.id),
+                    referred_by=referrer_tg_id
+                )
+                await _increment_referral_count(referrer_tg_id)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Referral tracking failed: {e}")
         event = await event_service.get_event_by_code(event_code)
 
         if event:
@@ -386,35 +427,73 @@ detect_lang_callback = detect_lang
 
 @router.callback_query(F.data == "giveaway_info")
 async def giveaway_info(callback: CallbackQuery):
-    """Show Valentine's Day Giveaway rules"""
+    """Show Giveaway rules"""
     lang = detect_lang_callback(callback)
 
     if lang == "ru":
         text = (
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
             "Собери шансы и выиграй приз!\n\n"
-            "🎟 1 шанс — зарегистрируйся по QR\n"
-            "🎟🎟 +2 шанса — оцени свой match\n"
-            "🎟🎟🎟 +3 шанса — репост в Stories с @sphere\n"
-            "🎟🎟🎟 +3 шанса — приведи друга\n\n"
-            "⏰ Дедлайн: 13 февраля, 20:00\n"
-            "🏆 Победитель — 13 февраля в 22:00\n\n"
+            '✅ 1 шанс — зарегистрируйся по QR\n'
+            '🎟🎟🎟🎟🎟 +5 шансов — репост <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&utm_source=qr">Stories с @sphere</a>\n'
+            '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n\n'
             "Удачи! 🍀"
         )
     else:
         text = (
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
             "Collect chances and win a prize!\n\n"
-            "🎟 1 chance — register via QR\n"
-            "🎟🎟 +2 chances — rate your match\n"
-            "🎟🎟🎟 +3 chances — repost Stories with @sphere\n"
-            "🎟🎟🎟 +3 chances — refer a friend\n\n"
-            "⏰ Deadline: February 13, 20:00\n"
-            "🏆 Winner announced: February 13, 22:00\n\n"
+            '✅ 1 chance — register via QR\n'
+            '🎟🎟🎟🎟🎟 +5 chances — repost <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&utm_source=qr">Stories with @sphere</a>\n'
+            '🎟🎟🎟 +3 chances — refer a friend /each friend\n\n'
             "Good luck! 🍀"
         )
 
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔗 Refer a Friend", callback_data="refer_a_friend")
+    builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "refer_a_friend")
+async def refer_a_friend(callback: CallbackQuery):
+    """Show Refer a Friend page with referral link"""
+    lang = detect_lang_callback(callback)
+    user_tg_id = callback.from_user.id
+
+    if lang == "ru":
+        text = (
+            "🔗 <b>Приведи друга</b>\n\n"
+            "За каждого друга — +3 шанса в Giveaway!\n\n"
+            "🔥 <b>Популярные темы:</b>\n"
+            "🚀 Startup Founders\n"
+            "💼 Investors & VCs\n"
+            "🎨 Creative Professionals\n\n"
+            "Отправь эту ссылку другу:\n"
+            f"<code>https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}</code>"
+        )
+    else:
+        text = (
+            "🔗 <b>Refer a Friend</b>\n\n"
+            "+3 chances per friend in the Giveaway!\n\n"
+            "🔥 <b>Popular topics:</b>\n"
+            "🚀 Startup Founders\n"
+            "💼 Investors & VCs\n"
+            "🎨 Creative Professionals\n\n"
+            "Share this link with a friend:\n"
+            f"<code>https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}</code>"
+        )
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="◀️ Back", callback_data="giveaway_info")
+    builder.adjust(1)
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
     await callback.answer()
 
 

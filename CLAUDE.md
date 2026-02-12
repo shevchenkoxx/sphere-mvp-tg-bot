@@ -49,6 +49,8 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 - `/participants [event_code]` - List participants with details
 - `/broadcast <text>` - Send message to all event participants
 - `/event [code]` - Show event info (or list all active events)
+- `/checkmatches [event_code]` - Show all matches with time, users, score, feedback, AI explanation
+- `/followup [event_code]` - Send follow-up check-in to all participants with matches
 
 ### Auto-Matching (Event Testing)
 - **Script:** `scripts/event_matching_test.py`
@@ -327,6 +329,7 @@ async def finish_onboarding_after_selfie(...):
 | Event Discovery | Browse available events | TODO |
 | **Event Info System** | Schedule, speakers, topics for LLM context | TODO |
 | Use All Embeddings | Update match_candidates() SQL | TODO |
+| **Refer a Friend** | Dynamic top 3 topics based on actual user looking_for data aggregation | TODO |
 
 ### 📊 Phase 4: Organizers
 
@@ -476,6 +479,44 @@ ONBOARDING_MODE=audio
 ---
 
 ## Recent Session Changes
+
+### February 12, 2026 - SXN Event Day (Live Event)
+
+**Event: SXN - SeXXXess Night: Digital Intimacy & Dating Apps (Warsaw)**
+
+**Changes deployed:**
+
+1. **Admin match notifications** — bot notifies admin on every new match (user, partner, score, event)
+2. **Multi-select personalization** — Step 3 adaptive buttons now toggle with ✓, "Done (N) →" button
+3. **`/checkmatches` admin command** — all matches with timestamp, users, score, feedback, AI explanation
+4. **Stuck user handling:**
+   - `/start` clears FSM state (unstick mid-flow users)
+   - Catch-all handler for users with no state (prompts /start or shows menu)
+   - Photo nudge 2 min after matches if no photo
+5. **Bug fixes from code review (3 agents):**
+   - `match_prev`/`match_next`: added callback.answer(), state param, ValueError guard
+   - `openai_service.py`: ValueError on MatchType enum now caught
+   - `matching_service.py`: RPC response KeyError/ValueError guard, null event_name fix
+6. **UX text updates:**
+   - "Finding interesting people" → "Sphere is searching for the best possible matches"
+   - Audio ready button keeps questions visible with parse_mode="HTML"
+   - Match threshold capped at 0.4 (prevents Railway env override)
+7. **Warm feedback messages** after match rating (👍/👎)
+8. **Follow-up always English** with dinner draw reminder
+9. **Language auto-detect** — default EN, switches to RU if Telegram lang is "ru"
+10. **`/demo` updated** for SXN event theme
+
+**Key files modified:**
+- `adapters/telegram/handlers/matches.py` — admin notifications, feedback messages, nav fixes
+- `adapters/telegram/handlers/onboarding_audio.py` — audio_ready questions, photo nudge, admin notif
+- `adapters/telegram/handlers/start.py` — /start clears state, catch-all, demo SXN theme
+- `adapters/telegram/handlers/personalization.py` — multi-select, text fix
+- `adapters/telegram/handlers/events.py` — /checkmatches, /followup
+- `adapters/telegram/keyboards/inline.py` — multi-select adaptive buttons
+- `core/services/matching_service.py` — threshold cap, RPC fix, null event fix
+- `infrastructure/ai/openai_service.py` — ValueError catch fix
+
+---
 
 ### February 10, 2026 - Pre-Release Hardening
 

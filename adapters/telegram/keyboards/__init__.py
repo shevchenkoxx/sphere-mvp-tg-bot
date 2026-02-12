@@ -28,6 +28,7 @@ from adapters.telegram.keyboards.inline import (
     # Personalization
     get_connection_mode_keyboard,
     get_adaptive_buttons_keyboard,
+    get_text_step_keyboard,
     get_skip_personalization_keyboard,
     # Matches photo & feedback
     get_matches_photo_keyboard,
@@ -72,6 +73,7 @@ __all__ = [
     # Personalization
     "get_connection_mode_keyboard",
     "get_adaptive_buttons_keyboard",
+    "get_text_step_keyboard",
     "get_skip_personalization_keyboard",
     # Matches photo & feedback
     "get_matches_photo_keyboard",

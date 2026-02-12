@@ -73,6 +73,9 @@ class SupabaseUserRepository(IUserRepository):
             connection_mode=data.get("connection_mode"),
             personalization_preference=data.get("personalization_preference"),
             ideal_connection=data.get("ideal_connection"),
+            # Referral tracking
+            referral_count=data.get("referral_count", 0),
+            referred_by=data.get("referred_by"),
         )
 
     @run_sync
