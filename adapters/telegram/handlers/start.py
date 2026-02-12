@@ -537,7 +537,10 @@ async def show_events(callback: CallbackQuery):
         for event in events[:5]:
             text += f"• {event.name}\n"
 
-    await callback.message.edit_text(text, reply_markup=get_events_keyboard(mode, lang))
+    try:
+        await callback.message.edit_text(text, reply_markup=get_events_keyboard(mode, lang))
+    except Exception:
+        pass  # "message is not modified" is harmless
     await callback.answer()
 
 
@@ -549,14 +552,18 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
 
     lang = detect_lang_callback(callback)
 
+    # Answer callback IMMEDIATELY to avoid 30s Telegram timeout
+    await callback.answer()
+
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
         str(callback.from_user.id)
     )
 
     if not user:
-        msg = "Profile not found" if lang == "en" else "Профиль не найден"
-        await callback.answer(msg, show_alert=True)
+        await callback.message.edit_text(
+            "Profile not found" if lang == "en" else "Профиль не найден"
+        )
         return
 
     # Check matching mode

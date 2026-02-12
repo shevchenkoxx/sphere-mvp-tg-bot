@@ -221,10 +221,19 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
         # Check if user is in an event
         if user and user.current_event_id:
-            # Show loading message
-            loading_text = "🔄 Finding your matches..." if lang == "en" else "🔄 Ищу матчи для тебя..."
+            # Show loading message with timing hint
+            loading_text = (
+                "🔍 <b>Finding your best matches...</b>\n\n"
+                "⏳ Analyzing profiles — usually takes 10-15 seconds"
+            ) if lang == "en" else (
+                "🔍 <b>Ищу лучшие матчи...</b>\n\n"
+                "⏳ Анализирую профили — обычно 10-15 секунд"
+            )
             if edit:
-                await message.edit_text(loading_text)
+                try:
+                    await message.edit_text(loading_text)
+                except Exception:
+                    pass
             else:
                 status_msg = await message.answer(loading_text)
 
