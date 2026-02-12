@@ -813,7 +813,26 @@ async def show_profile_confirmation(
 
     text = "\n".join(lines)
 
-    await message.answer(text, reply_markup=get_audio_confirm_keyboard(lang))
+    # Try to edit existing profile message (live refresh), else send new
+    data = await state.get_data()
+    profile_msg_id = data.get("profile_msg_id")
+    chat_id = message.chat.id
+
+    if profile_msg_id:
+        try:
+            await bot.edit_message_text(
+                text=text,
+                chat_id=chat_id,
+                message_id=profile_msg_id,
+                reply_markup=get_audio_confirm_keyboard(lang)
+            )
+            await state.set_state(AudioOnboarding.confirming)
+            return
+        except Exception:
+            pass  # Message might be deleted or too old, send new
+
+    sent = await message.answer(text, reply_markup=get_audio_confirm_keyboard(lang))
+    await state.update_data(profile_msg_id=sent.message_id)
     await state.set_state(AudioOnboarding.confirming)
 
 
@@ -954,6 +973,37 @@ async def handle_adding_details_voice(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Adding details voice error: {e}")
         await status.edit_text("Please type instead." if lang == "en" else "Напиши текстом.")
+
+
+async def _save_photo_to_profile(message: Message, state: FSMContext):
+    """Save photo sent during profile confirmation/details to user profile."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    user_id = str(message.from_user.id)
+    photo = message.photo[-1]
+
+    try:
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            user_id,
+            photo_url=photo.file_id
+        )
+        text = "✅ Photo saved!" if lang == "en" else "✅ Фото сохранено!"
+        await message.answer(text)
+    except Exception as e:
+        logger.error(f"Failed to save photo during onboarding for {user_id}: {e}")
+
+
+@router.message(AudioOnboarding.confirming, F.photo)
+async def handle_photo_in_confirmation(message: Message, state: FSMContext):
+    """Handle photo sent during profile confirmation — save to profile"""
+    await _save_photo_to_profile(message, state)
+
+
+@router.message(AudioOnboarding.adding_details, F.photo)
+async def handle_photo_in_adding_details(message: Message, state: FSMContext):
+    """Handle photo sent while adding details — save to profile"""
+    await _save_photo_to_profile(message, state)
 
 
 async def merge_additional_details(message: Message, state: FSMContext, new_text: str):
@@ -1100,6 +1150,7 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
         profession=profile_data.get("profession"),
         company=profile_data.get("company"),
         skills=profile_data.get("skills", [])[:10],
+        experience_level=profile_data.get("experience_level"),
         city_current=city,
         onboarding_completed=True
     )

@@ -435,7 +435,7 @@ async def giveaway_info(callback: CallbackQuery):
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
             "Собери шансы и выиграй Date Dinner в топовом ресторане Варшавы (раскроем завтра в инсте)!\n\n"
             '✅ 1 шанс — зарегистрируйся по QR\n'
-            '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с @sphere.match\n'
+            '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&amp;utm_source=qr">@sphere.match</a>\n'
             '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n'
             '🎟🎟 +2 шанса — оцени свой match\n\n'
             "Удачи! 🍀"
@@ -445,7 +445,7 @@ async def giveaway_info(callback: CallbackQuery):
             "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
             "Collect chances and win a Date Dinner in top Warsaw dining place (reveal tomorrow in insta)!\n\n"
             '✅ 1 chance — register via QR\n'
-            '🎟🎟🎟🎟🎟 +5 chances — repost Stories with @sphere.match\n'
+            '🎟🎟🎟🎟🎟 +5 chances — repost Stories with <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&amp;utm_source=qr">@sphere.match</a>\n'
             '🎟🎟🎟 +3 chances — refer a friend /each friend\n'
             '🎟🎟 +2 chances — rate your match\n\n'
             "Good luck! 🍀"
@@ -618,8 +618,7 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
 
     # Bio - the main description
     if user.bio:
-        bio_text = user.bio[:180] + ('...' if len(user.bio) > 180 else '')
-        text += f"\n{bio_text}\n"
+        text += f"\n{user.bio}\n"
 
     # Interests as hashtags - compact
     if user.interests:
@@ -632,14 +631,12 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
     # Looking for - what they want (key for matching!)
     if user.looking_for:
         label = "🔍 Looking for" if lang == "en" else "🔍 Ищу"
-        looking_text = user.looking_for[:120] + ('...' if len(user.looking_for) > 120 else '')
-        text += f"\n<b>{label}</b>\n{looking_text}\n"
+        text += f"\n<b>{label}</b>\n{user.looking_for}\n"
 
     # Can help with - their value prop
     if user.can_help_with:
         label = "💡 Can help with" if lang == "en" else "💡 Могу помочь"
-        help_text = user.can_help_with[:120] + ('...' if len(user.can_help_with) > 120 else '')
-        text += f"\n<b>{label}</b>\n{help_text}\n"
+        text += f"\n<b>{label}</b>\n{user.can_help_with}\n"
 
     # Goals - compact at bottom
     if user.goals:

@@ -416,8 +416,7 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
     # Bio - main description
     if partner.bio:
-        bio_text = partner.bio[:180] + ('...' if len(partner.bio) > 180 else '')
-        text += f"\n{bio_text}\n"
+        text += f"\n{partner.bio}\n"
 
     # Interests as hashtags (up to 7)
     all_hashtags = []
@@ -440,14 +439,12 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     # Looking for
     if partner.looking_for:
         label = "🔍 Looking for" if lang == "en" else "🔍 Ищет"
-        looking_text = partner.looking_for[:120] + ('...' if len(partner.looking_for) > 120 else '')
-        text += f"\n<b>{label}</b>\n{looking_text}\n"
+        text += f"\n<b>{label}</b>\n{partner.looking_for}\n"
 
     # Can help with
     if partner.can_help_with:
         label = "💡 Can help with" if lang == "en" else "💡 Может помочь"
-        help_text = partner.can_help_with[:120] + ('...' if len(partner.can_help_with) > 120 else '')
-        text += f"\n<b>{label}</b>\n{help_text}\n"
+        text += f"\n<b>{label}</b>\n{partner.can_help_with}\n"
 
     # Goals
     if partner.goals:
@@ -634,8 +631,7 @@ async def view_match_profile(callback: CallbackQuery):
 
     # Bio - the main description
     if partner.bio:
-        bio_text = partner.bio[:200] + ('...' if len(partner.bio) > 200 else '')
-        text += f"\n{bio_text}\n"
+        text += f"\n{partner.bio}\n"
 
     # Interests as hashtags
     if partner.interests:
@@ -648,14 +644,12 @@ async def view_match_profile(callback: CallbackQuery):
     # Looking for
     if partner.looking_for:
         label = "🔍 Looking for" if lang == "en" else "🔍 Ищет"
-        looking_text = partner.looking_for[:150] + ('...' if len(partner.looking_for) > 150 else '')
-        text += f"\n<b>{label}</b>\n{looking_text}\n"
+        text += f"\n<b>{label}</b>\n{partner.looking_for}\n"
 
     # Can help with
     if partner.can_help_with:
         label = "💡 Can help with" if lang == "en" else "💡 Может помочь"
-        help_text = partner.can_help_with[:150] + ('...' if len(partner.can_help_with) > 150 else '')
-        text += f"\n<b>{label}</b>\n{help_text}\n"
+        text += f"\n<b>{label}</b>\n{partner.can_help_with}\n"
 
     # Goals - compact at bottom
     if partner.goals:

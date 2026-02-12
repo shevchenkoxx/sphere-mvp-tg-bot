@@ -374,7 +374,6 @@ def get_edit_continue_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
 
 # Cities available in MVP
 SPHERE_CITIES = {
-    "moscow": {"en": "Moscow", "ru": "Москва"},
     "kyiv": {"en": "Kyiv", "ru": "Киев"},
     "dubai": {"en": "Dubai", "ru": "Дубай"},
     "berlin": {"en": "Berlin", "ru": "Берлин"},

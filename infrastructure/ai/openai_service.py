@@ -168,18 +168,20 @@ Interests: {', '.join(interests_b) if interests_b else 'None'}
 {f'Event: "{event_context}"' if event_context else ''}
 
 SCORING CRITERIA (in order of importance):
-1. VALUE EXCHANGE (0.4 weight): Does A's "can_help" match B's "looking_for" or vice versa?
-   - Direct match: +0.4 | Partial: +0.2 | None: 0
-2. PROFESSIONAL SYNERGY (0.3 weight): Could they collaborate based on profession/skills?
-   - Same industry + complementary skills: +0.3 | Same industry: +0.15 | None: 0
-3. INTERESTS OVERLAP (0.2 weight): Shared explicit interests?
-   - 2+ shared: +0.2 | 1 shared: +0.1 | None: 0
-4. GOALS ALIGNMENT (0.1 weight): Similar networking goals?
-   - Both looking for same type of connection: +0.1
+1. VALUE EXCHANGE (0.5 weight): Does A's "looking_for" EXPLICITLY match B's "can_help" or vice versa?
+   - ONLY count matches where the EXACT need is stated. Example: A says "looking for investors" and B says "can help with fundraising" = match.
+   - Do NOT infer needs that are not explicitly stated. If A never mentions "design", don't match them with a designer.
+   - Direct explicit match: +0.5 | Partial keyword overlap: +0.25 | No explicit overlap: 0
+2. INTERESTS OVERLAP (0.3 weight): Shared EXPLICIT interests from the tags?
+   - 2+ shared: +0.3 | 1 shared: +0.15 | None: 0
+3. GOALS ALIGNMENT (0.2 weight): Similar networking goals + same industry?
+   - Same goals + same industry: +0.2 | Just same goals: +0.1 | None: 0
 
-ONLY MATCH IF:
-- There is at least ONE concrete reason they should meet
-- Score >= 0.5 means they have real potential value for each other
+CRITICAL RULES:
+- NEVER infer what someone "might need" — only use what they EXPLICITLY stated in "looking_for"
+- If person A never mentions design/UX/creative, do NOT match them with a designer based on "professional synergy"
+- Match based on STATED needs, not assumed complementarity
+- Score >= 0.5 means clear, explicit value exchange
 - Score < 0.4 = don't waste their time
 
 LANGUAGE: {lang_instruction}
@@ -188,12 +190,12 @@ Return JSON:
 {{
   "compatibility_score": 0.0-1.0,
   "match_type": "professional" | "friendship" | "creative" | "romantic",
-  "explanation": "1-2 sentences in {lang_instruction}. Be SPECIFIC about WHY they should meet. Example: 'Ты ищешь инвестора, а он работает в фонде' NOT 'У вас общие интересы'",
+  "explanation": "1-2 sentences in {lang_instruction}. Be SPECIFIC about the EXPLICIT overlap. Quote actual words from their profiles. Example: 'Ты ищешь инвестора, а он работает в фонде' NOT 'У вас общие интересы'",
   "icebreaker": "Direct actionable opener in {lang_instruction}. Example: 'Расскажи про свой стартап - могу помочь с фандрейзингом'"
 }}
 
 IMPORTANT:
-- Be SPECIFIC in explanation - mention actual skills/needs
+- ONLY reference skills/needs that are EXPLICITLY stated in profiles
 - Icebreaker should be ACTION-oriented, not small talk
 - Score honestly - bad matches hurt user trust
 Respond with valid JSON only."""
