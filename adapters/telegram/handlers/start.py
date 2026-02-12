@@ -269,7 +269,7 @@ async def demo_command(message: Message):
         "You scan the QR code at the venue — it brings you here.\n"
         "Tonight's event code: <code>SXN</code>\n\n"
         "Deep link:\n"
-        "<code>t.me/Matchd_bot?start=event_SXN</code>"
+        "<code>t.me/Spheresocial_bot?start=event_SXN</code>"
     )
     await asyncio.sleep(3)
 
@@ -480,7 +480,7 @@ async def refer_a_friend(callback: CallbackQuery):
     lang = detect_lang_callback(callback)
     user_tg_id = callback.from_user.id
 
-    ref_link = f"https://t.me/Matchd_bot?start=event_SXN_ref_{user_tg_id}"
+    ref_link = f"https://t.me/Spheresocial_bot?start=event_SXN_ref_{user_tg_id}"
 
     if lang == "ru":
         text = (
