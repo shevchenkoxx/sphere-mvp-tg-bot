@@ -189,54 +189,54 @@ async def demo_command(message: Message):
     """
     import asyncio
 
-    # Demo data
+    # Demo data — themed for SXN event
     demo_profile = {
-        "name": "Alex Chen",
-        "profession": "Product Manager",
-        "company": "TechStartup",
-        "bio": "Building AI products. Previously at Google. Angel investor in 5 startups.",
-        "looking_for": "Technical co-founders, AI engineers, investors",
-        "can_help": "Product strategy, fundraising, GTM",
-        "interests": ["AI", "Startups", "Web3", "Investing"],
+        "name": "Alex Lindholm",
+        "profession": "Founder & CEO",
+        "company": "InspireXchange",
+        "bio": "Building LoveTech products. 10 years in dating industry. Investor in 3 social apps.",
+        "looking_for": "Product designers, investors, dating app founders",
+        "can_help": "Business models, monetization, LoveTech market insights",
+        "interests": ["LoveTech", "Dating Apps", "Startups", "Product"],
     }
 
     demo_match = {
-        "name": "Maria Kim",
-        "profession": "ML Engineer",
-        "company": "OpenAI",
-        "bio": "Building large language models. PhD in NLP. Looking to join early-stage startup.",
-        "score": 0.87,
-        "reason": "Maria is looking for startup opportunities, and Alex needs technical co-founders. Both are passionate about AI.",
-        "icebreaker": "Maria, I see you're interested in startups - I'm looking for a technical co-founder for my AI project. Would love to hear about your work at OpenAI!",
+        "name": "Song Kim",
+        "profession": "Founder & CEO",
+        "company": "Zeya Social",
+        "bio": "Building the anti-dating app. Connecting people through real experiences, not swipes.",
+        "score": 0.91,
+        "reason": "Both are founders in the dating/social space with complementary visions — Alex focuses on business models while Song is reimagining the product side. Perfect for a strategic conversation.",
+        "icebreaker": "Song, I loved your take on why dating apps are broken — I've been experimenting with alternative business models for LoveTech. Would love to compare notes!",
     }
 
     # Step 1: Welcome
     await message.answer(
         "🎬 <b>SPHERE DEMO</b>\n\n"
-        "Welcome! I'll show you how Sphere works.\n"
-        "This is an interactive walkthrough of all features.\n\n"
-        "<i>Demo starting in 2 seconds...</i>"
+        "Welcome! I'll show you how Sphere works at tonight's event.\n"
+        "This is a quick interactive walkthrough.\n\n"
+        "<i>Starting in 2 seconds...</i>"
     )
     await asyncio.sleep(2)
 
     # Step 2: QR Scan simulation
     await message.answer(
         "📱 <b>Step 1: Scan QR at Event</b>\n\n"
-        "At events, you scan a QR code that brings you here.\n"
-        "Each event has a unique code like: <code>POSTSW24</code>\n\n"
-        "The QR contains a deep link:\n"
-        "<code>t.me/Matchd_bot?start=event_POSTSW24</code>"
+        "You scan the QR code at the venue — it brings you here.\n"
+        "Tonight's event code: <code>SXN</code>\n\n"
+        "Deep link:\n"
+        "<code>t.me/Matchd_bot?start=event_SXN</code>"
     )
     await asyncio.sleep(3)
 
     # Step 3: Onboarding
     await message.answer(
-        "🎤 <b>Step 2: 60-Second Voice Intro</b>\n\n"
-        "New users record a quick voice message telling about themselves:\n"
-        "• Who they are\n"
-        "• What they're looking for\n"
-        "• How they can help others\n\n"
-        "<i>AI extracts structured data from your voice...</i>"
+        "🎤 <b>Step 2: Quick Voice Intro (30-60 sec)</b>\n\n"
+        "Record a voice message about yourself:\n\n"
+        "   🙋 <i>Who are you and what do you do?</i>\n"
+        "   🔍 <i>What kind of people do you want to meet?</i>\n"
+        "   💡 <i>How can you help others?</i>\n\n"
+        "<i>AI extracts your profile automatically from voice...</i>"
     )
     await asyncio.sleep(3)
 
@@ -244,7 +244,7 @@ async def demo_command(message: Message):
     profile_text = f"""✅ <b>Step 3: Profile Created</b>
 
 <b>{demo_profile['name']}</b>
-🏢 {demo_profile['profession']} @ {demo_profile['company']}
+💼 {demo_profile['profession']} @ {demo_profile['company']}
 
 {demo_profile['bio']}
 
@@ -256,7 +256,7 @@ async def demo_command(message: Message):
 
 #{' #'.join(demo_profile['interests'])}
 
-<i>All extracted automatically from voice!</i>"""
+<i>All extracted automatically from your voice!</i>"""
 
     await message.answer(profile_text)
     await asyncio.sleep(4)
@@ -265,22 +265,22 @@ async def demo_command(message: Message):
     await message.answer(
         "🔄 <b>Step 4: AI Matching</b>\n\n"
         "Our AI analyzes all participants:\n"
-        "• Vector embeddings for semantic similarity\n"
-        "• GPT-4 for deep compatibility analysis\n"
-        "• Scores based on mutual value exchange\n\n"
-        "<i>Finding your best matches...</i>"
+        "• Semantic similarity between profiles\n"
+        "• Deep compatibility analysis with GPT-4\n"
+        "• Who can help whom — mutual value exchange\n\n"
+        "⏳ <i>Usually takes 10-15 seconds...</i>"
     )
     await asyncio.sleep(3)
 
     # Step 6: Match found
     match_text = f"""💫 <b>Step 5: Match Found!</b>
 
-<b>{demo_match['name']}</b>  •  @maria_kim
-🏢 {demo_match['profession']} @ {demo_match['company']}
+<b>{demo_match['name']}</b>  •  @songkim
+💼 {demo_match['profession']} @ {demo_match['company']}
 
 {demo_match['bio']}
 
-#ML #AI #NLP #Startups
+#DatingApps #Social #Startups #Product
 
 ────────────────────
 
@@ -290,7 +290,8 @@ async def demo_command(message: Message):
 <b>💬 Start with</b>
 <i>{demo_match['icebreaker']}</i>
 
-<b>Score:</b> {demo_match['score']:.0%} compatibility"""
+<b>Score:</b> {demo_match['score']:.0%} compatibility
+📍 You're both here!"""
 
     await message.answer(match_text)
     await asyncio.sleep(4)
@@ -298,7 +299,7 @@ async def demo_command(message: Message):
     # Step 7: Match notification (what the other person sees)
     await message.answer(
         "🔔 <b>Step 6: Match Notification</b>\n\n"
-        "<i>This is what your match receives:</i>"
+        "<i>This is what your match receives at the same time:</i>"
     )
     await asyncio.sleep(1.5)
 
@@ -311,7 +312,7 @@ async def demo_command(message: Message):
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder as DemoBuilder
     notif_kb = DemoBuilder()
-    notif_kb.button(text="💬 Start Chat", callback_data="demo_noop")
+    notif_kb.button(text="💬 Write @alexlindholm", callback_data="demo_noop")
     notif_kb.button(text="👤 View Profile", callback_data="demo_noop")
     notif_kb.button(text="⚡ AI Speed Dating", callback_data="demo_noop")
     notif_kb.adjust(1)
@@ -321,16 +322,12 @@ async def demo_command(message: Message):
 
     # Step 8: Features overview
     await message.answer(
-        "⚡ <b>Additional Features</b>\n\n"
-        "• <b>AI Speed Dating</b> - Preview a simulated conversation with your match\n"
-        "• <b>Sphere City</b> - Match with people in your city, not just events\n"
-        "• <b>Profile Edit</b> - Update via voice or chat with AI\n"
-        "• <b>Feedback</b> - Rate matches to improve recommendations\n\n"
-        "────────────────────\n\n"
-        "<b>For Organizers:</b>\n"
-        "• Import event info from Luma/websites\n"
-        "• Broadcast messages to participants\n"
-        "• Real-time stats and analytics"
+        "⚡ <b>More Features</b>\n\n"
+        "• <b>AI Speed Dating</b> — preview a simulated conversation with your match\n"
+        "• <b>Deep Link Chat</b> — tap to open a DM directly in Telegram\n"
+        "• <b>Profile Edit</b> — just type what to change, AI updates it\n"
+        "• <b>Feedback</b> — rate matches 👍/👎 to improve recommendations\n\n"
+        "🎁 <b>Tonight's bonus:</b> successful matches enter a draw for a <b>free dinner date from Sphere</b> in Warsaw!"
     )
     await asyncio.sleep(4)
 
@@ -344,7 +341,7 @@ async def demo_command(message: Message):
     await message.answer(
         "🎉 <b>That's Sphere!</b>\n\n"
         "Smart networking powered by AI.\n"
-        "No more awkward \"what do you do?\" - we match you with the right people.\n\n"
+        "No more awkward small talk — we match you with the right people.\n\n"
         "Ready to create your profile?",
         reply_markup=builder.as_markup()
     )
