@@ -28,6 +28,8 @@ from core.prompts.audio_onboarding import (
     AUDIO_GUIDE_PROMPT_RU,
     AUDIO_GUIDE_PROMPT,
     AUDIO_INTRO_PROMPT,
+    AUDIO_WELCOME_EN,
+    AUDIO_WELCOME_RU,
     AUDIO_EXTRACTION_PROMPT,
     AUDIO_VALIDATION_PROMPT,
     AUDIO_CONFIRMATION_HEADER,
@@ -193,39 +195,13 @@ async def generate_onboarding_intro(
     first_name: str = None,
     lang: str = "en"
 ) -> str:
-    """Generate personalized intro using LLM."""
-    from openai import AsyncOpenAI
+    """Generate personalized intro using rich static templates (faster + consistent)."""
+    name_part = f", {first_name}" if first_name else ""
 
-    try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-        event_context = f"event called '{event_name}'" if event_name else "networking event"
-        language_name = get_language_name(lang)
-
-        prompt = AUDIO_INTRO_PROMPT.format(
-            event_context=event_context,
-            language_name=language_name,
-            first_name=first_name or "friend"
-        )
-
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=300,
-            temperature=0.7
-        )
-
-        return response.choices[0].message.content.strip()
-
-    except Exception as e:
-        logger.error(f"Failed to generate intro: {e}")
-        # Fallback to static guide
-        if lang == "ru":
-            intro = f"👋 Привет{', ' + first_name if first_name else ''}!\n\n"
-            return intro + AUDIO_GUIDE_PROMPT_RU
-        else:
-            intro = f"👋 Hi{' ' + first_name if first_name else ''}!\n\n"
-            return intro + AUDIO_GUIDE_PROMPT
+    if lang == "ru":
+        return AUDIO_WELCOME_RU.format(name_part=name_part)
+    else:
+        return AUDIO_WELCOME_EN.format(name_part=name_part)
 
 
 # === Handlers ===

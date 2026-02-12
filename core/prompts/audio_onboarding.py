@@ -45,24 +45,38 @@ User's first name: {first_name}
 Keep it conversational, not like a form. Use 1-2 relevant emojis.
 Return ONLY the message text."""
 
+# Rich static templates (used instead of LLM for consistent formatting)
+AUDIO_WELCOME_EN = """Hey{name_part}! Welcome to <b>Sphere</b> 👋
+
+I'll find you the best people to meet — just record a quick voice intro (30-60 sec).
+
+<b>Here's what to include:</b>
+
+   🙋 <i>Who are you and what do you do?</i>
+   🔍 <i>What kind of people do you want to meet?</i>
+   💡 <i>How can you help others with your expertise?</i>
+
+Just relax and speak naturally — this is all about making meaningful connections!
+
+🎁 <b>Today's bonus:</b> successful matches enter a draw for a <b>free dinner date from Sphere</b> at a top restaurant ✨"""
+
+AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать в <b>Sphere</b> 👋
+
+Я найду тебе лучших людей для знакомства — просто запиши короткое голосовое (30-60 сек).
+
+<b>Расскажи:</b>
+
+   🙋 <i>Кто ты и чем занимаешься?</i>
+   🔍 <i>Кого хочешь встретить?</i>
+   💡 <i>Чем можешь помочь другим?</i>
+
+Говори свободно и естественно — здесь важны живые люди, а не формальности!
+
+🎁 <b>Бонус дня:</b> успешные матчи участвуют в розыгрыше <b>бесплатного ужина от Sphere</b> в крутом ресторане ✨"""
+
 # Fallback static guides (used if LLM fails)
-AUDIO_GUIDE_PROMPT = """🎤 Record a 60-second voice message about yourself:
-
-**Please include:**
-• Who you are and what you do
-• What kind of people you'd like to meet here
-• How you can help others (your expertise)
-
-Speak naturally - I'll use this to find your best matches!"""
-
-AUDIO_GUIDE_PROMPT_RU = """🎤 Запиши голосовое сообщение на 60 секунд о себе:
-
-**Расскажи:**
-• Кто ты и чем занимаешься
-• Кого хотел бы встретить здесь
-• Чем можешь помочь другим (твоя экспертиза)
-
-Говори свободно — я использую это чтобы найти лучшие матчи!"""
+AUDIO_GUIDE_PROMPT = AUDIO_WELCOME_EN
+AUDIO_GUIDE_PROMPT_RU = AUDIO_WELCOME_RU
 
 # Extraction prompt - converts transcription to structured data
 # Using Chain-of-thought (A3) approach for deeper analysis
