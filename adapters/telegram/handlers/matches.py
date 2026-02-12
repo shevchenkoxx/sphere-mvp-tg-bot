@@ -24,9 +24,10 @@ from adapters.telegram.keyboards import (
     get_matches_photo_keyboard,
     get_feedback_keyboard,
 )
-from adapters.telegram.states.onboarding import MatchesPhotoStates
+from adapters.telegram.states.onboarding import MatchesPhotoStates, MatchFeedbackStates
 from config.features import Features
 from core.utils.language import detect_lang
+from aiogram.filters import StateFilter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -221,13 +222,11 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
 
         # Check if user is in an event
         if user and user.current_event_id:
-            # Show loading message with timing hint
+            # Show loading message
             loading_text = (
-                "🔍 <b>Finding your best matches...</b>\n\n"
-                "⏳ Analyzing profiles — usually takes 10-15 seconds"
+                "✨ Sphere is finding your best matches..."
             ) if lang == "en" else (
-                "🔍 <b>Ищу лучшие матчи...</b>\n\n"
-                "⏳ Анализирую профили — обычно 10-15 секунд"
+                "✨ Sphere подбирает для тебя лучшие матчи..."
             )
             if edit:
                 try:
@@ -970,9 +969,10 @@ async def handle_matches_photo_text(message: Message, state: FSMContext):
 # === FEEDBACK ===
 
 @router.callback_query(F.data.startswith("feedback_"))
-async def handle_feedback(callback: CallbackQuery):
-    """Handle match feedback (good/bad) - saves to database"""
+async def handle_feedback(callback: CallbackQuery, state: FSMContext):
+    """Handle match feedback (good/bad) - saves to database, asks for voice feedback"""
     from infrastructure.database.supabase_client import supabase
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     lang = detect_lang(callback)
 
@@ -1003,32 +1003,141 @@ async def handle_feedback(callback: CallbackQuery):
 
         await callback.answer()
 
-        # Send warm thank you message
-        if feedback_type == "good":
-            thank_text = (
-                "Thanks for the feedback! 🙌\n\n"
-                "Glad this match clicked — hope you have a great conversation! "
-                "If you've already met, that's amazing. Keep connecting!"
-            ) if lang == "en" else (
-                "Спасибо за фидбэк! 🙌\n\n"
-                "Рад, что матч зашёл — надеюсь, вы классно пообщаетесь! "
-                "Если уже встретились — круто, продолжай в том же духе!"
+        # Ask for voice feedback
+        if lang == "ru":
+            voice_ask = (
+                "Спасибо за оценку! 🙏\n\n"
+                "Хочешь рассказать подробнее? Просто запиши голосовое 🎤\n"
+                "Или нажми кнопку ниже чтобы пропустить"
             )
         else:
-            thank_text = (
-                "Thanks for the honest feedback! 🙏\n\n"
-                "This helps me find better matches for you next time. "
-                "Try updating your profile or hit 🔄 Find More — I'll do better!"
-            ) if lang == "en" else (
-                "Спасибо за честный фидбэк! 🙏\n\n"
-                "Это поможет найти лучшие матчи в следующий раз. "
-                "Попробуй обновить профиль или нажми 🔄 — я постараюсь лучше!"
+            voice_ask = (
+                "Thanks for the feedback! 🙏\n\n"
+                "Want to share more? Just record a voice message 🎤\n"
+                "Or tap the button below to skip"
             )
-        await callback.message.answer(thank_text)
+
+        skip_kb = InlineKeyboardBuilder()
+        skip_kb.button(
+            text="⏭ Skip" if lang == "en" else "⏭ Пропустить",
+            callback_data="skip_voice_feedback"
+        )
+
+        await callback.message.answer(voice_ask, reply_markup=skip_kb.as_markup())
+
+        # Set state for voice feedback
+        await state.set_state(MatchFeedbackStates.waiting_voice_feedback)
+        await state.update_data(
+            feedback_match_id=match_id,
+            feedback_type=feedback_type,
+            feedback_lang=lang
+        )
 
     except Exception as e:
         logger.error(f"Feedback save error: {e}")
         await callback.answer("Thanks for feedback!" if lang == "en" else "Спасибо за отзыв!")
+
+
+@router.callback_query(F.data == "skip_voice_feedback")
+async def skip_voice_feedback(callback: CallbackQuery, state: FSMContext):
+    """Skip voice feedback — just clear state and acknowledge"""
+    lang = detect_lang(callback)
+    await state.clear()
+
+    skip_text = "Got it! 👍" if lang == "en" else "Принято! 👍"
+    await callback.message.edit_text(skip_text)
+    await callback.answer()
+
+
+@router.message(MatchFeedbackStates.waiting_voice_feedback, F.voice)
+async def handle_voice_feedback(message: Message, state: FSMContext):
+    """Handle voice feedback after match rating — transcribe and save"""
+    from infrastructure.database.supabase_client import supabase
+    from adapters.telegram.loader import voice_service
+
+    data = await state.get_data()
+    match_id = data.get("feedback_match_id")
+    lang = data.get("feedback_lang", "en")
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+    if not user:
+        await state.clear()
+        return
+
+    voice_file_id = message.voice.file_id
+
+    # Transcribe the voice message
+    transcription = None
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        voice_bytes = file_bytes.read()
+        transcription = await voice_service.transcribe(voice_bytes)
+        logger.info(f"Voice feedback transcribed: user={user.id}, match={match_id}, text={transcription[:100] if transcription else 'empty'}")
+    except Exception as e:
+        logger.error(f"Voice feedback transcription error: {e}", exc_info=True)
+
+    # Save voice feedback to DB
+    try:
+        update_data = {
+            "voice_file_id": voice_file_id,
+        }
+        if transcription:
+            update_data["voice_transcription"] = transcription
+
+        supabase.table("match_feedback").update(update_data).eq(
+            "match_id", match_id
+        ).eq(
+            "user_id", str(user.id)
+        ).execute()
+
+        logger.info(f"Voice feedback saved: user={user.id}, match={match_id}")
+    except Exception as e:
+        logger.error(f"Voice feedback save error: {e}", exc_info=True)
+
+    await state.clear()
+
+    thank_text = "Записали! Спасибо за подробный фидбэк 🙏" if lang == "ru" else "Got it! Thanks for the detailed feedback 🙏"
+    await message.answer(thank_text)
+
+
+@router.message(MatchFeedbackStates.waiting_voice_feedback, F.text)
+async def handle_text_in_voice_feedback(message: Message, state: FSMContext):
+    """Text sent while waiting for voice feedback — save as text feedback and clear state"""
+    from infrastructure.database.supabase_client import supabase
+
+    data = await state.get_data()
+    match_id = data.get("feedback_match_id")
+    lang = data.get("feedback_lang", "en")
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+    if not user:
+        await state.clear()
+        return
+
+    # Save text feedback to DB
+    try:
+        supabase.table("match_feedback").update({
+            "feedback_text": message.text
+        }).eq(
+            "match_id", match_id
+        ).eq(
+            "user_id", str(user.id)
+        ).execute()
+        logger.info(f"Text feedback saved: user={user.id}, match={match_id}")
+    except Exception as e:
+        logger.error(f"Text feedback save error: {e}", exc_info=True)
+
+    await state.clear()
+
+    thank_text = "Записали! Спасибо за фидбэк 🙏" if lang == "ru" else "Got it! Thanks for the feedback 🙏"
+    await message.answer(thank_text)
 
 
 # === NOTIFICATIONS ===

@@ -438,9 +438,9 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
     )
 
     if lang == "ru":
-        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Sphere ищет лучшие матчи для тебя!\n⏳ <i>Обычно это занимает 10-15 секунд</i>"
+        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Sphere ищет лучшие матчи для тебя!"
     else:
-        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Sphere is searching for the best possible matches for you!\n⏳ <i>This usually takes 10-15 seconds</i>"
+        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Sphere is searching for the best possible matches for you!"
 
     await message.answer(text)
 

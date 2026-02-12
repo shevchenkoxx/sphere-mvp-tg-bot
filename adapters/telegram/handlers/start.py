@@ -378,6 +378,40 @@ async def start_real_onboarding_from_demo(callback: CallbackQuery, state: FSMCon
 detect_lang_callback = detect_lang
 
 
+@router.callback_query(F.data == "giveaway_info")
+async def giveaway_info(callback: CallbackQuery):
+    """Show Valentine's Day Giveaway rules"""
+    lang = detect_lang_callback(callback)
+
+    if lang == "ru":
+        text = (
+            "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
+            "Собери шансы и выиграй приз!\n\n"
+            "🎟 1 шанс — зарегистрируйся по QR\n"
+            "🎟🎟 +2 шанса — оцени свой match\n"
+            "🎟🎟🎟 +3 шанса — репост в Stories с @sphere\n"
+            "🎟🎟🎟 +3 шанса — приведи друга\n\n"
+            "⏰ Дедлайн: 13 февраля, 20:00\n"
+            "🏆 Победитель — 13 февраля в 22:00\n\n"
+            "Удачи! 🍀"
+        )
+    else:
+        text = (
+            "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
+            "Collect chances and win a prize!\n\n"
+            "🎟 1 chance — register via QR\n"
+            "🎟🎟 +2 chances — rate your match\n"
+            "🎟🎟🎟 +3 chances — repost Stories with @sphere\n"
+            "🎟🎟🎟 +3 chances — refer a friend\n\n"
+            "⏰ Deadline: February 13, 20:00\n"
+            "🏆 Winner announced: February 13, 22:00\n\n"
+            "Good luck! 🍀"
+        )
+
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    await callback.answer()
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""

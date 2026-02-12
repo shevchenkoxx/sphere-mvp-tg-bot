@@ -63,6 +63,11 @@ class MatchesPhotoStates(StatesGroup):
     waiting_photo = State()  # Waiting for selfie when user opens matches without photo
 
 
+class MatchFeedbackStates(StatesGroup):
+    """FSM states for voice feedback after match rating"""
+    waiting_voice_feedback = State()
+
+
 class MeetupStates(StatesGroup):
     """FSM states for meetup proposal flow (proposer side)"""
     selecting_times = State()

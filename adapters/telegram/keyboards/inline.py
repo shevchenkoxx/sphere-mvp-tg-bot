@@ -246,11 +246,13 @@ def get_main_menu_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
         builder.button(text="👤 Профиль", callback_data="my_profile")
         builder.button(text="🎉 Ивенты", callback_data="my_events")
         builder.button(text="💫 Матчи", callback_data="my_matches")
+        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🎉 Events", callback_data="my_events")
         builder.button(text="💫 Matches", callback_data="my_matches")
-    builder.adjust(3)
+        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+    builder.adjust(2, 2)
     return builder.as_markup()
 
 
