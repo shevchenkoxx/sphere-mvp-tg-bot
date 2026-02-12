@@ -909,3 +909,121 @@ async def admin_followup(message: Message):
         sent += 1
 
     await message.answer(f"✅ Follow-up sent: {sent}, skipped: {skipped} (no matches or no TG ID)")
+
+
+@router.message(Command("checkmatches"))
+async def admin_checkmatches(message: Message):
+    """
+    /checkmatches [event_code] - Show all matches with time, users, score, and summary
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    event_code = parts[1].strip() if len(parts) > 1 else None
+
+    if not event_code:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(message.from_user.id)
+        )
+        if user and user.current_event_id:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            event_code = event.code if event else None
+
+    if not event_code:
+        await message.answer("Usage: /checkmatches EVENT_CODE")
+        return
+
+    event = await event_service.get_event_by_code(event_code)
+    if not event:
+        await message.answer(f"Event '{event_code}' not found")
+        return
+
+    # Get all matches for this event
+    from infrastructure.database.supabase_client import supabase
+
+    matches_resp = supabase.table("matches").select(
+        "id, user_a_id, user_b_id, compatibility_score, match_type, ai_explanation, status, created_at"
+    ).eq("event_id", str(event.id)).order("created_at", desc=True).execute()
+
+    matches = matches_resp.data or []
+
+    if not matches:
+        await message.answer(f"No matches for {event.name}")
+        return
+
+    # Get all user info
+    user_ids = set()
+    for m in matches:
+        user_ids.add(m['user_a_id'])
+        user_ids.add(m['user_b_id'])
+
+    users_resp = supabase.table("users").select(
+        "id, display_name, first_name, username"
+    ).in_("id", list(user_ids)).execute()
+
+    users_map = {}
+    for u in (users_resp.data or []):
+        name = u.get('display_name') or u.get('first_name') or '?'
+        uname = u.get('username') or '?'
+        users_map[u['id']] = (name, uname)
+
+    # Get feedback
+    match_ids = [m['id'] for m in matches]
+    fb_resp = supabase.table("match_feedback").select(
+        "match_id, feedback_type"
+    ).in_("match_id", match_ids).execute()
+
+    fb_map = {}
+    for fb in (fb_resp.data or []):
+        mid = fb['match_id']
+        fb_map.setdefault(mid, []).append(fb['feedback_type'])
+
+    # Format output
+    lines = [f"<b>📋 Matches: {event.name}</b> ({len(matches)} total)\n"]
+
+    for i, m in enumerate(matches, 1):
+        a_name, a_user = users_map.get(m['user_a_id'], ('?', '?'))
+        b_name, b_user = users_map.get(m['user_b_id'], ('?', '?'))
+        score = m.get('compatibility_score', 0)
+        score_str = f"{score:.0%}" if score else "?"
+        status = m.get('status', '?')
+        created = m.get('created_at', '')[:16].replace('T', ' ')  # "2026-02-11 14:30"
+        explanation = (m.get('ai_explanation') or '')[:80]
+        if len(m.get('ai_explanation') or '') > 80:
+            explanation += "..."
+
+        # Feedback
+        fbs = fb_map.get(m['id'], [])
+        fb_str = ""
+        if fbs:
+            fb_str = " " + " ".join("👍" if f == 'good' else "👎" for f in fbs)
+
+        lines.append(
+            f"<b>{i}.</b> {a_name} (@{a_user}) ↔ {b_name} (@{b_user})\n"
+            f"   ⏰ {created} | 📊 {score_str} | {status}{fb_str}\n"
+            f"   💬 <i>{explanation}</i>\n"
+        )
+
+    text = "\n".join(lines)
+
+    # Telegram message limit is 4096 chars
+    if len(text) > 4000:
+        # Send in chunks
+        chunks = []
+        current = ""
+        for line in lines:
+            if len(current) + len(line) > 3900:
+                chunks.append(current)
+                current = line
+            else:
+                current += "\n" + line
+        if current:
+            chunks.append(current)
+
+        for chunk in chunks:
+            await message.answer(chunk, parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
