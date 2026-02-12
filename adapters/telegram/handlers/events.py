@@ -532,6 +532,16 @@ async def admin_event_info(message: Message):
 
     await message.answer(text, reply_markup=get_event_actions_keyboard(event.code) if message.from_user.id in settings.admin_telegram_ids else None)
 
+    # Send QR code if exists
+    import os
+    from aiogram.types import FSInputFile
+    qr_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    for qr_name in [f"{event.code}_QR_new.png", f"{event.code}_QR.png"]:
+        qr_path = os.path.join(qr_dir, qr_name)
+        if os.path.exists(qr_path):
+            await message.answer_photo(FSInputFile(qr_path), caption=f"QR → {deep_link}")
+            break
+
 
 # === EVENT INFO MANAGEMENT ===
 
