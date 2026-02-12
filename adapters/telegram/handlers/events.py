@@ -968,14 +968,14 @@ async def admin_matchall(message: Message):
         f"This may take a while."
     )
 
+    # Phase 1: Run matching for all participants
     matched = 0
     skipped = 0
     errors = 0
 
     for p in participants:
         try:
-            user_has_embeddings = p.profile_embedding is not None
-            if not user_has_embeddings:
+            if p.profile_embedding is None:
                 skipped += 1
                 continue
 
@@ -987,31 +987,42 @@ async def admin_matchall(message: Message):
 
             if new_matches:
                 matched += 1
-                # Notify user about new matches
-                try:
-                    name = p.display_name or p.first_name or "there"
-                    await bot.send_message(
-                        int(p.platform_user_id),
-                        f"💫 <b>New matches at {event.name}!</b>\n\n"
-                        f"Hey {name}, you have {len(new_matches)} new match{'es' if len(new_matches) > 1 else ''}!\n"
-                        f"Check them out 👇",
-                        reply_markup=get_main_menu_keyboard("en"),
-                        parse_mode="HTML"
-                    )
-                except Exception:
-                    pass  # User may have blocked bot
             else:
                 skipped += 1
         except Exception as e:
             logger.error(f"matchall error for user {p.id}: {e}")
             errors += 1
 
+    # Phase 2: Notify ALL participants who have matches
+    notified = 0
+    for p in participants:
+        try:
+            all_matches = await matching_service.get_user_matches(p.id)
+            event_matches = [m for m in all_matches if str(m.event_id) == str(event.id)] if all_matches else []
+            if not event_matches:
+                continue
+
+            name = p.display_name or p.first_name or "there"
+            count = len(event_matches)
+            await bot.send_message(
+                int(p.platform_user_id),
+                f"💫 <b>Matches at {event.name}!</b>\n\n"
+                f"Hey {name}, you have <b>{count}</b> match{'es' if count > 1 else ''}!\n"
+                f"Check them out 👇",
+                reply_markup=get_main_menu_keyboard("en"),
+                parse_mode="HTML"
+            )
+            notified += 1
+        except Exception as e:
+            logger.warning(f"Failed to notify {p.platform_user_id}: {e}")
+
     try:
         await status.edit_text(
             f"✅ <b>Matching complete for {event.name}</b>\n\n"
             f"👥 Participants: {len(participants)}\n"
             f"💫 Got new matches: {matched}\n"
-            f"⏭ Skipped (no embeddings/no new): {skipped}\n"
+            f"⏭ Skipped: {skipped}\n"
+            f"📩 Notified: {notified}\n"
             f"❌ Errors: {errors}",
             parse_mode="HTML"
         )
