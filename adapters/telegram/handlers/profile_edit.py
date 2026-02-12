@@ -623,6 +623,8 @@ async def confirm_edit(callback: CallbackQuery, state: FSMContext):
                     str(callback.from_user.id),
                     **update_data
                 )
+            else:
+                updated_user = None
         else:
             # Quick edit - single field
             field = data.get("edit_field")

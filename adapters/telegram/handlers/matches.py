@@ -334,7 +334,7 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
         btn_text = "✏️ Add more info" if lang == "en" else "✏️ Добавить инфо"
-        builder.button(text=btn_text, callback_data="edit_profile")
+        builder.button(text=btn_text, callback_data="edit_my_profile")
         builder.button(text="🔄 Try again", callback_data="retry_matching")
         builder.button(text="◀️ Menu" if lang == "en" else "◀️ Меню", callback_data="back_to_menu")
         builder.adjust(1)

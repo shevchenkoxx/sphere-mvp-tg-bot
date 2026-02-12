@@ -423,8 +423,8 @@ async def accept_meetup(callback: CallbackQuery):
     proposer = await user_service.get_user(proposal.proposer_id)
     receiver = await user_service.get_user(proposal.receiver_id)
 
-    proposer_name = proposer.display_name or proposer.first_name or "Someone"
-    receiver_name = receiver.display_name or receiver.first_name or "Someone"
+    proposer_name = (proposer.display_name or proposer.first_name or "Someone") if proposer else "Someone"
+    receiver_name = (receiver.display_name or receiver.first_name or "Someone") if receiver else "Someone"
     proposer_username = proposer.username if proposer else None
     receiver_username = receiver.username if receiver else None
 

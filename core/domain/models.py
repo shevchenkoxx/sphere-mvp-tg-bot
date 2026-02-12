@@ -124,6 +124,7 @@ class UserUpdate(BaseModel):
     profession: Optional[str] = None
     company: Optional[str] = None
     skills: Optional[List[str]] = None
+    experience_level: Optional[str] = None
     # Matching mode
     matching_mode: Optional[str] = None  # 'event' or 'city'
     # Personalization fields (post-onboarding flow)

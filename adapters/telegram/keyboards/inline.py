@@ -439,7 +439,7 @@ def get_matches_menu_keyboard(
 
     if has_event and event_name:
         event_text = f"🎉 {event_name}"
-        builder.button(text=event_text, callback_data="event_matches")
+        builder.button(text=event_text, callback_data="my_matches")
 
     city_text = "🏙️ Sphere City" if lang == "en" else "🏙️ Sphere City"
     builder.button(text=city_text, callback_data="sphere_city")
