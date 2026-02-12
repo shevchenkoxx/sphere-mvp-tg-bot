@@ -220,10 +220,8 @@ Respond with valid JSON only."""
                 explanation=data["explanation"],
                 icebreaker=data["icebreaker"]
             )
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse match analysis JSON: {text[:300] if 'text' in dir() else 'no response'} Error: {e}")
-        except KeyError as e:
-            logger.error(f"Missing key in match analysis response: {e}")
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.error(f"Failed to parse match analysis: {type(e).__name__}: {e} | raw={text[:200] if 'text' in locals() else 'N/A'}")
         except Exception as e:
             logger.error(f"Match analysis failed: {e}")
 

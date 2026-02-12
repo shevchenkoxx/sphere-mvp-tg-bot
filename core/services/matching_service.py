@@ -152,9 +152,13 @@ class MatchingService:
             # Fetch full user objects for candidates
             candidates = []
             for row in response.data:
-                candidate = await user_repo.get_by_id(UUID(row['user_id']))
-                if candidate:
-                    candidates.append((candidate, row['similarity_score']))
+                try:
+                    candidate = await user_repo.get_by_id(UUID(row['user_id']))
+                    if candidate:
+                        candidates.append((candidate, row.get('similarity_score', 0.5)))
+                except (KeyError, ValueError) as e:
+                    logger.warning(f"Invalid RPC row: {e}")
+                    continue
 
             logger.info(f"Vector search found {len(candidates)} candidates for {user.display_name or user.id}")
             return candidates
@@ -205,7 +209,7 @@ class MatchingService:
         Returns list of (User, MatchResultWithId) tuples.
         """
         event = await self.event_repo.get_by_id(event_id)
-        event_name = event.name if event else None
+        event_name = event.name if event else "Event"
 
         # Stage 1: Vector similarity search (fast)
         # Check if user has embeddings
