@@ -68,6 +68,24 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         )
         return
 
+    # Handle referral deep link (no event): ref_<tg_id>
+    if args and args.startswith("ref_") and not args.startswith("ref_event"):
+        referrer_tg_id = args.replace("ref_", "")
+        if not user.onboarding_completed and referrer_tg_id:
+            try:
+                await user_service.update_user(
+                    platform=MessagePlatform.TELEGRAM,
+                    platform_user_id=str(message.from_user.id),
+                    referred_by=referrer_tg_id
+                )
+                await _increment_referral_count(referrer_tg_id)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Referral tracking failed: {e}")
+        # Continue to normal /start flow
+        await start_command(message, state)
+        return
+
     # Check if deep link is for event
     if args and args.startswith("event_"):
         raw_code = args.replace("event_", "")
@@ -463,20 +481,20 @@ async def giveaway_info(callback: CallbackQuery):
 
     if lang == "ru":
         text = (
-            "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
-            "Собери шансы и выиграй Date Dinner в топовом ресторане Варшавы (раскроем завтра в инсте)!\n\n"
-            '✅ 1 шанс — зарегистрируйся по QR\n'
-            '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&amp;utm_source=qr">@sphere.match</a>\n'
+            "🎁 <b>Sphere Giveaway</b>\n\n"
+            "Собери шансы и выиграй Date Dinner в топовом ресторане Варшавы!\n\n"
+            '✅ 1 шанс — зарегистрируйся в Sphere\n'
+            '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с <a href="https://www.instagram.com/sphere.match">@sphere.match</a>\n'
             '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n'
             '🎟🎟 +2 шанса — оцени свой match\n\n'
             "Удачи! 🍀"
         )
     else:
         text = (
-            "🎁 <b>Sphere × Valentine's Day Giveaway</b>\n\n"
-            "Collect chances and win a Date Dinner in top Warsaw dining place (reveal tomorrow in insta)!\n\n"
-            '✅ 1 chance — register via QR\n'
-            '🎟🎟🎟🎟🎟 +5 chances — repost Stories with <a href="https://www.instagram.com/sphere.match?igsh=MW45M3ExbGllOGN5dQ%3D%3D&amp;utm_source=qr">@sphere.match</a>\n'
+            "🎁 <b>Sphere Giveaway</b>\n\n"
+            "Collect chances and win a Date Dinner in top Warsaw dining place!\n\n"
+            '✅ 1 chance — register in Sphere\n'
+            '🎟🎟🎟🎟🎟 +5 chances — repost Stories with <a href="https://www.instagram.com/sphere.match">@sphere.match</a>\n'
             '🎟🎟🎟 +3 chances — refer a friend /each friend\n'
             '🎟🎟 +2 chances — rate your match\n\n'
             "Good luck! 🍀"
@@ -488,30 +506,20 @@ async def giveaway_info(callback: CallbackQuery):
     builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
     builder.adjust(1)
 
-    # Handle photo messages (coming back from Refer a Friend QR page)
-    if callback.message.photo:
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await bot.send_message(
-            callback.message.chat.id, text,
-            reply_markup=builder.as_markup(),
-            disable_web_page_preview=True,
-            parse_mode="HTML"
-        )
-    else:
+    try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
+    except Exception:
+        pass
     await callback.answer()
 
 
 @router.callback_query(F.data == "refer_a_friend")
 async def refer_a_friend(callback: CallbackQuery):
-    """Show Refer a Friend page with referral link"""
+    """Show Refer a Friend page with referral link (no QR, no event deep link)"""
     lang = detect_lang_callback(callback)
     user_tg_id = callback.from_user.id
 
-    ref_link = f"https://t.me/Spheresocial_bot?start=event_SXN_ref_{user_tg_id}"
+    ref_link = f"https://t.me/Spheresocial_bot?start=ref_{user_tg_id}"
 
     if lang == "ru":
         text = (
@@ -545,44 +553,10 @@ async def refer_a_friend(callback: CallbackQuery):
     builder.button(text="◀️ Back", callback_data="giveaway_info")
     builder.adjust(1)
 
-    # Generate QR code for the referral link
     try:
-        import qrcode
-        import io
-        from aiogram.types import BufferedInputFile
-
-        qr = qrcode.QRCode(version=1, box_size=10, border=2)
-        qr.add_data(ref_link)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-
-        qr_file = BufferedInputFile(buf.read(), filename="referral_qr.png")
-
-        # Delete old message, send photo + text
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-
-        await bot.send_photo(
-            chat_id=callback.message.chat.id,
-            photo=qr_file,
-            caption=text,
-            reply_markup=builder.as_markup(),
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"QR generation failed: {e}")
-        # Fallback to text-only
-        try:
-            await callback.message.edit_text(text, reply_markup=builder.as_markup())
-        except Exception:
-            await callback.message.answer(text, reply_markup=builder.as_markup())
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except Exception:
+        await callback.message.answer(text, reply_markup=builder.as_markup())
 
     await callback.answer()
 
@@ -861,9 +835,9 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_matches")
 async def show_matches(callback: CallbackQuery, state: FSMContext):
-    """Show matches based on current matching_mode (event or city)"""
+    """Show matches — defaults to Sphere City (city-based matching)"""
     from adapters.telegram.handlers.matches import list_matches_callback
-    from adapters.telegram.handlers.sphere_city import show_city_matches
+    from adapters.telegram.handlers.sphere_city import show_city_matches, sphere_city_entry
 
     lang = detect_lang_callback(callback)
 
@@ -881,36 +855,29 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
         )
         return
 
-    # Check matching mode
-    mode = getattr(user, 'matching_mode', 'event') or 'event'
-
-    if mode == "city":
-        # Show city matches
-        if not user.city_current:
-            # Need to set city first - redirect to sphere city
-            from adapters.telegram.handlers.sphere_city import sphere_city_entry
-            await sphere_city_entry(callback, None)
-        else:
-            await show_city_matches(callback)
+    # Default to city matching (Sphere City)
+    if not user.city_current:
+        # Need to set city first
+        await sphere_city_entry(callback, None)
     else:
-        # Show event matches (default)
-        if user.current_event_id:
-            await list_matches_callback(callback, event_id=user.current_event_id, state=state)
-        else:
-            # No event - suggest joining one
-            if lang == "ru":
-                text = (
-                    "📭 <b>Нет активного ивента</b>\n\n"
-                    "Сканируй QR-код на ивенте, чтобы получить матчи!\n\n"
-                    "Или переключись на 🏙️ Sphere City в разделе Events."
-                )
-            else:
-                text = (
-                    "📭 <b>No active event</b>\n\n"
-                    "Scan a QR code at an event to get matches!\n\n"
-                    "Or switch to 🏙️ Sphere City in the Events section."
-                )
-            await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+        await show_city_matches(callback)
+
+
+@router.callback_query(F.data == "vibe_check")
+async def vibe_check_entry(callback: CallbackQuery, state: FSMContext):
+    """Vibe Check entry — placeholder until full port from main."""
+    lang = detect_lang_callback(callback)
+    text = (
+        "🔮 <b>Check Our Vibe</b>\n\n"
+        "Coming soon! This feature lets you check compatibility with a friend.\n\n"
+        "Stay tuned!"
+        if lang == "en" else
+        "🔮 <b>Check Our Vibe</b>\n\n"
+        "Скоро! Эта функция позволит проверить совместимость с другом.\n\n"
+        "Следи за обновлениями!"
+    )
+    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
+    await callback.answer()
 
 
 @router.callback_query(F.data == "toggle_matching_mode")

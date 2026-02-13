@@ -249,17 +249,19 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
     inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
     if lang == "ru":
         builder.button(text="👤 Профиль", callback_data="my_profile")
-        builder.button(text="🎉 Ивенты", callback_data="my_events")
+        builder.button(text="🏙️ Sphere City", callback_data="sphere_city")
         builder.button(text="💫 Матчи", callback_data="my_matches")
         builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
+        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
-        builder.button(text="🎉 Events", callback_data="my_events")
+        builder.button(text="🏙️ Sphere City", callback_data="sphere_city")
         builder.button(text="💫 Matches", callback_data="my_matches")
         builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
+        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 2)
     return builder.as_markup()
 
 

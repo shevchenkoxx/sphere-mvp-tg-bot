@@ -337,6 +337,25 @@ async def handle_agent_text(message: Message, state: FSMContext, text_override: 
     await message.answer(agent_reply_clean)
 
 
+@router.message(IntentOnboardingStates.agent_chatting, F.photo)
+async def handle_agent_photo(message: Message, state: FSMContext):
+    """Handle photo sent during agent mode — save for later, continue chatting."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    profile_data = data.get("profile_data", {})
+
+    photo = message.photo[-1]
+    profile_data["photo_file_id"] = photo.file_id
+    await state.update_data(profile_data=profile_data)
+
+    text = (
+        "📸 Photo saved! I'll add it to your profile.\nLet's keep chatting!"
+        if lang == "en" else
+        "📸 Фото сохранено! Добавлю в профиль.\nДавай продолжим общаться!"
+    )
+    await message.answer(text)
+
+
 @router.message(IntentOnboardingStates.agent_chatting, F.voice)
 async def handle_agent_voice(message: Message, state: FSMContext):
     """Handle voice message in agent mode — transcribe and treat as text."""
@@ -1419,7 +1438,11 @@ async def handle_confirm_yes(callback: CallbackQuery, state: FSMContext):
     intents = data.get("selected_intents", [])
     event_code = data.get("pending_event_code")
 
-    await callback.message.edit_text(t("confirm_saved", lang))
+    # Green checkmark — edit confirm message
+    await callback.message.edit_text(
+        "✅ " + t("confirm_saved", lang),
+        reply_markup=None,
+    )
 
     # Build update dict
     update_data = UserUpdate(
@@ -1487,20 +1510,36 @@ async def handle_confirm_yes(callback: CallbackQuery, state: FSMContext):
     # Clear state
     await state.clear()
 
-    # Show tip + menu
+    # Combined tip + menu in one message (cleaner UX)
     from adapters.telegram.keyboards.inline import get_main_menu_keyboard
-    await bot.send_message(
-        callback.message.chat.id,
-        t("tip_enrich", lang),
-    )
+    tip = t("tip_enrich", lang)
     menu_text = "What would you like to do?" if lang == "en" else "\u0427\u0442\u043e \u0434\u0435\u043b\u0430\u0435\u043c?"
     await bot.send_message(
         callback.message.chat.id,
-        menu_text,
+        f"{tip}\n\n{menu_text}",
         reply_markup=get_main_menu_keyboard(lang),
     )
 
     await callback.answer()
+
+
+@router.message(IntentOnboardingStates.confirming_profile, F.photo)
+async def handle_confirm_photo(message: Message, state: FSMContext):
+    """Handle photo sent at confirm step — save it."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    profile_data = data.get("profile_data", {})
+
+    photo = message.photo[-1]
+    profile_data["photo_file_id"] = photo.file_id
+    await state.update_data(profile_data=profile_data)
+
+    text = (
+        "📸 Photo saved! Now confirm your profile above."
+        if lang == "en" else
+        "📸 Фото сохранено! Теперь подтверди профиль выше."
+    )
+    await message.answer(text)
 
 
 @router.callback_query(IntentOnboardingStates.confirming_profile, F.data == "iconfirm_edit")
