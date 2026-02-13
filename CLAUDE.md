@@ -1,32 +1,38 @@
-# Sphere Bot - Project Documentation
+# Sphere Bot V1.1 — Intent-Based Onboarding
+
+## THIS IS THE V1.1 BRANCH (NOT MAIN!)
+- **Branch:** v1.1
+- **Worktree:** `/Users/artemshevchenko/Desktop/Claude Code Terminal MVP TG/worktrees/sphere-bot-v1.1/`
+- **Bot:** Separate test bot (NOT @Spheresocial_bot)
+- **Railway:** Deploys from v1.1 branch automatically
+- **DO NOT** push to main from this worktree!
 
 ## Overview
-Telegram bot for meaningful connections at events. Users scan QR → quick voice onboarding → AI matching → meet interesting people.
+Telegram bot for meaningful connections. V1.1 adds intent-based onboarding with 4 modes (Agent/Voice/Quick Choices/Social Media), daily questions, and profile enrichment.
 
-**Bot:** @Spheresocial_bot
 **Repo:** https://github.com/shevchenkoxx/sphere-mvp-tg-bot
-**Deploy:** Railway (auto-deploy from main branch)
+**Production (main):** @Spheresocial_bot — DO NOT TOUCH from here
 
 ---
 
 ## IMPORTANT for Claude Code
 
-### Context Management Rules
-1. **After every important change** - update this CLAUDE.md file with current status
-2. **Before 5% context remaining** - MUST update CLAUDE.md with full project state
-3. **Always maintain** super clear and detailed context in this file
-4. **On session start** - read this file first to understand project state
+### Branch Safety
+- This is `worktrees/sphere-bot-v1.1/` on branch **v1.1**
+- Production is in `sphere-bot/` on branch **main**
+- ALWAYS verify `git branch` before committing
+- Push with `git push origin v1.1` (NOT main!)
 
 ### Credentials
 - **All credentials stored in:** `.credentials/keys.md` (gitignored)
 - Supabase URL, Service Key, DB Password
 - OpenAI API Key
-- Telegram Bot Token
+- Telegram Bot Token (different from production!)
 
 ### Deploy
 - **ALWAYS push to git** for Railway deployment
-- Railway auto-deploys from `main` branch
-- After `git push` wait ~1-2 min for deploy
+- Railway auto-deploys from `v1.1` branch for this bot
+- After `git push origin v1.1` wait ~1-2 min for deploy
 
 ### Database (Supabase)
 - URL: `https://cfppunyxxelqutfwqfbi.supabase.co`
@@ -68,87 +74,65 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ---
 
-## Current Status (February 2026)
+## Current Status (February 13, 2026)
 
-### Working Features ✅
+### V1.1 NEW Features
 
-1. **Vector-Based Matching**
-   - Two-stage pipeline: pgvector similarity + LLM re-ranking
-   - 70% fewer API calls (~350 vs 1,225 for 50 users)
-   - OpenAI text-embedding-3-small (1536 dimensions)
-   - Embeddings generated in background (non-blocking)
-   - Auto-fallback to base score if embeddings unavailable
+1. **Intent-Based Onboarding** (`onboarding_intent.py` — 1517 lines)
+   - User picks intents: Networking / Friendship / Romance / Hookup
+   - 4 onboarding modes:
+     - **Agent** — free-form LLM conversation (3-layer: chat/extraction/strategy)
+     - **Voice** — 4 guided stages with Whisper transcription
+     - **Quick Choices** — button-based Q&A from question bank
+     - **Social Media** — import from URL/screenshot with GPT-4o vision
+   - City selection + photo request + profile confirmation
+   - Activate with `ONBOARDING_MODE=intent`
 
-2. **Audio Onboarding**
-   - LLM generates personalized intro
-   - Voice transcription via Whisper (non-blocking)
-   - AI extracts: about, looking_for, can_help_with, interests, goals
-   - Validation: asks follow-up if key info missing
-   - Switch to text mode available
-   - Photo request moved to Matches tab (not during onboarding)
+2. **Daily Questions** (`daily_question.py` — 623 lines)
+   - 53 questions across 6 categories (networking, friends, romance, hookup, self_discovery, icebreaker)
+   - Gap-based selection (asks what's missing from profile)
+   - LLM follow-up chat after answer
+   - Auto-extraction to profile + embedding regeneration
 
-3. **Text Onboarding (v2)**
-   - Conversational flow with LLM
-   - Step-by-step questions
-   - Can switch from audio mode
+3. **Profile Enrichment** (`profile_enrichment.py` — 438 lines)
+   - Works anytime (StateFilter(None) — only outside FSM states)
+   - Voice → transcribe + extract + merge
+   - Link → fetch URL + LLM extraction
+   - Screenshot → GPT-4o vision analysis
 
-4. **Profile System**
-   - Fields: display_name, bio, interests, goals, looking_for, can_help_with, photo_url
-   - Hashtag display (#tech #startups etc)
-   - Photo display in profile view
-   - `/reset` fully clears all profile fields
+4. **i18n System** (`locales/en.py`, `locales/ru.py`)
+   - `t(key, lang, **kwargs)` function for all strings
+   - Full EN/RU support
+   - Language saved to user profile
 
-5. **Profile Editing** (NEW)
-   - Two modes: Quick Edit + Conversational (LLM)
-   - Quick Edit: Select field → Type/voice value → Preview → Confirm
-   - Conversational: "Add crypto to interests" → LLM interprets → Preview → Confirm
-   - Supports text and voice input
-   - Auto-regenerates embeddings after changes
-   - FSM states: ProfileEditStates in states/onboarding.py
+5. **Question Bank** (`questions/bank.py` — 560 lines)
+   - 53 questions with EN/RU text
+   - Categories, intent tags, depth levels, extract targets
+   - Smart selection based on user intents + asked questions
 
-6. **AI Matching**
-   - Vector similarity pre-filter (pgvector)
-   - GPT-4o-mini for deep compatibility analysis
-   - Scores: compatibility_score (0-1), match_type
-   - AI explanation + icebreaker
-   - Notifications to matched users
+6. **DB Schema** (`012_v1_1_schema.sql`)
+   - New user columns: connection_intents[], gender, looking_for_gender[], age_range, partner_values[], personality_vibe, hookup_preference, language
+   - New table: user_questions (tracks asked questions + answers)
 
-7. **Event System**
-   - QR codes with deep links
-   - Admin can create events and run matching
-   - `current_event_id` tracks user's event
+### Inherited Features (from main)
 
-8. **Matches Display**
-   - Pagination (◀️ ▶️)
-   - Photo display, hashtags, AI explanation
-   - Icebreaker suggestion, contact @username
+- Vector-Based Matching (pgvector + LLM re-ranking)
+- Audio/Text/v1 Onboarding (still available, mode-selectable)
+- Profile System + Editing (quick + conversational)
+- Event System + QR codes
+- Matches Display + Pagination
+- Sphere City (city-based matching)
+- AI Speed Dating
+- Meetup Proposals
+- Admin Commands (/stats, /participants, /broadcast, etc.)
 
-9. **Sphere City** (NEW)
-   - City-based matching outside events
-   - City picker: Moscow, Kyiv, Dubai, Berlin, London, NYC, Tbilisi, Yerevan, + custom
-   - Matches menu with Event + Sphere City options
-   - City detection from voice + manual selection
+### NOT on V1.1 (main only)
+- Vibe Check AI compatibility game (vibe_check.py, vibe_check.py prompts, 012_vibe_checks.sql)
 
-10. **Enhanced Extraction**
-    - Chain-of-thought prompting for better analysis
-    - Now extracts: profession, company, skills, location, experience_level
-    - `/test_extract` command for debugging (admin-only)
-
-11. **AI Speed Dating** (NEW)
-    - Preview simulated conversation between you and match
-    - GPT-4o-mini generates 5 exchanges (10 messages) based on profiles
-    - Cached in DB (instant on repeat view)
-    - "Regenerate" button for new conversation
-    - Bilingual: auto-detects RU/EN from profiles
-
-### Known Issues / Gaps ❌
-
-1. **No in-app messaging** - must leave bot to contact match
-2. **No match actions** - can't say "met them" or "not interested"
-3. **No event discovery** - only via QR codes
-4. **Language always "en"** - detect_lang() hardcoded, not persisted
-5. **LinkedIn integration** - linkedin_url, linkedin_data fields unused
-6. **FSM in memory** - MemoryStorage() loses state on bot restart (Railway deploy)
+### Known Issues
+1. **FSM in memory** — MemoryStorage() loses state on restart
+2. **Migration not run** — 012_v1_1_schema.sql may need to be executed on Supabase
+3. **Not tested yet** — intent onboarding needs end-to-end testing
 
 ---
 
@@ -466,14 +450,16 @@ Hint: {event_info.get('matching_hints', '')}
 ## Environment Variables
 
 ```bash
-TELEGRAM_BOT_TOKEN=xxx
+TELEGRAM_BOT_TOKEN=xxx          # V1.1 test bot token (NOT production!)
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_KEY=xxx
+SUPABASE_SERVICE_KEY=xxx
 OPENAI_API_KEY=sk-xxx
 ADMIN_TELEGRAM_IDS=123,456
 DEBUG=true
-DEFAULT_MATCH_THRESHOLD=0.6
-ONBOARDING_MODE=audio
+DEFAULT_MATCH_THRESHOLD=0.4
+ONBOARDING_MODE=intent          # V1.1: use "intent" mode
+DB_SCHEMA=v1_1                  # Optional: schema isolation
 ```
 
 ---

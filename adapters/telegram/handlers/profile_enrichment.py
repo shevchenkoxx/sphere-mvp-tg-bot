@@ -75,8 +75,8 @@ async def handle_enrichment_voice(message: Message, state: FSMContext):
 
     try:
         file = await bot.get_file(message.voice.file_id)
-        file_bytes = await bot.download_file(file.file_path)
-        transcript = await voice_service.transcribe(file_bytes.read())
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcript = await voice_service.download_and_transcribe(file_url)
 
         if not transcript:
             await message.answer(t("error_generic", lang))

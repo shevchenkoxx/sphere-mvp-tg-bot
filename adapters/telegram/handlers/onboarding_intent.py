@@ -349,11 +349,9 @@ async def handle_agent_voice(message: Message, state: FSMContext):
 
     try:
         # Download and transcribe
-        file_info = await bot.get_file(message.voice.file_id)
-        file_bytes = await bot.download_file(file_info.file_path)
-        transcript = await voice_service.transcribe(file_bytes.read())
+        transcript = await _transcribe_voice(message)
 
-        if not transcript or not transcript.strip():
+        if not transcript:
             await message.answer(t("error_generic", lang))
             return
 
@@ -677,8 +675,8 @@ async def _transcribe_voice(message: Message) -> Optional[str]:
     """Download and transcribe voice message."""
     try:
         file_info = await bot.get_file(message.voice.file_id)
-        file_bytes = await bot.download_file(file_info.file_path)
-        transcript = await voice_service.transcribe(file_bytes.read())
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
+        transcript = await voice_service.download_and_transcribe(file_url)
         return transcript.strip() if transcript else None
     except Exception as e:
         logger.error(f"Voice transcription failed: {e}", exc_info=True)
