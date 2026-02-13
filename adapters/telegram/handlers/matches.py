@@ -1122,9 +1122,8 @@ async def handle_voice_feedback(message: Message, state: FSMContext):
     transcription = None
     try:
         file = await bot.get_file(message.voice.file_id)
-        file_bytes = await bot.download_file(file.file_path)
-        voice_bytes = file_bytes.read()
-        transcription = await voice_service.transcribe(voice_bytes)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
         logger.info(f"Voice feedback transcribed: user={user.id}, match={match_id}, text={transcription[:100] if transcription else 'empty'}")
     except Exception as e:
         logger.error(f"Voice feedback transcription error: {e}", exc_info=True)

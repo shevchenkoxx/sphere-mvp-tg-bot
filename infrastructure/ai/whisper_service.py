@@ -57,11 +57,11 @@ class WhisperVoiceService(IVoiceService):
             return None
         finally:
             # Clean up temp file
-            if os.path.exists(audio_file_path):
-                try:
+            try:
+                if isinstance(audio_file_path, str) and '\x00' not in audio_file_path and os.path.exists(audio_file_path):
                     os.remove(audio_file_path)
-                except OSError:
-                    pass
+            except (OSError, ValueError):
+                pass
 
     def _transcribe_sync(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:
         """Synchronous transcription - runs in executor"""
