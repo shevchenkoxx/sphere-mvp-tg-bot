@@ -50,12 +50,23 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
     args = command.args
 
     # Get or create user
-    user = await user_service.get_or_create_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(message.from_user.id),
-        username=message.from_user.username,
-        first_name=message.from_user.first_name
-    )
+    try:
+        user = await user_service.get_or_create_user(
+            platform=MessagePlatform.TELEGRAM,
+            platform_user_id=str(message.from_user.id),
+            username=message.from_user.username,
+            first_name=message.from_user.first_name
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to get/create user (deep link): {e}", exc_info=True)
+        lang = detect_lang(message)
+        await message.answer(
+            "⚠️ Something went wrong connecting to the server. Please try again in a minute."
+            if lang == "en" else
+            "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
+        )
+        return
 
     # Check if deep link is for vibe check
     if args and args.startswith("vibe_"):
@@ -139,12 +150,22 @@ async def start_command(message: Message, state: FSMContext):
 
     lang = detect_lang(message)
 
-    user = await user_service.get_or_create_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(message.from_user.id),
-        username=message.from_user.username,
-        first_name=message.from_user.first_name
-    )
+    try:
+        user = await user_service.get_or_create_user(
+            platform=MessagePlatform.TELEGRAM,
+            platform_user_id=str(message.from_user.id),
+            username=message.from_user.username,
+            first_name=message.from_user.first_name
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to get/create user: {e}", exc_info=True)
+        await message.answer(
+            "⚠️ Something went wrong connecting to the server. Please try again in a minute."
+            if lang == "en" else
+            "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
+        )
+        return
 
     if user.onboarding_completed:
         name = user.display_name or message.from_user.first_name or ("friend" if lang == "en" else "друг")

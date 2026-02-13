@@ -301,12 +301,16 @@ async def create_vibe_check_handler(callback: CallbackQuery, state: FSMContext):
     lang = detect_lang(callback)
     await callback.answer()
 
-    user = await user_service.get_or_create_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(callback.from_user.id),
-        username=callback.from_user.username,
-        first_name=callback.from_user.first_name,
-    )
+    try:
+        user = await user_service.get_or_create_user(
+            platform=MessagePlatform.TELEGRAM,
+            platform_user_id=str(callback.from_user.id),
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get/create user for vibe check: {e}", exc_info=True)
+        user = None
 
     if not user:
         msg = "Something went wrong. Try /start" if lang == "en" else "Что-то пошло не так. Попробуй /start"
@@ -381,12 +385,16 @@ async def handle_vibe_deep_link(message: Message, state: FSMContext, short_code:
     lang = detect_lang(message)
 
     # Get or create user
-    user = await user_service.get_or_create_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(message.from_user.id),
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-    )
+    try:
+        user = await user_service.get_or_create_user(
+            platform=MessagePlatform.TELEGRAM,
+            platform_user_id=str(message.from_user.id),
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+        )
+    except Exception as e:
+        logger.error(f"Failed to get/create user for vibe deep link: {e}", exc_info=True)
+        user = None
 
     if not user:
         await message.answer("Something went wrong. Try /start")
@@ -585,6 +593,7 @@ async def handle_vibe_voice(message: Message, state: FSMContext):
     lang_data = await state.get_data()
     lang = lang_data.get("vibe_lang", "en")
 
+    temp_path = None
     try:
         # Download voice file
         file = await bot.get_file(message.voice.file_id)
@@ -612,6 +621,13 @@ async def handle_vibe_voice(message: Message, state: FSMContext):
         logger.error(f"Vibe voice error: {e}", exc_info=True)
         hint = "Не удалось обработать голос. Попробуй текстом!" if lang == "ru" else "Couldn't process voice. Try typing instead!"
         await message.answer(hint)
+    finally:
+        # Clean up temp file
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 # ============================================
