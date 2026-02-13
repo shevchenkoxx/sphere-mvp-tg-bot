@@ -57,6 +57,13 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         first_name=message.from_user.first_name
     )
 
+    # Check if deep link is for vibe check
+    if args and args.startswith("vibe_"):
+        short_code = args.replace("vibe_", "")
+        from adapters.telegram.handlers.vibe_check import handle_vibe_deep_link
+        await handle_vibe_deep_link(message, state, short_code)
+        return
+
     # Check if deep link is for event
     if args and args.startswith("event_"):
         raw_code = args.replace("event_", "")

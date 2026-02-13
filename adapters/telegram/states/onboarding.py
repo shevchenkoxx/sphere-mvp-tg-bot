@@ -73,3 +73,9 @@ class MeetupStates(StatesGroup):
     selecting_times = State()
     entering_location = State()
     previewing = State()
+
+
+class VibeCheckStates(StatesGroup):
+    """FSM states for Vibe Check compatibility game"""
+    interviewing = State()       # AI agent is interviewing user
+    waiting_for_partner = State()  # Done, waiting for other user

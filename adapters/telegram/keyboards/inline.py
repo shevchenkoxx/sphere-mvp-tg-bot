@@ -252,14 +252,16 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
         builder.button(text="🎉 Ивенты", callback_data="my_events")
         builder.button(text="💫 Матчи", callback_data="my_matches")
         builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
+        builder.button(text="🔮 Проверь совместимость", callback_data="vibe_new")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🎉 Events", callback_data="my_events")
         builder.button(text="💫 Matches", callback_data="my_matches")
         builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
+        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_new")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 2)
     return builder.as_markup()
 
 
@@ -652,6 +654,55 @@ def get_meetup_confirmation_keyboard(short_id: str, partner_username: str = None
     menu_text = "← Menu" if lang == "en" else "← Меню"
     builder.row(InlineKeyboardButton(text=menu_text, callback_data="back_to_menu"))
 
+    return builder.as_markup()
+
+
+# === VIBE CHECK ===
+
+def get_vibe_share_keyboard(short_code: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Share vibe check link keyboard"""
+    builder = InlineKeyboardBuilder()
+    link = f"https://t.me/Spheresocial_bot?start=vibe_{short_code}"
+    if lang == "ru":
+        builder.row(InlineKeyboardButton(
+            text="📤 Поделиться ссылкой",
+            url=f"https://t.me/share/url?url={link}&text=Давай проверим нашу совместимость! 🔮"
+        ))
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        builder.row(InlineKeyboardButton(
+            text="📤 Share Link",
+            url=f"https://t.me/share/url?url={link}&text=Let's check our vibe! 🔮"
+        ))
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
+    return builder.as_markup()
+
+
+def get_vibe_result_keyboard(partner_username: str = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard shown with vibe check result"""
+    builder = InlineKeyboardBuilder()
+
+    if partner_username:
+        chat_text = f"💬 Write @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+        builder.row(InlineKeyboardButton(text=chat_text, url=f"https://t.me/{partner_username}"))
+
+    if lang == "ru":
+        builder.row(InlineKeyboardButton(text="🔮 Новый Vibe Check", callback_data="vibe_new"))
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔮 New Vibe Check", callback_data="vibe_new"))
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
+
+    return builder.as_markup()
+
+
+def get_vibe_waiting_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard shown while waiting for partner to complete"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
     return builder.as_markup()
 
 
