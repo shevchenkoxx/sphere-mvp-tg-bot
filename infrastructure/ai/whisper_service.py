@@ -71,6 +71,13 @@ class WhisperVoiceService(IVoiceService):
             logger.warning(f"Audio file too small ({file_size} bytes): {audio_file_path}")
             return None
 
+        # Validate OGG file header (magic bytes: "OggS")
+        with open(audio_file_path, "rb") as f:
+            header = f.read(4)
+            if header != b'OggS':
+                logger.warning(f"Invalid audio file (not OGG, header={header!r}): {audio_file_path}")
+                return None
+
         with open(audio_file_path, "rb") as audio_file:
             params = {
                 "model": "whisper-1",
