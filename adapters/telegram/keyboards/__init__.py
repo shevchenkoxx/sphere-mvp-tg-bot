@@ -53,6 +53,10 @@ from adapters.telegram.keyboards.inline import (
     INTENTS,
     # Daily question
     get_daily_question_keyboard,
+    # Vibe Check
+    get_vibe_share_keyboard,
+    get_vibe_result_keyboard,
+    get_vibe_waiting_keyboard,
 )
 
 __all__ = [
@@ -110,4 +114,8 @@ __all__ = [
     "INTENTS",
     # Daily question
     "get_daily_question_keyboard",
+    # Vibe Check
+    "get_vibe_share_keyboard",
+    "get_vibe_result_keyboard",
+    "get_vibe_waiting_keyboard",
 ]

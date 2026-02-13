@@ -800,6 +800,58 @@ def get_daily_question_keyboard(question_id: str, lang: str = "en") -> InlineKey
     return builder.as_markup()
 
 
+# === VIBE CHECK ===
+
+def get_vibe_share_keyboard(short_code: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Share vibe check link keyboard"""
+    from urllib.parse import quote
+    builder = InlineKeyboardBuilder()
+    link = f"https://t.me/Spheresocial_bot?start=vibe_{short_code}"
+    if lang == "ru":
+        share_text = quote("Давай проверим нашу совместимость! 🔮")
+        builder.row(InlineKeyboardButton(
+            text="📤 Поделиться ссылкой",
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
+        ))
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        share_text = quote("Let's check our vibe! 🔮")
+        builder.row(InlineKeyboardButton(
+            text="📤 Share Link",
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
+        ))
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
+    return builder.as_markup()
+
+
+def get_vibe_result_keyboard(partner_username: str = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard shown with vibe check result"""
+    builder = InlineKeyboardBuilder()
+
+    if partner_username:
+        chat_text = f"💬 Write @{partner_username}" if lang == "en" else f"💬 Написать @{partner_username}"
+        builder.row(InlineKeyboardButton(text=chat_text, url=f"https://t.me/{partner_username}"))
+
+    if lang == "ru":
+        builder.row(InlineKeyboardButton(text="🔮 Новый Vibe Check", callback_data="vibe_new"))
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔮 New Vibe Check", callback_data="vibe_new"))
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
+
+    return builder.as_markup()
+
+
+def get_vibe_waiting_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard shown while waiting for partner to complete"""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
+    else:
+        builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

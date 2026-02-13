@@ -10,6 +10,7 @@ from adapters.telegram.states.onboarding import (
     MeetupStates,
     IntentOnboardingStates,
     DailyQuestionStates,
+    VibeCheckStates,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "MeetupStates",
     "IntentOnboardingStates",
     "DailyQuestionStates",
+    "VibeCheckStates",
 ]

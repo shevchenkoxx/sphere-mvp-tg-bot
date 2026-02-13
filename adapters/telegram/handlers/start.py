@@ -68,6 +68,13 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         )
         return
 
+    # Handle vibe check deep link: vibe_<short_code>
+    if args and args.startswith("vibe_"):
+        short_code = args[5:]  # strip "vibe_" prefix
+        from adapters.telegram.handlers.vibe_check import handle_vibe_deep_link
+        await handle_vibe_deep_link(message, state, short_code)
+        return
+
     # Handle referral deep link (no event): ref_<tg_id>
     if args and args.startswith("ref_") and not args.startswith("ref_event"):
         referrer_tg_id = args.replace("ref_", "")
@@ -865,19 +872,9 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "vibe_check")
 async def vibe_check_entry(callback: CallbackQuery, state: FSMContext):
-    """Vibe Check entry — placeholder until full port from main."""
-    lang = detect_lang_callback(callback)
-    text = (
-        "🔮 <b>Check Our Vibe</b>\n\n"
-        "Coming soon! This feature lets you check compatibility with a friend.\n\n"
-        "Stay tuned!"
-        if lang == "en" else
-        "🔮 <b>Check Our Vibe</b>\n\n"
-        "Скоро! Эта функция позволит проверить совместимость с другом.\n\n"
-        "Следи за обновлениями!"
-    )
-    await callback.message.edit_text(text, reply_markup=get_back_to_menu_keyboard(lang))
-    await callback.answer()
+    """Vibe Check entry — redirects to vibe_check handler (creates new vibe check)."""
+    from adapters.telegram.handlers.vibe_check import create_vibe_check_handler
+    await create_vibe_check_handler(callback, state)
 
 
 @router.callback_query(F.data == "toggle_matching_mode")

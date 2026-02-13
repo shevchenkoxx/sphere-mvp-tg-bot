@@ -104,3 +104,9 @@ class DailyQuestionStates(StatesGroup):
     """FSM states for daily question feature"""
     answering = State()   # User is answering the daily question
     chatting = State()    # User is in free-form LLM conversation
+
+
+class VibeCheckStates(StatesGroup):
+    """FSM states for Vibe Check AI compatibility game"""
+    interviewing = State()        # AI agent is interviewing user
+    waiting_for_partner = State()  # Done, waiting for other user
