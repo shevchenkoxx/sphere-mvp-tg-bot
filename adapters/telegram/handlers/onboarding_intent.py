@@ -74,13 +74,11 @@ async def start_intent_onboarding(
     except Exception:
         pass
 
-    # Welcome message
+    # Welcome message + intent selection in one message
     if event_name:
         welcome = t("welcome_event", lang, name=name, event_name=event_name)
     else:
         welcome = t("welcome", lang, name=name)
-
-    await message.answer(f"<b>{welcome}</b>\n\n{t('intent_header', lang)}")
 
     await state.set_state(IntentOnboardingStates.selecting_intents)
     await state.update_data(
@@ -92,7 +90,7 @@ async def start_intent_onboarding(
     )
 
     await message.answer(
-        t("intent_header", lang),
+        f"<b>{welcome}</b>\n\n{t('intent_header', lang)}",
         reply_markup=get_intent_selection_keyboard([], lang),
     )
 
