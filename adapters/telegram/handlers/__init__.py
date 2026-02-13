@@ -7,6 +7,10 @@ onboarding_routers = []
 
 if ONBOARDING_VERSION == "v1":
     onboarding_routers = [onboarding.router]
+elif ONBOARDING_VERSION == "intent":
+    # V1.1 intent-based onboarding + daily questions + profile enrichment
+    from adapters.telegram.handlers import onboarding_intent, daily_question, profile_enrichment
+    onboarding_routers = [onboarding_intent.router, daily_question.router, profile_enrichment.router]
 elif ONBOARDING_VERSION == "audio":
     # Include both audio AND v2 routers - users can switch to text mode
     onboarding_routers = [onboarding_audio.router, onboarding_v2.router]

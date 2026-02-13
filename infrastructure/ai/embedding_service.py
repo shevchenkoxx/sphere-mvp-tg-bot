@@ -37,6 +37,17 @@ class EmbeddingService:
             parts.append(f"Interests: {', '.join(user.interests)}")
         if user.goals:
             parts.append(f"Goals: {', '.join(user.goals)}")
+        # V1.1: enrich with new fields
+        if user.profession:
+            parts.append(f"Profession: {user.profession}")
+        if user.ideal_connection:
+            parts.append(f"Ideal match: {user.ideal_connection}")
+        if user.connection_intents:
+            parts.append(f"Seeking: {', '.join(user.connection_intents)}")
+        if user.personality_vibe:
+            parts.append(f"Vibe: {user.personality_vibe}")
+        if user.partner_values:
+            parts.append(f"Values: {', '.join(user.partner_values)}")
 
         return " | ".join(parts) if parts else "New user"
 
@@ -49,6 +60,11 @@ class EmbeddingService:
             parts.append(f"Goals: {', '.join(user.goals)}")
         if user.looking_for:
             parts.append(f"Looking for: {user.looking_for}")
+        # V1.1: enrich with connection intents
+        if user.connection_intents:
+            parts.append(f"Connection goals: {', '.join(user.connection_intents)}")
+        if user.hookup_preference:
+            parts.append(f"Date style: {user.hookup_preference}")
         return " | ".join(parts) if parts else "General networking"
 
     def _build_expertise_text(self, user: User) -> str:
@@ -59,6 +75,12 @@ class EmbeddingService:
         if user.bio:
             # Extract professional info from bio
             parts.append(f"Background: {user.bio[:200]}")
+        # V1.1: enrich with professional fields
+        if user.profession:
+            company = f" @ {user.company}" if user.company else ""
+            parts.append(f"Role: {user.profession}{company}")
+        if user.skills:
+            parts.append(f"Skills: {', '.join(user.skills)}")
         return " | ".join(parts) if parts else "Open to connecting"
 
     async def generate_embeddings(

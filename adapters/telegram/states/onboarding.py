@@ -73,3 +73,34 @@ class MeetupStates(StatesGroup):
     selecting_times = State()
     entering_location = State()
     previewing = State()
+
+
+class IntentOnboardingStates(StatesGroup):
+    """FSM states for V1.1 intent-based onboarding"""
+    # Intent selection
+    selecting_intents = State()
+    # Mode choice
+    choosing_mode = State()
+    # Voice mode stages
+    voice_stage1 = State()       # General intro
+    voice_stage2 = State()       # Intent-specific question
+    voice_stage3 = State()       # Ideal match
+    voice_stage4 = State()       # Optional LLM follow-up
+    # Quick choices mode
+    answering_question = State()  # Dynamic question queue
+    # Social media mode
+    social_waiting_input = State()  # Waiting for link or screenshot
+    social_followup = State()       # Voice follow-up after import
+    # Agent mode
+    agent_chatting = State()        # Free-form LLM conversation
+    # Common final steps
+    choosing_city = State()
+    typing_city = State()
+    waiting_photo = State()
+    confirming_profile = State()
+
+
+class DailyQuestionStates(StatesGroup):
+    """FSM states for daily question feature"""
+    answering = State()   # User is answering the daily question
+    chatting = State()    # User is in free-form LLM conversation

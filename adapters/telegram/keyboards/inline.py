@@ -655,6 +655,149 @@ def get_meetup_confirmation_keyboard(short_id: str, partner_username: str = None
     return builder.as_markup()
 
 
+# === INTENT ONBOARDING (V1.1) ===
+
+INTENTS = [
+    ("networking", "\U0001f91d"),
+    ("friends", "\U0001f44b"),
+    ("romance", "\u2764\ufe0f"),
+    ("hookup", "\U0001f525"),
+]
+
+
+def get_intent_selection_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Multi-select intent keyboard (max 3 of 4)"""
+    from locales import t
+    if selected is None:
+        selected = []
+
+    builder = InlineKeyboardBuilder()
+
+    for intent_key, emoji in INTENTS:
+        label = t(f"intent_{intent_key}", lang)
+        desc = t(f"intent_{intent_key}_desc", lang)
+        if intent_key in selected:
+            text = f"\u2713 {emoji} {label}"
+        else:
+            text = f"{emoji} {label}"
+        builder.button(text=text, callback_data=f"intent_{intent_key}")
+
+    builder.adjust(2)
+
+    # Done button (only if at least 1 selected)
+    if selected:
+        done_text = t("intent_done", lang, count=len(selected))
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="intents_done"))
+
+    return builder.as_markup()
+
+
+def get_mode_choice_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Choose onboarding mode: agent / voice / buttons / social media"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("mode_agent", lang), callback_data="mode_agent")
+    builder.button(text=t("mode_voice", lang), callback_data="mode_voice")
+    builder.button(text=t("mode_buttons", lang), callback_data="mode_buttons")
+    builder.button(text=t("mode_social", lang), callback_data="mode_social")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_question_buttons_keyboard(options: List[dict], lang: str = "en") -> InlineKeyboardMarkup:
+    """Single-select question buttons. options = [{"key": "...", "label_key": "..."}]"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    for opt in options:
+        label = t(opt["label_key"], lang)
+        builder.button(text=label, callback_data=f"qc_{opt['key']}")
+    builder.adjust(2)
+    # Skip button
+    builder.row(InlineKeyboardButton(text=t("qc_skip", lang), callback_data="qc_skip"))
+    return builder.as_markup()
+
+
+def get_question_multi_select_keyboard(
+    options: List[dict], selected: List[str] = None, lang: str = "en", max_select: int = 5
+) -> InlineKeyboardMarkup:
+    """Multi-select question buttons. options = [{"key": "...", "label_key": "..."}]"""
+    from locales import t
+    if selected is None:
+        selected = []
+
+    builder = InlineKeyboardBuilder()
+    for opt in options:
+        label = t(opt["label_key"], lang)
+        if opt["key"] in selected:
+            label = f"\u2713 {label}"
+        builder.button(text=label, callback_data=f"qcm_{opt['key']}")
+
+    builder.adjust(2)
+
+    # Done button
+    if selected:
+        done_text = t("qc_done", lang, count=len(selected))
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="qcm_done"))
+
+    # Skip button
+    builder.row(InlineKeyboardButton(text=t("qc_skip", lang), callback_data="qc_skip"))
+    return builder.as_markup()
+
+
+def get_social_source_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Choose social media source: link or screenshot"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("social_link_btn", lang), callback_data="social_link")
+    builder.button(text=t("social_screenshot_btn", lang), callback_data="social_screenshot")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_intent_city_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """City picker for intent onboarding (reuses SPHERE_CITIES)"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+
+    for city_key, names in SPHERE_CITIES.items():
+        city_name = names.get(lang, names["en"])
+        builder.button(text=city_name, callback_data=f"icity_{city_key}")
+
+    builder.button(text=t("city_other", lang), callback_data="icity_other")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_photo_skip_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Photo step with skip option"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("photo_skip", lang), callback_data="iphoto_skip")
+    return builder.as_markup()
+
+
+def get_intent_confirm_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Profile confirmation for intent onboarding"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("confirm_looks_good", lang), callback_data="iconfirm_yes")
+    builder.button(text=t("confirm_edit", lang), callback_data="iconfirm_edit")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+# === DAILY QUESTION ===
+
+def get_daily_question_keyboard(question_id: str, lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for daily question: answer text, voice, or skip."""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("daily_skip", lang), callback_data=f"daily_skip_{question_id}")
+    builder.button(text=t("daily_voice", lang), callback_data=f"daily_voice_{question_id}")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

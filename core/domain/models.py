@@ -98,6 +98,15 @@ class User(UserBase):
     # Referral tracking
     referral_count: int = 0
     referred_by: Optional[str] = None
+    # Intent onboarding (V1.1)
+    connection_intents: List[str] = Field(default_factory=list)  # networking/friends/romance/hookup
+    gender: Optional[str] = None
+    looking_for_gender: List[str] = Field(default_factory=list)
+    age_range: Optional[str] = None
+    partner_values: List[str] = Field(default_factory=list)
+    personality_vibe: Optional[str] = None
+    hookup_preference: Optional[str] = None
+    language: str = "en"
 
     class Config:
         from_attributes = True
@@ -136,6 +145,15 @@ class UserUpdate(BaseModel):
     # Referral tracking
     referral_count: Optional[int] = None
     referred_by: Optional[str] = None
+    # Intent onboarding (V1.1)
+    connection_intents: Optional[List[str]] = None
+    gender: Optional[str] = None
+    looking_for_gender: Optional[List[str]] = None
+    age_range: Optional[str] = None
+    partner_values: Optional[List[str]] = None
+    personality_vibe: Optional[str] = None
+    hookup_preference: Optional[str] = None
+    language: Optional[str] = None
 
 
 # === EVENT ===

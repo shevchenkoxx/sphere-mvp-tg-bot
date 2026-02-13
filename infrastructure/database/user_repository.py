@@ -76,6 +76,15 @@ class SupabaseUserRepository(IUserRepository):
             # Referral tracking
             referral_count=data.get("referral_count", 0),
             referred_by=data.get("referred_by"),
+            # Intent onboarding (V1.1)
+            connection_intents=data.get("connection_intents") or [],
+            gender=data.get("gender"),
+            looking_for_gender=data.get("looking_for_gender") or [],
+            age_range=data.get("age_range"),
+            partner_values=data.get("partner_values") or [],
+            personality_vibe=data.get("personality_vibe"),
+            hookup_preference=data.get("hookup_preference"),
+            language=data.get("language", "en"),
         )
 
     @run_sync

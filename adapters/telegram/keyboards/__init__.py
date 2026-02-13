@@ -41,6 +41,18 @@ from adapters.telegram.keyboards.inline import (
     get_meetup_receiver_keyboard,
     get_meetup_confirmation_keyboard,
     MEETUP_TIME_SLOTS,
+    # Intent onboarding (V1.1)
+    get_intent_selection_keyboard,
+    get_mode_choice_keyboard,
+    get_question_buttons_keyboard,
+    get_question_multi_select_keyboard,
+    get_social_source_keyboard,
+    get_intent_city_keyboard,
+    get_photo_skip_keyboard,
+    get_intent_confirm_keyboard,
+    INTENTS,
+    # Daily question
+    get_daily_question_keyboard,
 )
 
 __all__ = [
@@ -86,4 +98,16 @@ __all__ = [
     "get_meetup_receiver_keyboard",
     "get_meetup_confirmation_keyboard",
     "MEETUP_TIME_SLOTS",
+    # Intent onboarding (V1.1)
+    "get_intent_selection_keyboard",
+    "get_mode_choice_keyboard",
+    "get_question_buttons_keyboard",
+    "get_question_multi_select_keyboard",
+    "get_social_source_keyboard",
+    "get_intent_city_keyboard",
+    "get_photo_skip_keyboard",
+    "get_intent_confirm_keyboard",
+    "INTENTS",
+    # Daily question
+    "get_daily_question_keyboard",
 ]

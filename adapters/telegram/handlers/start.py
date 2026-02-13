@@ -88,7 +88,14 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             lang = detect_lang(message)
             if not user.onboarding_completed:
                 # Start onboarding with event context
-                if ONBOARDING_VERSION == "audio":
+                if ONBOARDING_VERSION == "intent":
+                    from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
+                    await start_intent_onboarding(
+                        message, state,
+                        event_name=event.name,
+                        event_code=event_code
+                    )
+                elif ONBOARDING_VERSION == "audio":
                     from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
                     await start_audio_onboarding(
                         message, state,
@@ -145,7 +152,10 @@ async def start_command(message: Message, state: FSMContext):
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
         # Start onboarding
-        if ONBOARDING_VERSION == "audio":
+        if ONBOARDING_VERSION == "intent":
+            from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
+            await start_intent_onboarding(message, state)
+        elif ONBOARDING_VERSION == "audio":
             from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
             await start_audio_onboarding(message, state)
         elif ONBOARDING_VERSION == "v2":

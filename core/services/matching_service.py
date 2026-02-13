@@ -32,15 +32,58 @@ class MatchingService:
         # Cap threshold at 0.4 — higher values reject too many valid matches
         self.threshold = min(settings.default_match_threshold, 0.4)
 
+    def _check_gender_compatibility(self, user_a: User, user_b: User) -> bool:
+        """Check if gender preferences are compatible (V1.1).
+        Returns True if compatible or if no gender data available.
+        """
+        # If no gender data, skip filter (backward compatible)
+        if not user_a.gender and not user_b.gender:
+            return True
+
+        # Check if A's preference matches B's gender
+        if user_a.looking_for_gender and user_b.gender:
+            if "everyone" not in user_a.looking_for_gender:
+                # Map gender to preference format
+                gender_map = {"male": "men", "female": "women", "non-binary": "everyone"}
+                b_as_pref = gender_map.get(user_b.gender, user_b.gender)
+                if b_as_pref not in user_a.looking_for_gender:
+                    return False
+
+        # Check if B's preference matches A's gender
+        if user_b.looking_for_gender and user_a.gender:
+            if "everyone" not in user_b.looking_for_gender:
+                gender_map = {"male": "men", "female": "women", "non-binary": "everyone"}
+                a_as_pref = gender_map.get(user_a.gender, user_a.gender)
+                if a_as_pref not in user_b.looking_for_gender:
+                    return False
+
+        return True
+
     def calculate_base_score(self, user_a: User, user_b: User) -> float:
         """
         Calculate quick base score for pre-filtering.
-        Considers: looking_for/can_help_with match, interests, goals, city.
+        Considers: looking_for/can_help_with match, interests, goals, city, intent overlap, gender.
         """
+        # V1.1: Gender filter — incompatible genders = no match for romance/hookup
+        romantic_intents = {"romance", "hookup"}
+        a_intents = set(user_a.connection_intents or [])
+        b_intents = set(user_b.connection_intents or [])
+        if (a_intents & romantic_intents) or (b_intents & romantic_intents):
+            if not self._check_gender_compatibility(user_a, user_b):
+                return 0.0  # Hard filter
+
         score = 0.0
 
+        # V1.1: Intent overlap bonus
+        if a_intents and b_intents:
+            common_intents = a_intents & b_intents
+            if common_intents:
+                score += min(len(common_intents) * 0.15, 0.3)
+            elif not common_intents and a_intents and b_intents:
+                # No intent overlap = penalty
+                score -= 0.1
+
         # PRIMARY: looking_for <-> can_help_with match (most important!)
-        # Check if A's looking_for mentions anything B can help with, or vice versa
         looking_a = (user_a.looking_for or "").lower()
         looking_b = (user_b.looking_for or "").lower()
         help_a = (user_a.can_help_with or "").lower()
@@ -84,7 +127,7 @@ class MatchingService:
         if user_a.city_current and user_b.city_current and user_a.city_current == user_b.city_current:
             score += 0.1
 
-        return min(score, 1.0)
+        return max(min(score, 1.0), 0.0)
 
     async def analyze_pair(
         self,

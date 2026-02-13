@@ -21,8 +21,18 @@ if not _supabase_url or not _supabase_key:
     print(f"   All env vars: {list(os.environ.keys())}")
     sys.exit(1)
 
-# Initialize Supabase client
-supabase: Client = create_client(_supabase_url, _supabase_key)
+# Schema isolation: staging uses v1_1, production uses public
+_schema = os.environ.get("DB_SCHEMA", "public")
+
+# Initialize Supabase client with schema option
+if _schema != "public":
+    from supabase.lib.client_options import ClientOptions
+    supabase: Client = create_client(
+        _supabase_url, _supabase_key,
+        options=ClientOptions(schema=_schema)
+    )
+else:
+    supabase: Client = create_client(_supabase_url, _supabase_key)
 
 
 def run_sync(func):
