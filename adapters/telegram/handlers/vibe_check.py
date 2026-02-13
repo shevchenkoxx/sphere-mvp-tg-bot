@@ -12,10 +12,13 @@ Viral loop: shareable link, fun result, drives new users.
 
 import asyncio
 import json
+import os
 import re
 import logging
 import secrets
 import string
+import tempfile
+from datetime import datetime, timezone
 from uuid import UUID
 
 from aiogram import Router, F
@@ -512,6 +515,11 @@ async def handle_vibe_text(message: Message, state: FSMContext):
             await message.answer("Vibe check cancelled. Send the command again.")
         return
 
+    await _process_vibe_answer(message, state, message.text)
+
+
+async def _process_vibe_answer(message: Message, state: FSMContext, text: str):
+    """Shared logic for processing a vibe interview answer (text or transcribed voice)."""
     data = await state.get_data()
     vibe_id = data.get("vibe_id")
     role = data.get("vibe_role", "initiator")
@@ -525,12 +533,12 @@ async def handle_vibe_text(message: Message, state: FSMContext):
         return
 
     # Add user message to history
-    history.append({"role": "user", "content": message.text})
+    history.append({"role": "user", "content": text})
     turn_count += 1
 
-    # Check if interview should end
-    if turn_count >= MAX_VIBE_TURNS * 2:  # Each turn = user + AI message
-        await _finish_interview(message, state, data, history, lang)
+    # Check if interview should end (hard limit)
+    if turn_count >= MAX_VIBE_TURNS * 2:
+        await _finish_interview(message, state, history, lang)
         return
 
     # Get user info for AI
@@ -566,7 +574,7 @@ async def handle_vibe_text(message: Message, state: FSMContext):
 
     if is_wrapping or ai_turn_count >= MAX_VIBE_TURNS:
         await asyncio.sleep(1)
-        await _finish_interview(message, state, data, history, lang)
+        await _finish_interview(message, state, history, lang)
 
 
 @router.message(VibeCheckStates.interviewing, F.voice)
@@ -583,16 +591,22 @@ async def handle_vibe_voice(message: Message, state: FSMContext):
         file_bytes = await bot.download_file(file.file_path)
         audio_bytes = file_bytes.read()
 
+        # Write to temp file (whisper_service.transcribe expects a file path)
+        fd, temp_path = tempfile.mkstemp(suffix=".ogg")
+        try:
+            os.write(fd, audio_bytes)
+        finally:
+            os.close(fd)
+
         # Transcribe
-        text = await voice_service.transcribe(audio_bytes, language=lang)
+        text = await voice_service.transcribe(temp_path, language=lang)
         if not text or not text.strip():
             hint = "Не удалось распознать. Попробуй текстом!" if lang == "ru" else "Couldn't understand that. Try typing instead!"
             await message.answer(hint)
             return
 
-        # Create a fake text message to reuse text handler logic
-        message.text = text
-        await handle_vibe_text(message, state)
+        # Process transcribed text through the interview logic
+        await _process_vibe_answer(message, state, text)
 
     except Exception as e:
         logger.error(f"Vibe voice error: {e}", exc_info=True)
@@ -635,25 +649,26 @@ async def handle_waiting_text(message: Message, state: FSMContext):
 # INTERNAL: FINISH INTERVIEW
 # ============================================
 
-async def _finish_interview(message: Message, state: FSMContext, data: dict, history: list, lang: str):
+async def _finish_interview(message: Message, state: FSMContext, history: list, lang: str):
     """Finish the vibe interview for one user, extract data, check if both done."""
+    data = await state.get_data()
     vibe_id = data.get("vibe_id")
     role = data.get("vibe_role", "initiator")
 
     # Extract personality data
     extracted = await _extract_personality(history)
 
-    # Save to database
+    # Save to database — pass dicts directly for JSONB columns
     if role == "initiator":
         update_data = {
-            "initiator_data": json.dumps(extracted, ensure_ascii=False),
-            "initiator_conversation": json.dumps(history, ensure_ascii=False),
+            "initiator_data": extracted,
+            "initiator_conversation": history,
             "initiator_completed": True,
         }
     else:
         update_data = {
-            "target_data": json.dumps(extracted, ensure_ascii=False),
-            "target_conversation": json.dumps(history, ensure_ascii=False),
+            "target_data": extracted,
+            "target_conversation": history,
             "target_completed": True,
         }
 
@@ -663,8 +678,8 @@ async def _finish_interview(message: Message, state: FSMContext, data: dict, his
     vibe = await get_vibe_by_id(vibe_id)
     both_done = vibe and vibe.get("initiator_completed") and vibe.get("target_completed")
 
-    if both_done:
-        # Both done! Generate and deliver result
+    if both_done and not vibe.get("result"):
+        # Both done and no result yet — generate it (guard against race condition)
         if lang == "ru":
             await message.answer("🔮 Оба закончили! Генерирую отчет о совместимости...")
         else:
@@ -672,9 +687,11 @@ async def _finish_interview(message: Message, state: FSMContext, data: dict, his
 
         await state.clear()
         await _generate_and_deliver_result(vibe, lang)
+    elif both_done and vibe.get("result"):
+        # Other user already triggered result generation — just clear state
+        await state.clear()
     else:
         # Waiting for partner
-        partner_label = "partner" if lang == "en" else "партнер"
         if lang == "ru":
             text = (
                 "Отлично! Я запомнил твои ответы ✨\n\n"
@@ -750,10 +767,10 @@ async def _generate_and_deliver_result(vibe: dict, lang: str):
         lang,
     )
 
-    # Save result
+    # Save result — pass dict directly for JSONB column
     await update_vibe_check(vibe["id"], {
-        "result": json.dumps(result, ensure_ascii=False),
-        "completed_at": "now()",
+        "result": result,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
     })
 
     # Format result text
@@ -807,18 +824,24 @@ async def _deliver_result(vibe: dict, chat_id: int, lang: str):
     if not result:
         return
 
-    initiator = await user_service.get_user(UUID(vibe["initiator_id"]))
-    target = await user_service.get_user(UUID(vibe["target_id"]))
+    try:
+        initiator = await user_service.get_user(UUID(vibe["initiator_id"]))
+    except (ValueError, TypeError):
+        initiator = None
+    try:
+        target_id = vibe.get("target_id")
+        target = await user_service.get_user(UUID(target_id)) if target_id else None
+    except (ValueError, TypeError):
+        target = None
 
-    name_a = initiator.display_name or initiator.first_name or "User A" if initiator else "User A"
-    name_b = target.display_name or target.first_name or "User B" if target else "User B"
+    name_a = (initiator.display_name or initiator.first_name or "User A") if initiator else "User A"
+    name_b = (target.display_name or target.first_name or "User B") if target else "User B"
 
     result_text = _format_result(result, name_a, name_b, lang)
 
     # Figure out which user is viewing
     partner_username = None
     if initiator and target:
-        # Determine who is viewing based on chat_id
         if str(chat_id) == initiator.platform_user_id:
             partner_username = target.username
         else:
@@ -853,9 +876,8 @@ async def _enrich_profiles(initiator, data_a: dict, target, data_b: dict):
                 if new_interests:
                     update["interests"] = user.interests + new_interests[:3]
 
-            # Add values to bio if bio exists
+            # Add values to bio if bio is empty
             values = data.get("values", [])
-            life_phil = data.get("life_philosophy")
             if values and not user.bio:
                 update["bio"] = f"Values: {', '.join(values[:3])}"
 

@@ -661,18 +661,21 @@ def get_meetup_confirmation_keyboard(short_id: str, partner_username: str = None
 
 def get_vibe_share_keyboard(short_code: str, lang: str = "en") -> InlineKeyboardMarkup:
     """Share vibe check link keyboard"""
+    from urllib.parse import quote
     builder = InlineKeyboardBuilder()
     link = f"https://t.me/Spheresocial_bot?start=vibe_{short_code}"
     if lang == "ru":
+        share_text = quote("Давай проверим нашу совместимость! 🔮")
         builder.row(InlineKeyboardButton(
             text="📤 Поделиться ссылкой",
-            url=f"https://t.me/share/url?url={link}&text=Давай проверим нашу совместимость! 🔮"
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
         ))
         builder.row(InlineKeyboardButton(text="← Меню", callback_data="back_to_menu"))
     else:
+        share_text = quote("Let's check our vibe! 🔮")
         builder.row(InlineKeyboardButton(
             text="📤 Share Link",
-            url=f"https://t.me/share/url?url={link}&text=Let's check our vibe! 🔮"
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
         ))
         builder.row(InlineKeyboardButton(text="← Menu", callback_data="back_to_menu"))
     return builder.as_markup()

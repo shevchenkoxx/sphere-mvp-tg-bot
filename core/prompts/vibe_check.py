@@ -61,19 +61,32 @@ VIBE_INTERVIEW_EXTRACTION_PROMPT = """Analyze this conversation and extract pers
 CONVERSATION:
 {conversation}
 
-Extract the following as JSON. Use null for anything not clearly revealed:
+Extract the following as JSON. Use null for anything not clearly revealed.
+
+Allowed values:
+- energy_style: "night_owl", "early_bird", or "flexible"
+- social_energy: "introvert", "ambivert", or "extrovert"
+- communication_style: "direct", "diplomatic", or "playful"
+- values: array of strings (e.g. ["authenticity", "growth"])
+- interests_deep: array of specific topics (e.g. ["electronic music production", "stoic philosophy"])
+- chaos_level: integer 1-10
+- conflict_style: "avoidant", "confrontational", or "collaborative"
+- humor_style: "dry", "absurd", "dark", or "wholesome"
+- spontaneity: "planner", "spontaneous", or "depends"
+- life_philosophy: string with a brief insight, or null
+
+Example output:
 {{
-    "energy_style": "night_owl" | "early_bird" | "flexible" | null,
-    "social_energy": "introvert" | "ambivert" | "extrovert" | null,
-    "communication_style": "direct" | "diplomatic" | "playful" | null,
-    "values": ["list", "of", "values"],
-    "interests_deep": ["topics", "they", "love"],
-    "chaos_level": 1-10 or null,
-    "conflict_style": "avoidant" | "confrontational" | "collaborative" | null,
-    "humor_style": "dry" | "absurd" | "dark" | "wholesome" | null,
-    "spontaneity": "planner" | "spontaneous" | "depends" | null,
-    "life_philosophy": "brief insight from their answers" | null,
-    "love_language": "quality_time" | "words" | "acts" | "touch" | "gifts" | null
+    "energy_style": "night_owl",
+    "social_energy": "ambivert",
+    "communication_style": "playful",
+    "values": ["authenticity", "freedom"],
+    "interests_deep": ["electronic music", "philosophy"],
+    "chaos_level": 7,
+    "conflict_style": "collaborative",
+    "humor_style": "dry",
+    "spontaneity": "spontaneous",
+    "life_philosophy": "believes growth comes from discomfort"
 }}
 
 RULES:
