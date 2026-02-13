@@ -335,8 +335,9 @@ async def _process_daily_answer(
 # ============================================================
 
 @router.message(DailyQuestionStates.chatting, F.text)
-async def handle_daily_chat(message: Message, state: FSMContext):
+async def handle_daily_chat(message: Message, state: FSMContext, text_override: str = None):
     """Handle follow-up conversation after daily question answer."""
+    user_text = text_override or message.text
     data = await state.get_data()
     lang = data.get("daily_lang", "en")
     chat_count = data.get("daily_chat_count", 0)
@@ -351,12 +352,12 @@ async def handle_daily_chat(message: Message, state: FSMContext):
 
     # Check for goodbye signals
     bye_signals = {"bye", "пока", "хватит", "стоп", "stop", "done", "всё", "ладно"}
-    if message.text.lower().strip() in bye_signals:
+    if user_text and user_text.lower().strip() in bye_signals:
         await _end_daily_chat(message, state, lang)
         return
 
     # Add user message to history
-    history.append({"role": "user", "content": message.text})
+    history.append({"role": "user", "content": user_text})
 
     try:
         # Get user for profile context
@@ -418,9 +419,7 @@ async def handle_daily_chat_voice(message: Message, state: FSMContext):
         transcript = await voice_service.download_and_transcribe(file_url)
 
         if transcript:
-            # Fake a text message processing with the transcript
-            message.text = transcript
-            await handle_daily_chat(message, state)
+            await handle_daily_chat(message, state, text_override=transcript)
         else:
             await message.answer(t("error_generic", lang))
     except Exception as e:

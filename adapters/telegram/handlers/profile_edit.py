@@ -696,11 +696,11 @@ async def cancel_edit(callback: CallbackQuery, state: FSMContext):
 # === INLINE EDIT FROM PROFILE VIEW ===
 
 @router.message(ProfileEditStates.viewing_profile, F.text, ~F.text.startswith("/"))
-async def inline_profile_edit(message: Message, state: FSMContext):
+async def inline_profile_edit(message: Message, state: FSMContext, text_override: str = None):
     """User typed while viewing profile — auto-interpret and apply changes."""
     data = await state.get_data()
     lang = data.get("language", "en")
-    request_text = message.text
+    request_text = text_override or message.text
 
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
@@ -805,6 +805,5 @@ async def inline_profile_edit_voice(message: Message, state: FSMContext):
         )
         return
 
-    # Reuse text handler by creating a fake-ish flow
-    message.text = transcription
-    await inline_profile_edit(message, state)
+    # Reuse text handler with transcript
+    await inline_profile_edit(message, state, text_override=transcription)

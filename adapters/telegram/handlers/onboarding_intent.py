@@ -212,9 +212,10 @@ async def start_social_mode(callback: CallbackQuery, state: FSMContext):
 # ============================================================
 
 @router.message(IntentOnboardingStates.agent_chatting, F.text)
-async def handle_agent_text(message: Message, state: FSMContext):
+async def handle_agent_text(message: Message, state: FSMContext, text_override: str = None):
     """Handle text message in agent conversation — 3-layer processing."""
-    if message.text and message.text.startswith("/"):
+    user_text = text_override or message.text
+    if user_text and user_text.startswith("/"):
         # Allow commands to pass through
         return
 
@@ -227,7 +228,7 @@ async def handle_agent_text(message: Message, state: FSMContext):
     event_code = data.get("pending_event_code")
 
     # Add user message to history
-    history.append({"role": "user", "content": message.text})
+    history.append({"role": "user", "content": user_text})
     turn_count += 1
 
     # === LAYER 2 + 3: Extraction + Strategy (parallel, hidden) ===
@@ -355,9 +356,8 @@ async def handle_agent_voice(message: Message, state: FSMContext):
             await message.answer(t("error_generic", lang))
             return
 
-        # Inject transcript as text message and process
-        message.text = transcript
-        await handle_agent_text(message, state)
+        # Process transcript through agent logic
+        await handle_agent_text(message, state, text_override=transcript)
 
     except Exception as e:
         logger.error(f"Agent voice error: {e}", exc_info=True)
@@ -1172,9 +1172,10 @@ async def _social_ask_followup(message: Message, state: FSMContext):
 
 
 @router.message(IntentOnboardingStates.social_followup, F.text)
-async def handle_social_followup_text(message: Message, state: FSMContext):
+async def handle_social_followup_text(message: Message, state: FSMContext, text_override: str = None):
     """Handle text response to social follow-up question."""
-    if message.text and message.text.startswith("/"):
+    user_text = text_override or message.text
+    if user_text and user_text.startswith("/"):
         return
 
     data = await state.get_data()
@@ -1188,7 +1189,7 @@ async def handle_social_followup_text(message: Message, state: FSMContext):
         fills = questions[index].get("fills", [])
         for field in fills:
             if not profile_data.get(field):
-                profile_data[field] = message.text.strip()
+                profile_data[field] = user_text.strip()
 
     await state.update_data(profile_data=profile_data, social_followup_index=index + 1)
 
@@ -1211,8 +1212,7 @@ async def handle_social_followup_voice(message: Message, state: FSMContext):
 
     transcript = await _transcribe_voice(message)
     if transcript:
-        message.text = transcript
-        await handle_social_followup_text(message, state)
+        await handle_social_followup_text(message, state, text_override=transcript)
     else:
         await message.answer(t("error_generic", lang))
 
