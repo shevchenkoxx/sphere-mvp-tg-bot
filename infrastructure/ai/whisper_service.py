@@ -26,12 +26,18 @@ class WhisperVoiceService(IVoiceService):
         async with aiohttp.ClientSession() as session:
             async with session.get(file_url) as response:
                 if response.status == 200:
+                    data = await response.read()
+                    if not data or len(data) < 100:
+                        logger.warning(f"Downloaded voice file too small ({len(data)} bytes), skipping")
+                        return None
                     # Create temp file
                     fd, path = tempfile.mkstemp(suffix='.ogg')
                     async with aiofiles.open(path, 'wb') as f:
-                        await f.write(await response.read())
+                        await f.write(data)
                     os.close(fd)
                     return path
+                else:
+                    logger.warning(f"Failed to download voice file: HTTP {response.status}")
         return None
 
     async def transcribe(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:
@@ -59,6 +65,12 @@ class WhisperVoiceService(IVoiceService):
 
     def _transcribe_sync(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:
         """Synchronous transcription - runs in executor"""
+        # Validate file before sending to Whisper
+        file_size = os.path.getsize(audio_file_path)
+        if file_size < 100:
+            logger.warning(f"Audio file too small ({file_size} bytes): {audio_file_path}")
+            return None
+
         with open(audio_file_path, "rb") as audio_file:
             params = {
                 "model": "whisper-1",
