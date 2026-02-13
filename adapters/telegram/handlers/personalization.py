@@ -474,14 +474,7 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
         ideal_connection=None,
     )
 
-    if lang == "ru":
-        text = "🎉 <b>Отлично! Твой профиль готов!</b>\n\n🔍 Sphere ищет лучшие матчи для тебя!"
-    else:
-        text = "🎉 <b>Great! Your profile is ready!</b>\n\n🔍 Sphere is searching for the best possible matches for you!"
-
-    await message.answer(text)
-
-    # Show matches
+    # Show matches (combined with "profile ready" text — NO separate message)
     if event_id:
         from adapters.telegram.handlers.onboarding_audio import show_top_matches
 
@@ -500,15 +493,21 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
             await show_top_matches(message, user, event, lang, user.username)
         else:
             await message.answer(
-                "Готово!" if lang == "ru" else "Done!",
+                "🎉 Профиль готов!" if lang == "ru" else "🎉 Profile ready!",
                 reply_markup=get_main_menu_keyboard(lang)
             )
     else:
-        await message.answer(
-            "Сканируй QR-код на ивенте чтобы получить матчи!" if lang == "ru"
-            else "Scan a QR code at an event to get matches!",
-            reply_markup=get_main_menu_keyboard(lang)
-        )
+        if lang == "ru":
+            text = (
+                "🎉 <b>Отлично! Твой профиль готов!</b>\n\n"
+                "Сканируй QR-код на ивенте чтобы получить матчи!"
+            )
+        else:
+            text = (
+                "🎉 <b>Great! Your profile is ready!</b>\n\n"
+                "Scan a QR code at an event to get matches!"
+            )
+        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
     await state.clear()
 
