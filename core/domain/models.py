@@ -17,6 +17,10 @@ class MatchType(str, Enum):
     PROFESSIONAL = "professional"
     ROMANTIC = "romantic"
     CREATIVE = "creative"
+    NETWORKING = "networking"
+    CASUAL = "casual"
+    SOCIAL = "social"
+    MENTORSHIP = "mentorship"
 
 
 class MatchStatus(str, Enum):

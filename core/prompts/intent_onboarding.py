@@ -360,6 +360,10 @@ def format_profile_summary(data: dict, lang: str = "en") -> str:
     elif profession:
         parts.append(f"\U0001f4bc {profession}")
 
+    city = data.get("city_current")
+    if city:
+        parts.append(f"\U0001f4cd {city}")
+
     bio = data.get("bio")
     if bio:
         parts.append(f"\n{bio}")

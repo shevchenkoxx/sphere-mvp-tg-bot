@@ -518,7 +518,7 @@ async def giveaway_info(callback: CallbackQuery):
             "Собери шансы и выиграй Date Dinner в топовом ресторане Варшавы!\n\n"
             '✅ 1 шанс — зарегистрируйся в Sphere\n'
             '🎟🎟🎟🎟🎟 +5 шансов — репост Stories с <a href="https://www.instagram.com/sphere.match">@sphere.match</a>\n'
-            '🎟🎟🎟 +3 шанса — приведи друга /за каждого друга\n'
+            '🎟🎟🎟 +3 шанса — приведи друга, каждый считается!\n'
             '🎟🎟 +2 шанса — оцени свой match\n\n'
             "Удачи! 🍀"
         )
@@ -528,7 +528,7 @@ async def giveaway_info(callback: CallbackQuery):
             "Collect chances and win a Date Dinner in top Warsaw dining place!\n\n"
             '✅ 1 chance — register in Sphere\n'
             '🎟🎟🎟🎟🎟 +5 chances — repost Stories with <a href="https://www.instagram.com/sphere.match">@sphere.match</a>\n'
-            '🎟🎟🎟 +3 chances — refer a friend /each friend\n'
+            '🎟🎟🎟 +3 chances — refer a friend, each friend counts!\n'
             '🎟🎟 +2 chances — rate your match\n\n'
             "Good luck! 🍀"
         )
@@ -566,7 +566,7 @@ async def refer_a_friend(callback: CallbackQuery):
             "Знаешь кого-то интересного из этих миров?\n"
             "Пригласи их — качество твоих матчей вырастет.\n\n"
             "🎟🎟🎟 +3 шанса в Giveaway за каждого друга!\n\n"
-            f"Отправь эту ссылку:\n<code>{ref_link}</code>"
+            f"Отправь эту магическую ссылку:\n<a href=\"{ref_link}\">{ref_link}</a>"
         )
     else:
         text = (
@@ -579,7 +579,7 @@ async def refer_a_friend(callback: CallbackQuery):
             "Know someone interesting from these worlds?\n"
             "Invite them — your match quality goes up.\n\n"
             "🎟🎟🎟 +3 chances in the Giveaway per friend!\n\n"
-            f"Share this link:\n<code>{ref_link}</code>"
+            f"Share this magic link:\n<a href=\"{ref_link}\">{ref_link}</a>"
         )
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -588,9 +588,9 @@ async def refer_a_friend(callback: CallbackQuery):
     builder.adjust(1)
 
     try:
-        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
     except Exception:
-        await callback.message.answer(text, reply_markup=builder.as_markup())
+        await callback.message.answer(text, reply_markup=builder.as_markup(), disable_web_page_preview=True)
 
     await callback.answer()
 
@@ -748,6 +748,10 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
         text += f"  •  @{user.username}"
     text += "\n"
 
+    # City
+    if user.city_current:
+        text += f"📍 {user.city_current}\n"
+
     # Bio - the main description
     if user.bio:
         text += f"\n{user.bio}\n"
@@ -899,9 +903,28 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "vibe_check")
 async def vibe_check_entry(callback: CallbackQuery, state: FSMContext):
-    """Vibe Check entry — redirects to vibe_check handler (creates new vibe check)."""
-    from adapters.telegram.handlers.vibe_check import create_vibe_check_handler
-    await create_vibe_check_handler(callback, state)
+    """Vibe Check — coming soon in v1.1."""
+    lang = detect_lang_callback(callback)
+    if lang == "ru":
+        text = (
+            "🔮 <b>Check Our Vibe</b>\n\n"
+            "Эта фича скоро будет доступна!\n"
+            "Ты сможешь проверить совместимость с любым человеком через AI-интервью."
+        )
+    else:
+        text = (
+            "🔮 <b>Check Our Vibe</b>\n\n"
+            "This feature is coming soon!\n"
+            "You'll be able to check your compatibility with anyone through an AI interview."
+        )
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    except Exception:
+        pass
+    await callback.answer()
 
 
 @router.callback_query(F.data == "toggle_matching_mode")

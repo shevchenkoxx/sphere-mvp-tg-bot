@@ -316,6 +316,10 @@ async def show_city_matches(callback: CallbackQuery):
         await callback.answer()
 
     except Exception as e:
+        err_str = str(e)
+        if "message is not modified" in err_str:
+            await callback.answer()
+            return
         logger.error(f"Error showing city matches: {e}")
         msg = "Error loading matches" if lang == "en" else "Ошибка загрузки матчей"
         await callback.answer(msg, show_alert=True)
