@@ -18,7 +18,7 @@ if not _supabase_url or not _supabase_key:
     print("   Required env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY (or SUPABASE_KEY)")
     print(f"   SUPABASE_URL: {'set' if _supabase_url else 'MISSING'}")
     print(f"   SUPABASE_KEY: {'set' if _supabase_key else 'MISSING'}")
-    print(f"   All env vars: {list(os.environ.keys())}")
+    print(f"   Hint: check your .env or Railway variables")
     sys.exit(1)
 
 # Schema isolation: staging uses v1_1, production uses public
@@ -42,6 +42,6 @@ def run_sync(func):
     """
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
     return wrapper

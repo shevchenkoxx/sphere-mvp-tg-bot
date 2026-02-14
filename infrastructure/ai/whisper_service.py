@@ -44,7 +44,7 @@ class WhisperVoiceService(IVoiceService):
         """Transcribe audio file to text. Language=None for auto-detection."""
         try:
             # Run sync OpenAI call in executor to not block event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None,
                 self._transcribe_sync,
