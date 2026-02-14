@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from core.domain.models import MessagePlatform
-from adapters.telegram.loader import user_service, matching_service
+from adapters.telegram.loader import user_service, matching_service, bot, voice_service
 from adapters.telegram.keyboards.inline import (
     get_city_picker_keyboard,
     get_sphere_city_menu_keyboard,
@@ -174,6 +174,26 @@ async def handle_city_selection(callback: CallbackQuery, state: FSMContext):
 
     # Show Sphere City menu
     await show_sphere_city_menu(callback, user, lang)
+
+
+@router.message(SphereCityStates.entering_custom_city, F.voice)
+async def handle_custom_city_voice(message: Message, state: FSMContext):
+    """Handle voice city name — transcribe and treat as text."""
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+        file_info = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
+        transcript = await voice_service.download_and_transcribe(file_url)
+        if transcript and transcript.strip():
+            message.text = transcript.strip()
+            await handle_custom_city(message, state)
+            return
+    except Exception as e:
+        logger.error(f"City voice transcription failed: {e}", exc_info=True)
+
+    lang = detect_lang(message)
+    err = "Не удалось распознать. Попробуй ещё раз:" if lang == "ru" else "Couldn't recognize. Try again:"
+    await message.answer(err)
 
 
 @router.message(SphereCityStates.entering_custom_city, F.text)

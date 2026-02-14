@@ -345,6 +345,28 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+async def _transcribe_voice_qt(message: Message) -> str | None:
+    """Quick transcription helper for text onboarding voice fallback."""
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+        file_info = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file_info.file_path}"
+        transcript = await voice_service.download_and_transcribe(file_url)
+        return transcript.strip() if transcript else None
+    except Exception as e:
+        logger.error(f"QT voice transcription failed: {e}", exc_info=True)
+        return None
+
+
+@router.message(QuickTextOnboarding.step_about, F.voice)
+async def quick_text_step_about_voice(message: Message, state: FSMContext):
+    """Voice fallback for step 1."""
+    transcript = await _transcribe_voice_qt(message)
+    if transcript:
+        message.text = transcript
+        await quick_text_step_about(message, state)
+
+
 @router.message(QuickTextOnboarding.step_about, F.text)
 async def quick_text_step_about(message: Message, state: FSMContext):
     """Step 1: Who are you"""
@@ -368,6 +390,15 @@ async def quick_text_step_about(message: Message, state: FSMContext):
     await message.answer(text, reply_markup=get_text_step_keyboard(lang))
 
 
+@router.message(QuickTextOnboarding.step_looking, F.voice)
+async def quick_text_step_looking_voice(message: Message, state: FSMContext):
+    """Voice fallback for step 2."""
+    transcript = await _transcribe_voice_qt(message)
+    if transcript:
+        message.text = transcript
+        await quick_text_step_looking(message, state)
+
+
 @router.message(QuickTextOnboarding.step_looking, F.text)
 async def quick_text_step_looking(message: Message, state: FSMContext):
     """Step 2: Who to meet"""
@@ -389,6 +420,15 @@ async def quick_text_step_looking(message: Message, state: FSMContext):
     await state.set_state(QuickTextOnboarding.step_help)
     from adapters.telegram.keyboards import get_text_step_keyboard
     await message.answer(text, reply_markup=get_text_step_keyboard(lang))
+
+
+@router.message(QuickTextOnboarding.step_help, F.voice)
+async def quick_text_step_help_voice(message: Message, state: FSMContext):
+    """Voice fallback for step 3."""
+    transcript = await _transcribe_voice_qt(message)
+    if transcript:
+        message.text = transcript
+        await quick_text_step_done(message, state)
 
 
 @router.message(QuickTextOnboarding.step_help, F.text)

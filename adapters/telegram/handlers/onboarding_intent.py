@@ -902,6 +902,33 @@ async def _ask_next_question(message_or_msg, state, edit=False):
             await target.answer(prompt_text, reply_markup=kb)
 
 
+# Handle voice answers for quick choices
+@router.message(IntentOnboardingStates.answering_question, F.voice)
+async def handle_qc_voice_answer(message: Message, state: FSMContext):
+    """Handle voice answer to a quick choice question — transcribe and treat as text."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+    questions = data.get("question_queue", [])
+    index = data.get("question_index", 0)
+
+    if index >= len(questions) or questions[index]["type"] != "text":
+        return  # Voice only makes sense for free-text questions
+
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+    except Exception:
+        pass
+
+    transcript = await _transcribe_voice(message)
+    if not transcript:
+        await message.answer(t("error_generic", lang))
+        return
+
+    # Inject transcript as text and reuse text handler
+    message.text = transcript
+    await handle_qc_text_answer(message, state)
+
+
 # Handle text answers for quick choices
 @router.message(IntentOnboardingStates.answering_question, F.text)
 async def handle_qc_text_answer(message: Message, state: FSMContext):
@@ -1034,6 +1061,27 @@ async def handle_social_source_choice(callback: CallbackQuery, state: FSMContext
     else:
         await callback.message.edit_text(t("social_waiting_screenshot", lang))
     await callback.answer()
+
+
+@router.message(IntentOnboardingStates.social_waiting_input, F.voice)
+async def handle_social_voice(message: Message, state: FSMContext):
+    """Handle voice in social mode — transcribe and check if it's a URL or text."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+    except Exception:
+        pass
+
+    transcript = await _transcribe_voice(message)
+    if not transcript:
+        await message.answer(t("error_generic", lang))
+        return
+
+    # If transcript looks like a URL, feed to link handler
+    message.text = transcript.strip()
+    await handle_social_link(message, state)
 
 
 @router.message(IntentOnboardingStates.social_waiting_input, F.text)
@@ -1346,6 +1394,29 @@ async def handle_agent_edit_at_city(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(t("agent_continue", lang))
     await state.set_state(IntentOnboardingStates.agent_chatting)
     await callback.answer()
+
+
+@router.message(IntentOnboardingStates.typing_city, F.voice)
+async def handle_city_typed_voice(message: Message, state: FSMContext):
+    """Handle voice city name — transcribe and treat as text."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    try:
+        await bot.send_chat_action(message.chat.id, "typing")
+    except Exception:
+        pass
+
+    transcript = await _transcribe_voice(message)
+    if not transcript:
+        await message.answer(t("error_generic", lang))
+        return
+
+    profile_data = data.get("profile_data", {})
+    profile_data["city_current"] = transcript.strip()
+    await state.update_data(profile_data=profile_data)
+
+    await _go_to_photo_step(message, state)
 
 
 @router.message(IntentOnboardingStates.typing_city, F.text)
