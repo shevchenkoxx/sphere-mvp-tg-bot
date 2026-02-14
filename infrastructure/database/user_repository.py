@@ -245,6 +245,36 @@ class SupabaseUserRepository(IUserRepository):
         return await self._get_all_users_summary_sync()
 
     @run_sync
+    def _get_all_users_full_sync(self) -> list:
+        resp = supabase.table("users").select("*").order("created_at", desc=True).execute()
+        return resp.data or []
+
+    async def get_all_users_full(self) -> list:
+        """Return all users as raw dicts (no model conversion)."""
+        return await self._get_all_users_full_sync()
+
+    @run_sync
+    def _search_users_sync(self, query: str) -> list:
+        q = f"%{query}%"
+        resp = supabase.table("users").select("*").or_(
+            f"display_name.ilike.{q},username.ilike.{q},first_name.ilike.{q}"
+        ).order("created_at", desc=True).execute()
+        return resp.data or []
+
+    async def search_users(self, query: str) -> list:
+        """Search users by name/username (ilike)."""
+        return await self._search_users_sync(query)
+
+    @run_sync
+    def _get_user_dict_sync(self, user_id) -> Optional[dict]:
+        resp = supabase.table("users").select("*").eq("id", str(user_id)).execute()
+        return resp.data[0] if resp.data else None
+
+    async def get_user_dict(self, user_id) -> Optional[dict]:
+        """Get single user as raw dict."""
+        return await self._get_user_dict_sync(user_id)
+
+    @run_sync
     def _get_all_platform_ids_sync(self) -> List[str]:
         """Get all Telegram platform_user_ids."""
         resp = supabase.table("users").select("platform_user_id").eq("platform", "telegram").execute()

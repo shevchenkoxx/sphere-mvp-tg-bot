@@ -12,7 +12,7 @@ import secrets
 import sys
 from aiohttp import web
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp, user_repo
+from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo
 from adapters.telegram.handlers import routers
 from adapters.telegram.middleware import ThrottlingMiddleware
 from adapters.telegram.web.stats import create_stats_app
@@ -46,7 +46,7 @@ RETRY_DELAY = 10  # seconds
 async def run_web_server(stats_token: str):
     """Run aiohttp stats dashboard alongside the bot."""
     port = int(os.environ.get("PORT", 8080))
-    app = create_stats_app(user_repo, stats_token)
+    app = create_stats_app(user_repo, stats_token, bot, user_service, match_repo, event_repo)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
