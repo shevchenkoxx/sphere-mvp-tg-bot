@@ -219,6 +219,31 @@ async def start_command(message: Message, state: FSMContext):
             await state.set_state(OnboardingStates.waiting_name)
 
 
+@router.message(Command("stats_url"))
+async def stats_url_command(message: Message):
+    """Show the stats dashboard URL (admin only)."""
+    from config.settings import settings
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    import os
+    stats_token = os.environ.get("STATS_TOKEN", "")
+    if not stats_token:
+        await message.answer("STATS_TOKEN not set — token was auto-generated. Check Railway logs for the URL.")
+        return
+
+    port = os.environ.get("PORT", "8080")
+    # On Railway the public URL is the service domain
+    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+    if railway_domain:
+        url = f"https://{railway_domain}/stats?token={stats_token}"
+    else:
+        url = f"http://localhost:{port}/stats?token={stats_token}"
+
+    await message.answer(f"<b>Stats Dashboard</b>\n\n<code>{url}</code>", parse_mode="HTML")
+
+
 @router.message(Command("menu"))
 async def menu_command(message: Message):
     """Show main menu"""

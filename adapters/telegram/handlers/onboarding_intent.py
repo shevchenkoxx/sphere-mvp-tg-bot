@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 MAX_INTENTS = 3
-MAX_AGENT_TURNS = 12  # Max messages from user before forcing profile build
+MAX_AGENT_TURNS = 20  # Max messages from user before forcing profile build
 
 
 # ============================================================
@@ -313,9 +313,9 @@ async def handle_agent_text(message: Message, state: FSMContext, text_override: 
         logger.error(f"Agent conversation error: {e}", exc_info=True)
         agent_reply = t("agent_continue", lang)
 
-    # Check if agent signaled profile ready
+    # Check if agent signaled profile ready or soft ready
     profile_ready = "[PROFILE_READY]" in agent_reply
-    agent_reply_clean = agent_reply.replace("[PROFILE_READY]", "").strip()
+    agent_reply_clean = agent_reply.replace("[PROFILE_READY]", "").replace("[SOFT_READY]", "").strip()
 
     # Add agent reply to history
     history.append({"role": "assistant", "content": agent_reply_clean})
@@ -326,11 +326,30 @@ async def handle_agent_text(message: Message, state: FSMContext, text_override: 
         agent_profile_state=profile_state,
     )
 
-    # Force profile build after MAX_AGENT_TURNS or when ready
-    if profile_ready or turn_count >= MAX_AGENT_TURNS or completion >= 0.7:
+    # Progressive save: persist to DB every 5 turns so long sessions survive restarts
+    if turn_count > 0 and turn_count % 5 == 0 and profile_state:
+        try:
+            await user_service.update_user(
+                platform=MessagePlatform.TELEGRAM,
+                platform_user_id=str(message.from_user.id),
+                ai_summary=json.dumps(profile_state, ensure_ascii=False),
+            )
+        except Exception:
+            pass  # Best effort — don't break conversation
+
+    if profile_ready:
+        # User agreed to save — build profile
         await message.answer(agent_reply_clean)
         await _agent_build_profile(message, state)
         return
+    elif turn_count >= MAX_AGENT_TURNS:
+        # Hard limit — force build with friendly message
+        if not agent_reply_clean:
+            agent_reply_clean = t("agent_max_reached", lang)
+        await message.answer(agent_reply_clean)
+        await _agent_build_profile(message, state)
+        return
+    # else: soft_ready or normal turn — just send the reply, agent handles it conversationally
 
     await message.answer(agent_reply_clean)
 

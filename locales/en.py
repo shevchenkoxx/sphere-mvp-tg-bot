@@ -45,6 +45,7 @@ EN_STRINGS = {
         "How does this look?"
     ),
     "agent_continue": "Tell me more! I'm listening \U0001f60a",
+    "agent_max_reached": "I've really enjoyed our chat! Let me save your profile now so we can find your matches.",
     "agent_almost_done": "Almost done! Just a couple more things I'd love to know...",
     "agent_great_profile": "You've got a great profile now! Let's finalize it.",
 

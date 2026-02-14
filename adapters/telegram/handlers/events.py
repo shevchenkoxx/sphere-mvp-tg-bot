@@ -862,6 +862,52 @@ async def process_broadcast_text(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message(Command("broadcast_all"))
+async def admin_broadcast_all(message: Message):
+    """
+    /broadcast_all <text> - Send message to ALL users (not just event participants)
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Usage: /broadcast_all Your message here")
+        return
+
+    broadcast_text = parts[1]
+
+    from adapters.telegram.loader import user_repo as _user_repo
+    all_ids = await _user_repo.get_all_platform_ids()
+
+    if not all_ids:
+        await message.answer("No users found")
+        return
+
+    status_msg = await message.answer(f"Broadcasting to {len(all_ids)} users...")
+
+    sent = 0
+    failed = 0
+
+    for uid in all_ids:
+        try:
+            await bot.send_message(
+                chat_id=int(uid),
+                text=f"\U0001f4e2 <b>Sphere</b>\n\n{broadcast_text}",
+                parse_mode="HTML",
+            )
+            sent += 1
+        except Exception:
+            failed += 1
+
+    await status_msg.edit_text(
+        f"<b>Broadcast complete!</b>\n\n"
+        f"Sent: {sent}\n"
+        f"Failed: {failed}"
+    )
+
+
 @router.message(Command("followup"))
 async def admin_followup(message: Message):
     """

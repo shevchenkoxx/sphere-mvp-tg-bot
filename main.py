@@ -7,11 +7,15 @@ Currently supports Telegram, with WhatsApp and Web API planned.
 
 import asyncio
 import logging
+import os
+import secrets
 import sys
+from aiohttp import web
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp
+from adapters.telegram.loader import bot, dp, user_repo
 from adapters.telegram.handlers import routers
 from adapters.telegram.middleware import ThrottlingMiddleware
+from adapters.telegram.web.stats import create_stats_app
 from config.features import features
 
 # Configure logging
@@ -39,6 +43,17 @@ MAX_RETRIES = 5
 RETRY_DELAY = 10  # seconds
 
 
+async def run_web_server(stats_token: str):
+    """Run aiohttp stats dashboard alongside the bot."""
+    port = int(os.environ.get("PORT", 8080))
+    app = create_stats_app(user_repo, stats_token)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"Stats dashboard running on port {port} — /stats?token={stats_token}")
+
+
 async def main():
     """Main function - starts the bot with graceful error handling."""
 
@@ -57,14 +72,18 @@ async def main():
     for router in routers:
         dp.include_router(router)
 
+    # Start stats web server
+    stats_token = os.environ.get("STATS_TOKEN", secrets.token_urlsafe(16))
+    await run_web_server(stats_token)
+
     # Delete webhook (if exists) and start polling
     try:
         await bot.delete_webhook(drop_pending_updates=True)
     except TelegramUnauthorizedError:
-        logger.error("❌ Invalid bot token! Check TELEGRAM_BOT_TOKEN env var.")
+        logger.error("Invalid bot token! Check TELEGRAM_BOT_TOKEN env var.")
         sys.exit(1)
 
-    logger.info("✅ Sphere Bot started!")
+    logger.info("Sphere Bot started!")
 
     retries = 0
     try:
@@ -77,7 +96,7 @@ async def main():
                 retries += 1
                 if retries >= MAX_RETRIES:
                     logger.error(
-                        "❌ Another bot instance is running with the same token.\n"
+                        "Another bot instance is running with the same token.\n"
                         "   This can happen when:\n"
                         "   - Bot is running locally AND on Railway\n"
                         "   - Multiple Railway deployments\n"
@@ -90,17 +109,17 @@ async def main():
                     sys.exit(1)
                 else:
                     logger.warning(
-                        f"⚠️ Conflict detected (another instance running). "
+                        f"Conflict detected (another instance running). "
                         f"Retry {retries}/{MAX_RETRIES} in {RETRY_DELAY}s..."
                     )
                     await asyncio.sleep(RETRY_DELAY)
 
             except TelegramUnauthorizedError:
-                logger.error("❌ Bot token was revoked or is invalid.")
+                logger.error("Bot token was revoked or is invalid.")
                 sys.exit(1)
 
             except Exception as e:
-                logger.error(f"❌ Unexpected error: {e}")
+                logger.error(f"Unexpected error: {e}")
                 retries += 1
                 if retries < MAX_RETRIES:
                     logger.info(f"Retrying in {RETRY_DELAY}s... ({retries}/{MAX_RETRIES})")

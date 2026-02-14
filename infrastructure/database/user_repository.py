@@ -229,3 +229,27 @@ class SupabaseUserRepository(IUserRepository):
         """Get users in a specific city for Sphere City matching"""
         data = await self._get_users_by_city_sync(city, exclude_user_id, limit)
         return [self._to_model(d) for d in data]
+
+    # === STATS & BROADCAST ===
+
+    @run_sync
+    def _get_all_users_summary_sync(self) -> dict:
+        """Get aggregated user stats for the dashboard."""
+        resp = supabase.table("users").select(
+            "id, onboarding_completed, referred_by, created_at, platform_user_id"
+        ).execute()
+        return resp.data or []
+
+    async def get_all_users_summary(self) -> list:
+        """Return list of user summary dicts for stats dashboard."""
+        return await self._get_all_users_summary_sync()
+
+    @run_sync
+    def _get_all_platform_ids_sync(self) -> List[str]:
+        """Get all Telegram platform_user_ids."""
+        resp = supabase.table("users").select("platform_user_id").eq("platform", "telegram").execute()
+        return [r["platform_user_id"] for r in (resp.data or []) if r.get("platform_user_id")]
+
+    async def get_all_platform_ids(self) -> List[str]:
+        """Return all Telegram user IDs for broadcasting."""
+        return await self._get_all_platform_ids_sync()
