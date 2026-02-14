@@ -189,7 +189,7 @@ async def handle_daily_voice_prompt(callback: CallbackQuery, state: FSMContext):
     """User wants to answer with voice."""
     await callback.answer()
     question_id = callback.data.replace("daily_voice_", "")
-    lang = detect_lang(callback.from_user)
+    lang = detect_lang(callback)
 
     # Store question context in state
     await state.set_state(DailyQuestionStates.answering)
@@ -207,7 +207,7 @@ async def handle_daily_answer_start(callback: CallbackQuery, state: FSMContext):
     """User tapped to answer the daily question (text mode)."""
     await callback.answer()
     question_id = callback.data.replace("daily_answer_", "")
-    lang = detect_lang(callback.from_user)
+    lang = detect_lang(callback)
 
     # Store question context
     await state.set_state(DailyQuestionStates.answering)
@@ -391,7 +391,7 @@ async def handle_daily_chat(message: Message, state: FSMContext, text_override: 
         # Fire-and-forget: extract data from user message
         if user:
             asyncio.create_task(
-                _extract_from_chat_message(user, message.text, history)
+                _extract_from_chat_message(user, user_text, history)
             )
 
         # Update state

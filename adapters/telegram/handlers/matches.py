@@ -673,8 +673,12 @@ async def view_match_profile(callback: CallbackQuery):
                 parse_mode="HTML"
             )
         except Exception:
-            # Fallback to just text
-            await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username))
+            # Fallback to just text (message already deleted, use bot.send_message)
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                text=text,
+                reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username),
+            )
     else:
         await callback.message.edit_text(text, reply_markup=get_profile_view_keyboard(match_id, lang, partner_username=partner.username))
 

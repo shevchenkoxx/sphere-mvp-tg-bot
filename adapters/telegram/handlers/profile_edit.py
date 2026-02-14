@@ -352,17 +352,8 @@ async def receive_field_value(message: Message, state: FSMContext):
     if message.voice:
         try:
             voice_file = await bot.get_file(message.voice.file_id)
-            voice_data = await bot.download_file(voice_file.file_path)
-            voice_bytes = voice_data.read()
-
-            # Save to temp file for whisper
-            fd, temp_path = tempfile.mkstemp(suffix='.ogg')
-            try:
-                os.write(fd, voice_bytes)
-            finally:
-                os.close(fd)
-
-            new_value = await voice_service.transcribe(temp_path)
+            file_url = f"https://api.telegram.org/file/bot{bot.token}/{voice_file.file_path}"
+            new_value = await voice_service.download_and_transcribe(file_url)
             if not new_value:
                 if lang == "ru":
                     await message.answer("❌ Не удалось распознать голос. Попробуй текстом.")
@@ -452,17 +443,8 @@ async def process_conversational_edit(message: Message, state: FSMContext):
     if message.voice:
         try:
             voice_file = await bot.get_file(message.voice.file_id)
-            voice_data = await bot.download_file(voice_file.file_path)
-            voice_bytes = voice_data.read()
-
-            # Save to temp file for whisper
-            fd, temp_path = tempfile.mkstemp(suffix='.ogg')
-            try:
-                os.write(fd, voice_bytes)
-            finally:
-                os.close(fd)
-
-            request_text = await voice_service.transcribe(temp_path)
+            file_url = f"https://api.telegram.org/file/bot{bot.token}/{voice_file.file_path}"
+            request_text = await voice_service.download_and_transcribe(file_url)
             if not request_text:
                 if lang == "ru":
                     await message.answer("❌ Не удалось распознать. Попробуй текстом.")

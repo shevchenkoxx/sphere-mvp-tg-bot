@@ -11,7 +11,7 @@ class Features:
 
     # === ONBOARDING MODE ===
     # Options: "v1" (buttons), "v2" (conversation), "audio" (voice message), "intent" (V1.1 intent-based)
-    ONBOARDING_MODE: str = os.getenv("ONBOARDING_MODE", "audio")
+    ONBOARDING_MODE: str = os.getenv("ONBOARDING_MODE", "intent")
 
     # === MATCHING ===
     MATCHING_ENABLED: bool = os.getenv("MATCHING_ENABLED", "true").lower() == "true"

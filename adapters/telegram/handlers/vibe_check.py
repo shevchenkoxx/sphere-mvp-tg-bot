@@ -387,14 +387,8 @@ async def handle_vibe_deep_link(message: Message, state: FSMContext, short_code:
 
     vibe = await get_vibe_by_code(short_code)
     if not vibe:
-        if lang == "ru":
-            await message.answer("🔮 Этот Vibe Check не найден или устарел. Попробуй создать новый!")
-        else:
-            await message.answer("🔮 This Vibe Check wasn't found or has expired. Try creating a new one!")
-        await message.answer(
-            "What would you like to do?" if lang == "en" else "Что делаем?",
-            reply_markup=get_main_menu_keyboard(lang),
-        )
+        not_found = "🔮 Этот Vibe Check не найден или устарел.\n\nЧто делаем?" if lang == "ru" else "🔮 This Vibe Check wasn't found or has expired.\n\nWhat would you like to do?"
+        await message.answer(not_found, reply_markup=get_main_menu_keyboard(lang))
         return
 
     # Can't vibe-check yourself
@@ -635,7 +629,10 @@ async def _finish_interview(message: Message, state: FSMContext, history: list, 
             "target_completed": True,
         }
 
-    await update_vibe_check(vibe_id, update_data)
+    try:
+        await update_vibe_check(vibe_id, update_data)
+    except Exception as e:
+        logger.error(f"Failed to save vibe interview data: {e}", exc_info=True)
 
     vibe = await get_vibe_by_id(vibe_id)
     both_done = vibe and vibe.get("initiator_completed") and vibe.get("target_completed")
@@ -695,14 +692,19 @@ async def _generate_and_deliver_result(vibe: dict, lang: str):
     conv_a = vibe.get("initiator_conversation", [])
     conv_b = vibe.get("target_conversation", [])
 
-    # Parse if stored as strings
-    for obj_name in ('data_a', 'data_b', 'conv_a', 'conv_b'):
-        obj = locals()[obj_name]
-        if isinstance(obj, str):
+    # Parse if stored as JSON strings
+    def _parse_json(val, default):
+        if isinstance(val, str):
             try:
-                locals()[obj_name] = json.loads(obj)
+                return json.loads(val)
             except (json.JSONDecodeError, TypeError):
-                locals()[obj_name] = {} if 'data' in obj_name else []
+                return default
+        return val
+
+    data_a = _parse_json(data_a, {})
+    data_b = _parse_json(data_b, {})
+    conv_a = _parse_json(conv_a, [])
+    conv_b = _parse_json(conv_b, [])
 
     result = await _generate_compatibility(
         name_a, data_a, conv_a,

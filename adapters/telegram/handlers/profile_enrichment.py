@@ -70,7 +70,7 @@ async def handle_enrichment_voice(message: Message, state: FSMContext):
     if not user or not user.onboarding_completed:
         return
 
-    lang = user.language or detect_lang(message.from_user)
+    lang = user.language or detect_lang(message)
     await message.answer(t("voice_processing", lang))
 
     try:
@@ -128,7 +128,7 @@ async def handle_enrichment_link(message: Message, state: FSMContext):
     if not user or not user.onboarding_completed:
         return
 
-    lang = user.language or detect_lang(message.from_user)
+    lang = user.language or detect_lang(message)
 
     # Extract URL from message
     url_match = re.search(r'https?://\S+', message.text)
@@ -189,7 +189,7 @@ async def handle_enrichment_photo(message: Message, state: FSMContext):
     if not user or not user.onboarding_completed:
         return
 
-    lang = user.language or detect_lang(message.from_user)
+    lang = user.language or detect_lang(message)
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
@@ -217,7 +217,7 @@ async def handle_enrich_profile_photo(callback: CallbackQuery, state: FSMContext
     if not user:
         return
 
-    lang = user.language or detect_lang(callback.from_user)
+    lang = user.language or detect_lang(callback)
 
     # Get file URL
     file = await bot.get_file(file_id)
@@ -244,7 +244,7 @@ async def handle_enrich_analyze_screenshot(callback: CallbackQuery, state: FSMCo
     if not user:
         return
 
-    lang = user.language or detect_lang(callback.from_user)
+    lang = user.language or detect_lang(callback)
     await callback.message.edit_text(t("social_processing", lang))
 
     try:

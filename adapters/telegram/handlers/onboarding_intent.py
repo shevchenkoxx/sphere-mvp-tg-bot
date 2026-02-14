@@ -1471,11 +1471,18 @@ async def handle_confirm_yes(callback: CallbackQuery, state: FSMContext):
         update_data.photo_url = photo_file_id
 
     # Update user
-    user = await user_service.update_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(callback.from_user.id),
-        **update_data.model_dump(exclude_unset=True, exclude_none=True),
-    )
+    try:
+        user = await user_service.update_user(
+            platform=MessagePlatform.TELEGRAM,
+            platform_user_id=str(callback.from_user.id),
+            **update_data.model_dump(exclude_unset=True, exclude_none=True),
+        )
+    except Exception as e:
+        logger.error(f"Failed to save profile: {e}", exc_info=True)
+        error_text = "Произошла ошибка при сохранении. Попробуй /start" if lang == "ru" else "Error saving profile. Try /start"
+        await callback.message.edit_text(error_text)
+        await state.clear()
+        return
 
     # Join event if pending
     if event_code:

@@ -3,6 +3,7 @@ Inline keyboards for Telegram bot.
 Optimized for fast, friendly onboarding.
 """
 
+import os
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import List
@@ -384,6 +385,7 @@ def get_edit_continue_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
 # Cities available in MVP
 SPHERE_CITIES = {
     "kyiv": {"en": "Kyiv", "ru": "Киев"},
+    "warsaw": {"en": "Warsaw", "ru": "Варшава"},
     "dubai": {"en": "Dubai", "ru": "Дубай"},
     "berlin": {"en": "Berlin", "ru": "Берлин"},
     "london": {"en": "London", "ru": "Лондон"},
@@ -802,11 +804,12 @@ def get_daily_question_keyboard(question_id: str, lang: str = "en") -> InlineKey
 
 # === VIBE CHECK ===
 
-def get_vibe_share_keyboard(short_code: str, lang: str = "en") -> InlineKeyboardMarkup:
+def get_vibe_share_keyboard(short_code: str, lang: str = "en", bot_username: str = None) -> InlineKeyboardMarkup:
     """Share vibe check link keyboard"""
     from urllib.parse import quote
     builder = InlineKeyboardBuilder()
-    link = f"https://t.me/Spheresocial_bot?start=vibe_{short_code}"
+    username = bot_username or os.getenv("BOT_USERNAME", "Spheresocial_bot")
+    link = f"https://t.me/{username}?start=vibe_{short_code}"
     if lang == "ru":
         share_text = quote("Давай проверим нашу совместимость! 🔮")
         builder.row(InlineKeyboardButton(
