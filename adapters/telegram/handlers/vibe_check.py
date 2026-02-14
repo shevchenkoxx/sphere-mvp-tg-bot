@@ -12,6 +12,7 @@ Viral loop: shareable link, fun result, drives new users.
 
 import asyncio
 import json
+import os
 import re
 import logging
 import secrets
@@ -313,7 +314,8 @@ async def create_vibe_check_handler(callback: CallbackQuery, state: FSMContext):
         return
 
     short_code = vibe["short_code"]
-    link = f"https://t.me/Spheresocial_bot?start=vibe_{short_code}"
+    bot_username = os.getenv("BOT_USERNAME", "Spheresocial_bot")
+    link = f"https://t.me/{bot_username}?start=vibe_{short_code}"
 
     if lang == "ru":
         text = (

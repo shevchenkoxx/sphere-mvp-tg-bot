@@ -796,8 +796,9 @@ def get_daily_question_keyboard(question_id: str, lang: str = "en") -> InlineKey
     """Keyboard for daily question: answer text, voice, or skip."""
     from locales import t
     builder = InlineKeyboardBuilder()
-    builder.button(text=t("daily_skip", lang), callback_data=f"daily_skip_{question_id}")
+    builder.button(text=t("daily_answer", lang), callback_data=f"daily_answer_{question_id}")
     builder.button(text=t("daily_voice", lang), callback_data=f"daily_voice_{question_id}")
+    builder.button(text=t("daily_skip", lang), callback_data=f"daily_skip_{question_id}")
     builder.adjust(2)
     return builder.as_markup()
 

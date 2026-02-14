@@ -4,6 +4,7 @@ Fast, friendly, conversational.
 Multilingual: English default, Russian supported.
 """
 
+import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandStart, CommandObject, StateFilter
@@ -526,7 +527,8 @@ async def refer_a_friend(callback: CallbackQuery):
     lang = detect_lang_callback(callback)
     user_tg_id = callback.from_user.id
 
-    ref_link = f"https://t.me/Spheresocial_bot?start=ref_{user_tg_id}"
+    bot_username = os.getenv("BOT_USERNAME", "Spheresocial_bot")
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_tg_id}"
 
     if lang == "ru":
         text = (

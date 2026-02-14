@@ -177,6 +177,7 @@ EN_STRINGS = {
 
     # === DAILY QUESTION ===
     "daily_header": "\U0001f4ad Daily question:",
+    "daily_answer": "\u270d\ufe0f Text",
     "daily_skip": "Skip",
     "daily_voice": "\U0001f3a4 Voice",
     "daily_reaction": "Nice! {reaction}\nWant to chat more about this? Just keep talking, I'm here :)",
