@@ -41,6 +41,23 @@ router = Router()
 MAX_INTENTS = 3
 MAX_AGENT_TURNS = 20  # Max messages from user before forcing profile build
 
+# Fields that must always be lists (never strings)
+_ARRAY_FIELDS = ("interests", "skills", "goals", "partner_values", "looking_for_gender",
+                  "passion_themes", "connection_intents")
+
+
+def _normalize_profile_data(data: dict) -> dict:
+    """Ensure array fields are always lists, never comma-separated strings."""
+    for field in _ARRAY_FIELDS:
+        val = data.get(field)
+        if val is None:
+            continue
+        if isinstance(val, str):
+            data[field] = [v.strip() for v in val.split(",") if v.strip()]
+        elif isinstance(val, list):
+            data[field] = [str(v).strip() for v in val if v]
+    return data
+
 
 # ============================================================
 # ENTRY POINT
@@ -155,7 +172,7 @@ async def start_agent_mode(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(t("agent_intro", lang))
     await state.set_state(IntentOnboardingStates.agent_chatting)
-    await state.update_data(agent_history=[], agent_turn_count=0)
+    await state.update_data(agent_history=[], agent_turn_count=0, onboarding_mode="agent")
     await callback.answer()
 
 
@@ -168,6 +185,7 @@ async def start_voice_mode(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"\U0001f3a4 {t('voice_stage1', lang)}"
     )
+    await state.update_data(onboarding_mode="voice")
     await state.set_state(IntentOnboardingStates.voice_stage1)
     await callback.answer()
 
@@ -181,7 +199,7 @@ async def start_buttons_mode(callback: CallbackQuery, state: FSMContext):
 
     # Build question queue based on intents
     questions = _build_question_queue(intents)
-    await state.update_data(question_queue=questions, question_index=0, qc_answers={})
+    await state.update_data(question_queue=questions, question_index=0, qc_answers={}, onboarding_mode="quick_choices")
 
     # Ask first question
     await _ask_next_question(callback.message, state, edit=True)
@@ -198,6 +216,7 @@ async def start_social_mode(callback: CallbackQuery, state: FSMContext):
         t("social_header", lang),
         reply_markup=get_social_source_keyboard(lang),
     )
+    await state.update_data(onboarding_mode="social")
     await state.set_state(IntentOnboardingStates.social_waiting_input)
     await callback.answer()
 
@@ -445,6 +464,7 @@ async def _agent_build_profile(message: Message, state: FSMContext):
     if not profile_data.get("display_name"):
         profile_data["display_name"] = data.get("display_name")
 
+    profile_data = _normalize_profile_data(profile_data)
     await state.update_data(profile_data=profile_data)
 
     # Show profile summary
@@ -530,6 +550,7 @@ async def handle_voice_stage4(message: Message, state: FSMContext):
     except Exception:
         pass
 
+    profile_data = _normalize_profile_data(profile_data)
     await state.update_data(profile_data=profile_data)
     await _go_to_city_step(message, state)
 
@@ -589,6 +610,7 @@ async def _process_text_as_voice(message, state, extraction_prompt, next_state, 
     except Exception as e:
         logger.warning(f"Text extraction failed: {e}")
 
+    profile_data = _normalize_profile_data(profile_data)
     await state.update_data(profile_data=profile_data)
 
     # Check if this is the follow-up check stage
@@ -644,6 +666,7 @@ async def _process_voice_stage(message, state, extraction_prompt, next_state, st
     except Exception as e:
         logger.warning(f"Voice extraction failed: {e}")
 
+    profile_data = _normalize_profile_data(profile_data)
     await state.update_data(profile_data=profile_data)
 
     try:
@@ -866,6 +889,7 @@ async def _ask_next_question(message_or_msg, state, edit=False):
         qc_answers = data.get("qc_answers", {})
         profile_data = data.get("profile_data", {})
         profile_data.update(qc_answers)
+        profile_data = _normalize_profile_data(profile_data)
         await state.update_data(profile_data=profile_data)
         # Go to city using a plain Message
         if isinstance(message_or_msg, Message):
@@ -1011,12 +1035,16 @@ async def handle_qc_multi_select(callback: CallbackQuery, state: FSMContext):
             q = questions[index]
             selected = data.get(f"qcm_selected_{q['key']}", [])
             qc_answers = data.get("qc_answers", {})
-            qc_answers[q["key"]] = selected
+            qc_answers[q["key"]] = selected if selected else []
             await state.update_data(qc_answers=qc_answers, question_index=index + 1)
-            # Clean up selection state
-            new_data = await state.get_data()
-            # Move to next question
             await _ask_next_question(callback.message, state, edit=True)
+        await callback.answer()
+        return
+
+    # Skip button inside multi-select keyboard
+    if callback.data == "qcm_skip":
+        await state.update_data(question_index=index + 1)
+        await _ask_next_question(callback.message, state, edit=True)
         await callback.answer()
         return
 
@@ -1129,6 +1157,7 @@ async def handle_social_link(message: Message, state: FSMContext):
                 profile_data[k] = v
 
         platform = imported.get("platform", "profile")
+        profile_data = _normalize_profile_data(profile_data)
         await state.update_data(profile_data=profile_data, social_platform=platform)
 
         # Show extracted data
@@ -1171,12 +1200,30 @@ async def handle_social_screenshot(message: Message, state: FSMContext):
 
         # Use GPT-4o vision to extract profile
         response = await ai_service.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             max_tokens=800,
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Extract profile information from this screenshot. Return JSON with: platform, display_name, bio, profession, interests (array), looking_for, city_current. Only include fields visible in the screenshot."},
+                    {"type": "text", "text": (
+                        "You are analyzing a screenshot of a social media or dating app profile. "
+                        "This could be from Instagram, LinkedIn, Tinder, Bumble, Hinge, or another platform.\n\n"
+                        "CAREFULLY read ALL visible text in the image including:\n"
+                        "- Username/display name\n"
+                        "- Bio/about text\n"
+                        "- Job title, company, education\n"
+                        "- Interests, hobbies, tags\n"
+                        "- Location/city\n"
+                        "- What they're looking for (dating apps)\n"
+                        "- Age if visible\n\n"
+                        "Return a JSON object with these fields (use null for fields not visible):\n"
+                        '{"platform": "detected platform name", "display_name": "name", '
+                        '"bio": "full bio text", "profession": "job/role", "company": "company if visible", '
+                        '"interests": ["interest1", "interest2"], "skills": ["skill1", "skill2"], '
+                        '"looking_for": "what they want", "city_current": "city", "age": "age if visible"}\n\n'
+                        "IMPORTANT: interests must be an ARRAY of strings, not a single string. "
+                        "Return ONLY valid JSON, no markdown."
+                    )},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_data}"}},
                 ],
             }],
@@ -1198,6 +1245,7 @@ async def handle_social_screenshot(message: Message, state: FSMContext):
                 profile_data[k] = v
 
         platform = imported.get("platform", "screenshot")
+        profile_data = _normalize_profile_data(profile_data)
         await state.update_data(profile_data=profile_data, social_platform=platform)
 
         summary = format_profile_summary(profile_data, lang)
@@ -1387,12 +1435,29 @@ async def handle_agent_confirm_at_city(callback: CallbackQuery, state: FSMContex
 
 @router.callback_query(IntentOnboardingStates.choosing_city, F.data == "iconfirm_edit")
 async def handle_agent_edit_at_city(callback: CallbackQuery, state: FSMContext):
-    """Agent mode: user wants to edit. Go back to agent chatting."""
+    """User wants to edit at city step — route back to their onboarding mode."""
     data = await state.get_data()
     lang = data.get("language", "en")
+    mode = data.get("onboarding_mode")
 
-    await callback.message.edit_text(t("agent_continue", lang))
-    await state.set_state(IntentOnboardingStates.agent_chatting)
+    if mode == "quick_choices":
+        await state.update_data(question_index=0, qc_answers={})
+        await callback.message.edit_text(
+            "Let's go through the questions again:" if lang == "en" else "Давай пройдём вопросы заново:")
+        await _ask_next_question(callback.message, state)
+    elif mode == "voice":
+        await callback.message.edit_text(f"\U0001f3a4 {t('voice_stage1', lang)}")
+        await state.set_state(IntentOnboardingStates.voice_stage1)
+    elif mode == "social":
+        await callback.message.edit_text(
+            t("social_header", lang),
+            reply_markup=get_social_source_keyboard(lang),
+        )
+        await state.set_state(IntentOnboardingStates.social_waiting_input)
+    else:
+        # Default: agent mode
+        await callback.message.edit_text(t("agent_continue", lang))
+        await state.set_state(IntentOnboardingStates.agent_chatting)
     await callback.answer()
 
 
@@ -1522,7 +1587,7 @@ async def handle_confirm_yes(callback: CallbackQuery, state: FSMContext):
     """Save profile and finish onboarding."""
     data = await state.get_data()
     lang = data.get("language", "en")
-    profile_data = data.get("profile_data", {})
+    profile_data = _normalize_profile_data(data.get("profile_data", {}))
     intents = data.get("selected_intents", [])
     event_code = data.get("pending_event_code")
 
@@ -1639,11 +1704,35 @@ async def handle_confirm_photo(message: Message, state: FSMContext):
 
 @router.callback_query(IntentOnboardingStates.confirming_profile, F.data == "iconfirm_edit")
 async def handle_confirm_edit(callback: CallbackQuery, state: FSMContext):
-    """Go back to agent mode for editing."""
+    """Go back to editing — route depends on onboarding mode."""
     data = await state.get_data()
     lang = data.get("language", "en")
+    mode = data.get("onboarding_mode")
 
-    # Re-enter agent mode for edits
-    await callback.message.edit_text(t("agent_continue", lang))
-    await state.set_state(IntentOnboardingStates.agent_chatting)
+    if mode == "agent":
+        # Agent mode — resume conversation
+        await callback.message.edit_text(t("agent_continue", lang))
+        await state.set_state(IntentOnboardingStates.agent_chatting)
+    elif mode == "quick_choices":
+        # Quick Choices — restart questions from beginning
+        await state.update_data(question_index=0, qc_answers={})
+        await callback.message.edit_text(t("qc_restart", lang) if t("qc_restart", lang) != "qc_restart" else
+                                          ("Let's go through the questions again:" if lang == "en" else "Давай пройдём вопросы заново:"))
+        await _ask_next_question(callback.message, state)
+    elif mode == "voice":
+        # Voice mode — restart from stage 1
+        await callback.message.edit_text(t("voice_stage1", lang))
+        await state.set_state(IntentOnboardingStates.voice_stage1)
+    elif mode == "social":
+        # Social mode — show social source picker again
+        await callback.message.edit_text(
+            t("social_waiting_input", lang) if t("social_waiting_input", lang) != "social_waiting_input" else
+            ("Send another link or screenshot:" if lang == "en" else "Отправь ещё ссылку или скриншот:"),
+            reply_markup=get_social_source_keyboard(lang),
+        )
+        await state.set_state(IntentOnboardingStates.social_waiting_input)
+    else:
+        # Fallback — agent mode
+        await callback.message.edit_text(t("agent_continue", lang))
+        await state.set_state(IntentOnboardingStates.agent_chatting)
     await callback.answer()

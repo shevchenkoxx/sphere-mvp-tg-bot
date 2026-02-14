@@ -743,8 +743,8 @@ def get_question_multi_select_keyboard(
         done_text = t("qc_done", lang, count=len(selected))
         builder.row(InlineKeyboardButton(text=done_text, callback_data="qcm_done"))
 
-    # Skip button
-    builder.row(InlineKeyboardButton(text=t("qc_skip", lang), callback_data="qc_skip"))
+    # Skip button (qcm_ prefix so multi-select handler catches it)
+    builder.row(InlineKeyboardButton(text=t("qc_skip", lang), callback_data="qcm_skip"))
     return builder.as_markup()
 
 

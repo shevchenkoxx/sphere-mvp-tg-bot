@@ -334,6 +334,17 @@ Respond with valid JSON only."""
 
 # === PROFILE FORMATTING ===
 
+def _ensure_list(val) -> list:
+    """Normalize a value to a list — fixes char iteration bug when LLM returns strings."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [str(v).strip() for v in val if v]
+    if isinstance(val, str):
+        return [v.strip() for v in val.split(",") if v.strip()]
+    return []
+
+
 def format_profile_summary(data: dict, lang: str = "en") -> str:
     """Format extracted profile data as a readable summary."""
     parts = []
@@ -353,10 +364,21 @@ def format_profile_summary(data: dict, lang: str = "en") -> str:
     if bio:
         parts.append(f"\n{bio}")
 
-    interests = data.get("interests", [])
+    interests = _ensure_list(data.get("interests"))
     if interests:
-        hashtags = " ".join(f"#{i}" for i in interests[:8])
+        hashtags = " ".join(f"#{i.capitalize()}" for i in interests[:8])
         parts.append(f"\n{hashtags}")
+
+    skills = _ensure_list(data.get("skills"))
+    if skills:
+        label = "\U0001f6e0 Skills" if lang == "en" else "\U0001f6e0 \u041d\u0430\u0432\u044b\u043a\u0438"
+        skill_tags = " ".join(f"#{s.capitalize()}" for s in skills[:8])
+        parts.append(f"<b>{label}:</b> {skill_tags}")
+
+    goals = _ensure_list(data.get("goals"))
+    if goals:
+        label = "\U0001f3af Goals" if lang == "en" else "\U0001f3af \u0426\u0435\u043b\u0438"
+        parts.append(f"<b>{label}:</b> {', '.join(g.capitalize() for g in goals)}")
 
     looking_for = data.get("looking_for")
     if looking_for:
@@ -373,4 +395,13 @@ def format_profile_summary(data: dict, lang: str = "en") -> str:
         label = "\u2728 Ideal match" if lang == "en" else "\u2728 \u0418\u0434\u0435\u0430\u043b\u044c\u043d\u044b\u0439 \u043c\u0430\u0442\u0447"
         parts.append(f"<b>{label}:</b> {ideal}")
 
-    return "\n".join(parts) if parts else ("No data extracted" if lang == "en" else "\u041d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445")
+    gender = data.get("gender")
+    if gender:
+        parts.append(f"\U0001f464 {gender.capitalize()}")
+
+    partner_values = _ensure_list(data.get("partner_values"))
+    if partner_values:
+        label = "\U0001f496 Values" if lang == "en" else "\U0001f496 \u0426\u0435\u043d\u043d\u043e\u0441\u0442\u0438"
+        parts.append(f"<b>{label}:</b> {', '.join(v.capitalize() for v in partner_values)}")
+
+    return "\n".join(parts) if parts else ("No data yet" if lang == "en" else "\u041f\u043e\u043a\u0430 \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445")
