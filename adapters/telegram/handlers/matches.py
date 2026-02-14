@@ -1179,6 +1179,11 @@ async def handle_voice_feedback(message: Message, state: FSMContext):
 @router.message(MatchFeedbackStates.waiting_voice_feedback, F.text)
 async def handle_text_in_voice_feedback(message: Message, state: FSMContext):
     """Text sent while waiting for voice feedback — save as text feedback and clear state"""
+    # Pass through commands — don't save them as feedback
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        return  # Let the command be handled by the appropriate router
+
     from infrastructure.database.supabase_client import supabase
 
     data = await state.get_data()

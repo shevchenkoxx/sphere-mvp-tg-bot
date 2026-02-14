@@ -217,8 +217,12 @@ async def handle_daily_answer_start(callback: CallbackQuery, state: FSMContext):
         daily_input_mode="text",
     )
 
-    # Remove keyboard from question message
-    await callback.message.edit_reply_markup(reply_markup=None)
+    # Remove keyboard and prompt user to type
+    prompt = "Напиши свой ответ ✍️" if lang == "ru" else "Type your answer ✍️"
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n{prompt}",
+        reply_markup=None,
+    )
 
 
 @router.message(DailyQuestionStates.answering, F.voice)
@@ -338,6 +342,12 @@ async def _process_daily_answer(
 async def handle_daily_chat(message: Message, state: FSMContext, text_override: str = None):
     """Handle follow-up conversation after daily question answer."""
     user_text = text_override or message.text
+
+    # Pass through commands — don't eat them as chat messages
+    if user_text and user_text.startswith("/"):
+        await state.clear()
+        return  # Let the command be handled by the appropriate router
+
     data = await state.get_data()
     lang = data.get("daily_lang", "en")
     chat_count = data.get("daily_chat_count", 0)

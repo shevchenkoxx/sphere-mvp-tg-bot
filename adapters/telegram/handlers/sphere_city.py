@@ -179,7 +179,7 @@ async def handle_city_selection(callback: CallbackQuery, state: FSMContext):
 @router.message(SphereCityStates.entering_custom_city, F.text)
 async def handle_custom_city(message: Message, state: FSMContext):
     """Handle custom city input"""
-    lang = "en"  # Always use English
+    lang = detect_lang(message)
 
     city_name = message.text.strip()[:100]
 
