@@ -1145,6 +1145,27 @@ async def handle_social_link(message: Message, state: FSMContext):
         await message.answer(t("social_waiting_link", lang))
         return
 
+    # Detect JS-rendered platforms and suggest screenshot instead
+    _js_platforms = {
+        "linkedin.com": "LinkedIn",
+        "instagram.com": "Instagram",
+        "tinder.com": "Tinder",
+        "bumble.com": "Bumble",
+        "hinge.co": "Hinge",
+    }
+    for domain, platform_name in _js_platforms.items():
+        if domain in url.lower():
+            from aiogram.utils.keyboard import InlineKeyboardBuilder as _SKB
+            _sb = _SKB()
+            _sb.button(text=t("social_try_screenshot", lang), callback_data="social_screenshot")
+            _sb.button(text=t("social_back", lang), callback_data="social_back_to_mode")
+            _sb.adjust(1)
+            await message.answer(
+                t("social_screenshot_hint", lang, platform=platform_name),
+                reply_markup=_sb.as_markup(),
+            )
+            return
+
     processing_msg = await message.answer(t("social_processing", lang))
 
     try:

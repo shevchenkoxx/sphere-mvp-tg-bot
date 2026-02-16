@@ -155,6 +155,11 @@ EN_STRINGS = {
     ),
     "social_followup": "{question}",
     "social_error": "Hmm, couldn't get much from that. Try a different link or send a screenshot instead!",
+    "social_screenshot_hint": (
+        "\U0001f4f1 {platform} profiles are hard to read from a link.\n\n"
+        "Send me a <b>screenshot</b> of your profile instead \u2014 "
+        "I'll extract everything with AI! Just take a screenshot and send it here."
+    ),
     "social_back": "\u25c0\ufe0f Back to mode selection",
     "social_try_screenshot": "\U0001f4f8 Send a screenshot instead",
     "social_try_link": "\U0001f4ce Try another link",

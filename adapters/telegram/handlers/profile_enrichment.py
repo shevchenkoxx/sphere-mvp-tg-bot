@@ -136,6 +136,20 @@ async def handle_enrichment_link(message: Message, state: FSMContext):
         return
 
     url = url_match.group(0)
+
+    # JS-rendered platforms — suggest screenshot instead
+    _js_domains = {"linkedin.com", "instagram.com", "tinder.com", "bumble.com", "hinge.co"}
+    if any(d in url.lower() for d in _js_domains):
+        hint = (
+            "That link is hard to read automatically. "
+            "Send me a screenshot of your profile instead — I'll extract everything with AI!"
+        ) if lang == "en" else (
+            "Эту ссылку сложно прочитать автоматически. "
+            "Отправь скриншот профиля — я извлеку всё с помощью AI!"
+        )
+        await message.answer(hint)
+        return
+
     await message.answer(t("social_processing", lang))
 
     try:
