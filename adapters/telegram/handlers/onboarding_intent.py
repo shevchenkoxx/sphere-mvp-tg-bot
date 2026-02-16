@@ -28,7 +28,8 @@ from adapters.telegram.loader import (
 from adapters.telegram.keyboards.inline import (
     get_intent_selection_keyboard, get_mode_choice_keyboard,
     get_question_buttons_keyboard, get_question_multi_select_keyboard,
-    get_social_source_keyboard, get_intent_city_keyboard,
+    get_social_source_keyboard, get_social_error_keyboard,
+    get_social_followup_keyboard, get_intent_city_keyboard,
     get_photo_skip_keyboard, get_intent_confirm_keyboard,
 )
 from adapters.telegram.states.onboarding import IntentOnboardingStates
@@ -219,6 +220,27 @@ async def start_social_mode(callback: CallbackQuery, state: FSMContext):
     await state.update_data(onboarding_mode="social")
     await state.set_state(IntentOnboardingStates.social_waiting_input)
     await callback.answer()
+
+
+@router.callback_query(F.data == "social_back_to_mode")
+async def social_back_to_mode(callback: CallbackQuery, state: FSMContext):
+    """Go back to mode selection from social media flow."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    await callback.message.edit_text(
+        t("mode_header", lang),
+        reply_markup=get_mode_choice_keyboard(lang),
+    )
+    await state.set_state(IntentOnboardingStates.choosing_mode)
+    await callback.answer()
+
+
+@router.callback_query(IntentOnboardingStates.social_followup, F.data == "social_followup_skip")
+async def social_followup_skip(callback: CallbackQuery, state: FSMContext):
+    """Skip remaining social follow-up questions and proceed to city."""
+    await callback.answer()
+    await _go_to_city_step_by_chat(callback.message.chat.id, state)
 
 
 # ============================================================
@@ -1129,14 +1151,17 @@ async def handle_social_link(message: Message, state: FSMContext):
         # Fetch URL content using event parser pattern
         from infrastructure.ai.event_parser_service import EventParserService
         parser = EventParserService()
-        content = await parser._fetch_url_content(url)
+        content = await parser.fetch_url_content(url)
 
         if not content:
             try:
                 await processing_msg.delete()
             except Exception:
                 pass
-            await message.answer(t("social_error", lang))
+            await message.answer(
+                t("social_error", lang),
+                reply_markup=get_social_error_keyboard(lang),
+            )
             return
 
         # Extract profile from content
@@ -1179,7 +1204,10 @@ async def handle_social_link(message: Message, state: FSMContext):
             await processing_msg.delete()
         except Exception:
             pass
-        await message.answer(t("social_error", lang))
+        await message.answer(
+            t("social_error", lang),
+            reply_markup=get_social_error_keyboard(lang),
+        )
 
 
 @router.message(IntentOnboardingStates.social_waiting_input, F.photo)
@@ -1265,7 +1293,10 @@ async def handle_social_screenshot(message: Message, state: FSMContext):
             await processing_msg.delete()
         except Exception:
             pass
-        await message.answer(t("social_error", lang))
+        await message.answer(
+            t("social_error", lang),
+            reply_markup=get_social_error_keyboard(lang),
+        )
 
 
 async def _social_ask_followup(message: Message, state: FSMContext):
@@ -1293,7 +1324,10 @@ async def _social_ask_followup(message: Message, state: FSMContext):
                 social_followup_questions=questions,
                 social_followup_index=0,
             )
-            await message.answer(t("social_followup", lang, question=question_text))
+            await message.answer(
+                t("social_followup", lang, question=question_text),
+                reply_markup=get_social_followup_keyboard(lang),
+            )
             await state.set_state(IntentOnboardingStates.social_followup)
             return
     except Exception as e:
@@ -1329,7 +1363,10 @@ async def handle_social_followup_text(message: Message, state: FSMContext, text_
     if index + 1 < len(questions):
         q = questions[index + 1]
         question_text = q.get(f"question_{lang}", q.get("question_en", ""))
-        await message.answer(t("social_followup", lang, question=question_text))
+        await message.answer(
+            t("social_followup", lang, question=question_text),
+            reply_markup=get_social_followup_keyboard(lang),
+        )
         return
 
     # All follow-ups done
@@ -1398,7 +1435,10 @@ async def handle_city_select(callback: CallbackQuery, state: FSMContext):
     city_key = callback.data.replace("icity_", "")
 
     if city_key == "other":
-        await callback.message.edit_text(t("city_type", lang))
+        from aiogram.utils.keyboard import InlineKeyboardBuilder as _IKB
+        _b = _IKB()
+        _b.button(text=t("city_back_to_list", lang), callback_data="icity_back_to_list")
+        await callback.message.edit_text(t("city_type", lang), reply_markup=_b.as_markup())
         await state.set_state(IntentOnboardingStates.typing_city)
         await callback.answer()
         return
@@ -1458,6 +1498,20 @@ async def handle_agent_edit_at_city(callback: CallbackQuery, state: FSMContext):
         # Default: agent mode
         await callback.message.edit_text(t("agent_continue", lang))
         await state.set_state(IntentOnboardingStates.agent_chatting)
+    await callback.answer()
+
+
+@router.callback_query(IntentOnboardingStates.typing_city, F.data == "icity_back_to_list")
+async def handle_city_back_to_list(callback: CallbackQuery, state: FSMContext):
+    """Go back to city list from custom city input."""
+    data = await state.get_data()
+    lang = data.get("language", "en")
+
+    await callback.message.edit_text(
+        t("city_header", lang),
+        reply_markup=get_intent_city_keyboard(lang),
+    )
+    await state.set_state(IntentOnboardingStates.choosing_city)
     await callback.answer()
 
 

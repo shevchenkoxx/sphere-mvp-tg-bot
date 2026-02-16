@@ -361,7 +361,10 @@ async def handle_daily_chat(message: Message, state: FSMContext, text_override: 
         return
 
     # Check for goodbye signals
-    bye_signals = {"bye", "пока", "хватит", "стоп", "stop", "done", "всё", "ладно"}
+    bye_signals = {
+        "bye", "stop", "done", "enough", "thanks", "no more", "exit", "quit",
+        "пока", "хватит", "стоп", "всё", "ладно", "спасибо", "довольно", "нет", "выход",
+    }
     if user_text and user_text.lower().strip() in bye_signals:
         await _end_daily_chat(message, state, lang)
         return

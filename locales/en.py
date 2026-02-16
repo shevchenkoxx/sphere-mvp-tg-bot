@@ -154,7 +154,12 @@ EN_STRINGS = {
         "Great start! Let me ask 1-2 quick things to round it out."
     ),
     "social_followup": "{question}",
-    "social_error": "Hmm, couldn't get much from that. Want to try a different link, or switch to another mode? Just type /start",
+    "social_error": "Hmm, couldn't get much from that. Try a different link or send a screenshot instead!",
+    "social_back": "\u25c0\ufe0f Back to mode selection",
+    "social_try_screenshot": "\U0001f4f8 Send a screenshot instead",
+    "social_try_link": "\U0001f4ce Try another link",
+    "social_skip_followup": "\u23e9 Skip",
+    "city_back_to_list": "\u25c0\ufe0f Pick from list",
 
     # === CITY ===
     "city_header": "\U0001f30d What city are you in right now?",

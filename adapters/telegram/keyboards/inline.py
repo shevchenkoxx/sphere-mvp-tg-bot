@@ -754,6 +754,27 @@ def get_social_source_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=t("social_link_btn", lang), callback_data="social_link")
     builder.button(text=t("social_screenshot_btn", lang), callback_data="social_screenshot")
+    builder.button(text=t("social_back", lang), callback_data="social_back_to_mode")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_social_error_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Buttons after social import fails — retry, screenshot, or back"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("social_try_link", lang), callback_data="social_link")
+    builder.button(text=t("social_try_screenshot", lang), callback_data="social_screenshot")
+    builder.button(text=t("social_back", lang), callback_data="social_back_to_mode")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_social_followup_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Skip button for social follow-up questions"""
+    from locales import t
+    builder = InlineKeyboardBuilder()
+    builder.button(text=t("social_skip_followup", lang), callback_data="social_followup_skip")
     builder.adjust(1)
     return builder.as_markup()
 

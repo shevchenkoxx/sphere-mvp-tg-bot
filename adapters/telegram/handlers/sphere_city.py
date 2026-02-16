@@ -133,13 +133,17 @@ async def handle_city_selection(callback: CallbackQuery, state: FSMContext):
     city_key = callback.data.replace("city_select_", "")
 
     if city_key == "other":
-        # Ask for custom city input
+        # Ask for custom city input with back button
         if lang == "ru":
             text = "🌍 Напиши название своего города:"
         else:
             text = "🌍 Type your city name:"
 
-        await callback.message.edit_text(text)
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        back_builder = InlineKeyboardBuilder()
+        back_text = "◀️ Pick from list" if lang == "en" else "◀️ Выбрать из списка"
+        back_builder.button(text=back_text, callback_data="sphere_city_change")
+        await callback.message.edit_text(text, reply_markup=back_builder.as_markup())
         await state.set_state(SphereCityStates.entering_custom_city)
         await callback.answer()
         return

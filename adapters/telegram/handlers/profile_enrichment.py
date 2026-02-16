@@ -142,7 +142,7 @@ async def handle_enrichment_link(message: Message, state: FSMContext):
         # Fetch URL content
         from infrastructure.ai.event_parser_service import EventParserService
         parser = EventParserService()
-        content = await parser._fetch_url(url)
+        content = await parser.fetch_url_content(url)
 
         if not content:
             await message.answer(t("error_generic", lang))
@@ -255,7 +255,7 @@ async def handle_enrich_analyze_screenshot(callback: CallbackQuery, state: FSMCo
         from core.prompts.intent_onboarding import SOCIAL_SCREENSHOT_EXTRACTION
 
         response = await ai_service.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[{
                 "role": "user",
                 "content": [
