@@ -877,6 +877,21 @@ def get_vibe_waiting_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+# === AGENT ONBOARDING ===
+
+def get_agent_confirm_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Keyboard for agent onboarding profile confirmation."""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="✅ Подтвердить", callback_data="agent_confirm")
+        builder.button(text="✏️ Изменить", callback_data="agent_edit")
+    else:
+        builder.button(text="✅ Confirm", callback_data="agent_confirm")
+        builder.button(text="✏️ Edit", callback_data="agent_edit")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

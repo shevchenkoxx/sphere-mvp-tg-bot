@@ -125,7 +125,14 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             lang = detect_lang(message)
             if not user.onboarding_completed:
                 # Start onboarding with event context
-                if ONBOARDING_VERSION == "intent":
+                if ONBOARDING_VERSION == "agent":
+                    from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
+                    await start_agent_onboarding(
+                        message, state,
+                        event_name=event.name,
+                        event_code=event_code
+                    )
+                elif ONBOARDING_VERSION == "intent":
                     from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
                     await start_intent_onboarding(
                         message, state,
@@ -199,7 +206,10 @@ async def start_command(message: Message, state: FSMContext):
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
         # Start onboarding
-        if ONBOARDING_VERSION == "intent":
+        if ONBOARDING_VERSION == "agent":
+            from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
+            await start_agent_onboarding(message, state)
+        elif ONBOARDING_VERSION == "intent":
             from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
             await start_intent_onboarding(message, state)
         elif ONBOARDING_VERSION == "audio":
@@ -491,7 +501,10 @@ async def start_real_onboarding_from_demo(callback: CallbackQuery, state: FSMCon
     msg = callback.message
     msg.from_user = callback.from_user
 
-    if ONBOARDING_VERSION == "audio":
+    if ONBOARDING_VERSION == "agent":
+        from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
+        await start_agent_onboarding(msg, state)
+    elif ONBOARDING_VERSION == "audio":
         from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
         await start_audio_onboarding(msg, state)
     else:

@@ -4,9 +4,16 @@ from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboard
 # Build list of onboarding routers based on config
 # Audio mode includes v2 router because users can switch to text mode
 onboarding_routers = []
+personalization_routers = []
 
-if ONBOARDING_VERSION == "v1":
+if ONBOARDING_VERSION == "agent":
+    from adapters.telegram.handlers import onboarding_agent
+    onboarding_routers = [onboarding_agent.router]
+    # Agent handles personalization internally — no separate personalization router
+    personalization_routers = []
+elif ONBOARDING_VERSION == "v1":
     onboarding_routers = [onboarding.router]
+    personalization_routers = [personalization.router]
 elif ONBOARDING_VERSION == "intent":
     # V1.1 intent-based onboarding + daily questions + profile enrichment
     from adapters.telegram.handlers import onboarding_intent, daily_question, profile_enrichment
@@ -14,14 +21,16 @@ elif ONBOARDING_VERSION == "intent":
 elif ONBOARDING_VERSION == "audio":
     # Include both audio AND v2 routers - users can switch to text mode
     onboarding_routers = [onboarding_audio.router, onboarding_v2.router]
+    personalization_routers = [personalization.router]
 else:  # v2 (default)
     onboarding_routers = [onboarding_v2.router]
+    personalization_routers = [personalization.router]
 
 # IMPORTANT: State-specific routers must be BEFORE start router
 # because start.py has fallback handlers that would catch callbacks/messages
 routers = [
     *onboarding_routers,  # Must be first to handle state-specific callbacks
-    personalization.router,  # Post-onboarding personalization - before start.py
+    *personalization_routers,  # Post-onboarding personalization - before start.py
     profile_edit.router,  # Profile editing - before start.py
     sphere_city.router,   # Sphere City - before start.py
     vibe_check.router,    # Vibe Check - has FSM states (VibeCheckStates), must be before start.py

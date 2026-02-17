@@ -106,6 +106,12 @@ class DailyQuestionStates(StatesGroup):
     chatting = State()    # User is in free-form LLM conversation
 
 
+class AgentOnboarding(StatesGroup):
+    """FSM states for AI agent-driven onboarding"""
+    in_conversation = State()     # Main conversation loop
+    confirming_profile = State()  # User reviewing profile preview
+
+
 class VibeCheckStates(StatesGroup):
     """FSM states for Vibe Check AI compatibility game"""
     interviewing = State()        # AI agent is interviewing user
