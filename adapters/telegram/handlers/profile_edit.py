@@ -680,6 +680,13 @@ async def cancel_edit(callback: CallbackQuery, state: FSMContext):
 @router.message(ProfileEditStates.viewing_profile, F.text, ~F.text.startswith("/"))
 async def inline_profile_edit(message: Message, state: FSMContext, text_override: str = None):
     """User typed while viewing profile — auto-interpret and apply changes."""
+    # If user pasted a deep link or URL, clear state and redirect to /start
+    raw = message.text or ""
+    if "t.me/" in raw or raw.startswith("http"):
+        await state.clear()
+        await message.answer("Use the link in your browser or forward it to the bot as /start command.")
+        return
+
     data = await state.get_data()
     lang = data.get("language", "en")
     request_text = text_override or message.text

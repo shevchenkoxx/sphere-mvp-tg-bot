@@ -9,6 +9,7 @@ OrchestratorResponse is what the orchestrator returns to the handler.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape as html_escape
 from typing import Any, Dict, List, Optional
 
 
@@ -105,47 +106,49 @@ class ProfileChecklist:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ProfileChecklist":
-        return cls(**{k: v for k, v in d.items() if hasattr(cls, k) and k != "__dataclass_fields__"})
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        return cls(**{k: v for k, v in d.items() if k in valid_fields})
 
     def profile_summary_text(self) -> str:
-        """Human-readable summary for the confirmation message."""
+        """Human-readable summary for the confirmation message (HTML-safe)."""
         lines = []
+        e = html_escape  # shorthand
 
         if self.display_name:
-            lines.append(f"👤 <b>{self.display_name}</b>")
+            lines.append(f"👤 <b>{e(self.display_name)}</b>")
 
         if self.profession and self.company:
-            lines.append(f"💼 {self.profession} @ {self.company}")
+            lines.append(f"💼 {e(self.profession)} @ {e(self.company)}")
         elif self.profession:
-            lines.append(f"💼 {self.profession}")
+            lines.append(f"💼 {e(self.profession)}")
         elif self.company:
-            lines.append(f"💼 {self.company}")
+            lines.append(f"💼 {e(self.company)}")
 
         if self.location:
             city = self.location.split(",")[0].strip()
-            lines.append(f"📍 {city}")
+            lines.append(f"📍 {e(city)}")
 
         if self.about:
-            lines.append(f"\n📝 {self.about}")
+            lines.append(f"\n📝 {e(self.about)}")
 
         if self.looking_for:
-            lines.append(f"\n🔍 <b>Looking for:</b> {self.looking_for}")
+            lines.append(f"\n🔍 <b>Looking for:</b> {e(self.looking_for)}")
 
         if self.can_help_with:
-            lines.append(f"💪 <b>Can help with:</b> {self.can_help_with}")
+            lines.append(f"💪 <b>Can help with:</b> {e(self.can_help_with)}")
 
         tags = []
         for i in (self.interests or [])[:5]:
-            tags.append(f"#{i}")
+            tags.append(f"#{e(i)}")
         for s in (self.skills or [])[:5]:
             tag = s.replace(" ", "_").lower()
             if f"#{tag}" not in tags:
-                tags.append(f"#{tag}")
+                tags.append(f"#{e(tag)}")
         if tags:
             lines.append(f"\n🏷 {' '.join(tags[:8])}")
 
         if self.passion_text:
-            lines.append(f"\n🔥 <b>Passion:</b> {self.passion_text}")
+            lines.append(f"\n🔥 <b>Passion:</b> {e(self.passion_text)}")
 
         return "\n".join(lines)
 
@@ -195,10 +198,29 @@ class OnboardingAgentState:
         )
 
     def trim_messages(self, max_turns: int = 20) -> None:
-        """Keep only the last *max_turns* pairs to stay within context limits."""
-        # Always keep the first system message if present
-        if len(self.messages) > max_turns * 2:
-            self.messages = self.messages[:1] + self.messages[-(max_turns * 2 - 1):]
+        """Keep only the last *max_turns* pairs to stay within context limits.
+        Avoids breaking tool call groups (assistant+tool messages must stay together).
+        """
+        max_msgs = max_turns * 2
+        if len(self.messages) <= max_msgs:
+            return
+
+        # Find a safe cut point — never split in the middle of a tool call group
+        cut_target = len(self.messages) - max_msgs
+        cut_at = cut_target
+
+        # Walk forward from cut_target to find a safe boundary
+        while cut_at < len(self.messages):
+            msg = self.messages[cut_at]
+            # Don't start on a tool result or an assistant message with tool_calls
+            if msg.get("role") == "tool":
+                cut_at += 1
+            elif msg.get("role") == "assistant" and msg.get("tool_calls"):
+                cut_at += 1
+            else:
+                break
+
+        self.messages = self.messages[cut_at:]
 
 
 @dataclass

@@ -145,16 +145,39 @@ class OrchestratorService:
                         "content": json.dumps(tool_results[i]),
                     })
 
-                # Get final response after tool execution
-                messages_after = [{"role": "system", "content": system_prompt}] + agent_state.messages
-                follow_up = await self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages_after,
-                    max_tokens=300,
-                    temperature=0.7,
-                )
-                reply_text = follow_up.choices[0].message.content or ""
-                agent_state.messages.append({"role": "assistant", "content": reply_text})
+                # Skip follow-up API call if we're showing profile or completing
+                if show_profile or is_complete:
+                    reply_text = assistant_msg.content or ""
+                    if reply_text:
+                        agent_state.messages.append({"role": "assistant", "content": reply_text})
+                else:
+                    # Get final response after tool execution
+                    messages_after = [{"role": "system", "content": system_prompt}] + agent_state.messages
+                    follow_up = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages_after,
+                        tool_choice="none",
+                        max_tokens=300,
+                        temperature=0.7,
+                    )
+                    reply_text = follow_up.choices[0].message.content or ""
+
+                    # Fallback if LLM returned empty text after tools
+                    if not reply_text.strip():
+                        checklist = agent_state.get_checklist()
+                        missing = checklist.missing_required()
+                        if missing:
+                            reply_text = self._fallback_response(agent_state).text
+                        else:
+                            missing_imp = checklist.missing_important()
+                            if missing_imp:
+                                reply_text = self._fallback_response(agent_state).text
+                            else:
+                                reply_text = "Got it! Let me show you your profile." if agent_state.lang == "en" else "Отлично! Покажу твой профиль."
+                                show_profile = True
+                                keyboard_hint = "confirm"
+
+                    agent_state.messages.append({"role": "assistant", "content": reply_text})
 
             else:
                 # No tool calls — just a text response

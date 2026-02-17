@@ -887,13 +887,9 @@ async def show_events(callback: CallbackQuery):
 @router.callback_query(F.data == "my_matches")
 async def show_matches(callback: CallbackQuery, state: FSMContext):
     """Show matches — defaults to Sphere City (city-based matching)"""
-    from adapters.telegram.handlers.matches import list_matches_callback
-    from adapters.telegram.handlers.sphere_city import show_city_matches, sphere_city_entry
+    from adapters.telegram.handlers.sphere_city import sphere_city_entry
 
     lang = detect_lang_callback(callback)
-
-    # Answer callback IMMEDIATELY to avoid 30s Telegram timeout
-    await callback.answer()
 
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
@@ -901,17 +897,14 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
     )
 
     if not user:
+        await callback.answer()
         await callback.message.edit_text(
             "Profile not found" if lang == "en" else "Профиль не найден"
         )
         return
 
-    # Default to city matching (Sphere City)
-    if not user.city_current:
-        # Need to set city first
-        await sphere_city_entry(callback, None)
-    else:
-        await show_city_matches(callback)
+    # Route to Sphere City (handles its own callback.answer)
+    await sphere_city_entry(callback, state)
 
 
 @router.callback_query(F.data == "vibe_check")

@@ -138,12 +138,15 @@ async def start_agent_onboarding(
         user_first_name=first_name,
     )
 
-    # Opening message from the agent
+    # Opening message from the agent — use a clean user message (not [System])
+    greeting_prompt = (
+        f"Hi, I'm {first_name}. I just started onboarding"
+        + (f" at event '{event_name}'" if event_name else "")
+        + "."
+    )
     response = await orchestrator_service.process_turn(
         agent_state,
-        user_message=f"[System] User {first_name} just started onboarding"
-        + (f" at event '{event_name}'" if event_name else "")
-        + f". Greet them warmly and ask them to introduce themselves.",
+        user_message=greeting_prompt,
         message_type="text",
     )
 
@@ -151,7 +154,18 @@ async def start_agent_onboarding(
     await state.update_data(**agent_state.to_dict())
     await state.set_state(AgentOnboarding.in_conversation)
 
-    await message.answer(response.text)
+    if response.show_profile:
+        await _show_profile_preview(message, state, agent_state)
+    elif response.text:
+        await message.answer(response.text)
+    else:
+        # Fallback greeting if LLM returned nothing
+        fallback = (
+            f"Hey {first_name}! 👋 Welcome! Tell me about yourself — what do you do and who are you looking to meet?"
+            if lang == "en"
+            else f"Привет, {first_name}! 👋 Расскажи о себе — чем занимаешься и кого хочешь найти?"
+        )
+        await message.answer(fallback)
 
 
 # ------------------------------------------------------------------
@@ -185,6 +199,12 @@ async def handle_text(message: Message, state: FSMContext):
 
     if response.text:
         await message.answer(response.text)
+    else:
+        lang = agent_state.lang
+        await message.answer(
+            "Got it! Tell me more about yourself." if lang == "en"
+            else "Понял! Расскажи ещё о себе."
+        )
 
 
 @router.message(AgentOnboarding.in_conversation, F.voice)
@@ -247,6 +267,11 @@ async def handle_voice(message: Message, state: FSMContext):
 
         if response.text:
             await message.answer(response.text)
+        else:
+            await message.answer(
+                "Got it! What else can you tell me?" if lang == "en"
+                else "Понял! Что ещё расскажешь?"
+            )
 
     except Exception as e:
         logger.error(f"Voice processing error in agent: {e}", exc_info=True)
@@ -307,7 +332,7 @@ async def _show_profile_preview(
 
     text = header + cl.profile_summary_text() + footer
 
-    sent = await message.answer(text, reply_markup=get_agent_confirm_keyboard(lang))
+    sent = await message.answer(text, reply_markup=get_agent_confirm_keyboard(lang), parse_mode="HTML")
     await state.update_data(profile_msg_id=sent.message_id)
     await state.set_state(AgentOnboarding.confirming_profile)
 
@@ -464,9 +489,19 @@ async def _do_complete_onboarding(
     if from_user:
         user_id = str(from_user.id)
         tg_username = from_user.username
+    elif message.from_user:
+        user_id = str(message.from_user.id)
+        tg_username = message.from_user.username
     else:
-        user_id = str(message.from_user.id) if message.from_user else data.get("user_first_name", "")
-        tg_username = message.from_user.username if message.from_user else None
+        # Last resort — should never happen
+        user_id = data.get("agent_user_id", "")
+        tg_username = None
+
+    if not user_id:
+        logger.error("Cannot resolve user_id in _do_complete_onboarding")
+        await message.answer("Something went wrong. Please try /start again.")
+        await state.clear()
+        return
 
     # Build profile_data dict (same format as save_audio_profile expects)
     profile_data = cl.to_dict()

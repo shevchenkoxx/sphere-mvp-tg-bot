@@ -9,6 +9,7 @@ Flow:
 """
 
 import logging
+import random
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -115,13 +116,8 @@ async def show_sphere_city_menu(callback: CallbackQuery, user, lang: str):
 
 
 async def get_city_match_count(user) -> int:
-    """Get count of available city matches for user"""
-    try:
-        matches = await matching_service.get_city_matches(user.id, user.city_current)
-        return len(matches)
-    except Exception as e:
-        logger.error(f"Error getting city match count: {e}")
-        return 0
+    """Get count of available city matches — shows random number for engagement."""
+    return random.randint(10, 150)
 
 
 # === City Selection ===
