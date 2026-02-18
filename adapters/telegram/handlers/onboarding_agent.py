@@ -162,12 +162,8 @@ async def start_agent_onboarding(
         user_first_name=first_name,
     )
 
-    # Opening message from the agent — use a clean user message (not [System])
-    greeting_prompt = (
-        f"Hi, I'm {first_name}. I just started onboarding"
-        + (f" at event '{event_name}'" if event_name else "")
-        + "."
-    )
+    # Opening message — just tell the agent who the user is
+    greeting_prompt = f"Hi, I'm {first_name}. I just opened the bot."
     response = await orchestrator_service.process_turn(
         agent_state,
         user_message=greeting_prompt,

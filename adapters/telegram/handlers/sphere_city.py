@@ -296,14 +296,17 @@ async def show_city_matches(callback: CallbackQuery):
             name = matched_user.display_name or matched_user.first_name or "Anonymous"
 
             line = f"<b>{i+1}. {name}</b>"
-            if matched_user.username:
-                line += f" @{matched_user.username}"
+            # Show "Unlock" instead of username
+            line += "  🔒 <i>Unlock</i>"
 
             if matched_user.profession:
                 line += f"\n   🏢 {matched_user.profession}"
 
             if match_result.explanation:
-                line += f"\n   💡 {match_result.explanation[:80]}..."
+                expl = match_result.explanation[:80]
+                if len(match_result.explanation) > 80:
+                    expl += "..."
+                line += f"\n   💡 {expl}"
 
             lines.append(line)
 
