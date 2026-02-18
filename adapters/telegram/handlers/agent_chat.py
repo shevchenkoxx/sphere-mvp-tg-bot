@@ -218,22 +218,28 @@ async def _send_result(message: Message, state: FSMContext, result: dict, from_u
         field_info = result["edit_field"]
         field_name = field_info.get("field")
         value = field_info.get("value")
+        # Type validation
+        LIST_FIELDS = {"interests", "goals", "skills"}
         if field_name and value is not None:
-            try:
-                await user_service.update_user(
-                    MessagePlatform.TELEGRAM, user_id, **{field_name: value}
-                )
-                # Update cached profile
-                profile_dict = data.get("agent_chat_profile", {})
-                profile_dict[field_name] = value
-                await state.update_data(agent_chat_profile=profile_dict)
+            if field_name in LIST_FIELDS and not isinstance(value, list):
+                logger.warning(f"Agent chat: type mismatch for {field_name}, expected list got {type(value)}")
+            elif field_name not in LIST_FIELDS and isinstance(value, list):
+                logger.warning(f"Agent chat: type mismatch for {field_name}, expected str got list")
+            else:
+                try:
+                    await user_service.update_user(
+                        MessagePlatform.TELEGRAM, user_id, **{field_name: value}
+                    )
+                    profile_dict = data.get("agent_chat_profile", {})
+                    profile_dict[field_name] = value
+                    await state.update_data(agent_chat_profile=profile_dict)
 
-                # Background: regenerate embeddings
-                user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
-                if user:
-                    asyncio.create_task(_regen_embeddings(user))
-            except Exception as e:
-                logger.error(f"Agent chat edit failed: {e}")
+                    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+                    if user:
+                        task = asyncio.create_task(_regen_embeddings(user))
+                        task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+                except Exception as e:
+                    logger.error(f"Agent chat edit failed: {e}")
 
     # Handle navigation
     if result.get("navigate_to"):
@@ -302,13 +308,19 @@ async def handle_text(message: Message, state: FSMContext):
     """Text input during agent chat."""
     if message.text and message.text.startswith("/"):
         # Handle commands — exit chat
+        data = await state.get_data()
+        lang = data.get("agent_chat_lang", "en")
         await state.clear()
         cmd = message.text.split()[0].lower()
         if cmd in ("/menu", "/start"):
             from adapters.telegram.handlers.start import menu_command
             await menu_command(message)
         else:
-            await message.answer("Chat ended. Send the command again.")
+            await message.answer(
+                "Chat ended. Send the command again." if lang == "en"
+                else "Чат завершён. Отправь команду ещё раз.",
+                reply_markup=get_main_menu_keyboard(lang),
+            )
         return
 
     result = await _process_chat_turn(message.text, state)

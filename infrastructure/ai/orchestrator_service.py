@@ -233,7 +233,7 @@ class OrchestratorService:
         """Execute a single tool call and return the result dict."""
         try:
             args = json.loads(arguments_json)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             return {"error": "Invalid JSON arguments"}
 
         checklist = agent_state.get_checklist()

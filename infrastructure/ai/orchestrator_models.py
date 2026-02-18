@@ -220,6 +220,10 @@ class OnboardingAgentState:
             else:
                 break
 
+        # Safety: never wipe all messages — keep at least the last 4
+        if cut_at >= len(self.messages):
+            cut_at = max(0, len(self.messages) - 4)
+
         self.messages = self.messages[cut_at:]
 
 

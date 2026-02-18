@@ -1147,12 +1147,15 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             try:
                 from infrastructure.database.supabase_client import supabase, run_sync
 
+                tg_id_strs = [str(t) for t in tg_ids]
+
                 @run_sync
                 def _get_user_info():
                     resp = (
                         supabase.table("users")
                         .select("platform_user_id, display_name, first_name, username")
                         .eq("platform", "telegram")
+                        .in_("platform_user_id", tg_id_strs)
                         .execute()
                     )
                     return resp.data or []
@@ -1199,7 +1202,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
          hx-include="this">
 </div>
 <div class="card" style="padding:0">
-{rows if rows else '<div class="muted" style="padding:20px;text-align:center">No conversations yet</div>'}
+{rows if rows else ('<div class="muted" style="padding:20px;text-align:center">No results for "' + _esc(q) + '"</div>' if q else '<div class="muted" style="padding:20px;text-align:center">No conversations yet</div>')}
 </div>"""
         return web.Response(text=html, content_type="text/html")
 
@@ -1309,7 +1312,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 )
 
         # Pagination
-        total_pages = (total + per_page - 1) // per_page if total else 1
+        total_pages = max(1, (total + per_page - 1) // per_page) if total else 0
         pagination = ""
         if total_pages > 1:
             parts = []

@@ -6,16 +6,18 @@ Optimized for fast, friendly onboarding.
 import os
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from typing import List
+from typing import List, Optional
 from core.domain.constants import INTERESTS, GOALS
 
 
 # === AI-DRIVEN UI ===
 
 def build_ai_keyboard(options: List[str], ui_type: str = "inline_choice",
-                      callback_prefix: str = "ai_choice") -> InlineKeyboardMarkup:
+                      callback_prefix: str = "ai_choice") -> Optional[InlineKeyboardMarkup]:
     """Build a keyboard from AI-chosen options.
-    Returns InlineKeyboardMarkup with callback_data = prefix:index."""
+    Returns InlineKeyboardMarkup with callback_data = prefix:index, or None if no options."""
+    if not options:
+        return None
     builder = InlineKeyboardBuilder()
     for i, label in enumerate(options[:6]):
         builder.button(text=label, callback_data=f"{callback_prefix}:{i}")
