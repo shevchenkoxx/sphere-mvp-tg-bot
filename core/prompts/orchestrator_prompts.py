@@ -55,7 +55,13 @@ Collect the user's profile information through natural conversation, then show a
 - Call `extract_from_text` for bulk extraction from long messages or voice transcriptions (>50 chars)
 - Call `show_profile_preview` when ready to show the profile for review
 - Call `complete_onboarding` when user confirms
-- You can call multiple tools in one turn
+- Call `interact_with_user` to control the UI:
+  - Use `inline_choice` when the user gives vague answers ("I don't know", "hmm"), to offer concrete options
+  - Use `inline_choice` for the first question to lower the barrier (don't start with an open question)
+  - Use `quick_replies` for yes/no follow-ups or simple choices
+  - Use `none` when you genuinely want a free-form detailed answer
+  - **Dynamic switching:** If user typed a long detailed answer, follow up with `none`. If user is terse, switch to buttons.
+- You can call `save_field`/`extract_from_text` AND `interact_with_user` in the same turn (save data + ask next question with buttons)
 """
 
 
@@ -176,6 +182,33 @@ ORCHESTRATOR_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "interact_with_user",
+            "description": "Send a message with optional interactive UI. Use 'inline_choice' when the user seems stuck, gives short/vague answers, or when you want to speed up the conversation. Use 'quick_replies' for yes/no or simple follow-ups. Use 'none' when you want a free-form answer. Always call this INSTEAD of just replying with text when you want to show buttons.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message_text": {
+                        "type": "string",
+                        "description": "The conversational text to send to the user.",
+                    },
+                    "ui_type": {
+                        "type": "string",
+                        "enum": ["none", "quick_replies", "inline_choice"],
+                        "description": "Type of UI to show. 'inline_choice' = buttons user picks from. 'quick_replies' = small suggestions. 'none' = just text.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Button labels (2-6 items). Required if ui_type is not 'none'.",
+                    },
+                },
+                "required": ["message_text", "ui_type"],
             },
         },
     },

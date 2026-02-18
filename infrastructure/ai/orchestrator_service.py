@@ -26,6 +26,7 @@ from infrastructure.ai.orchestrator_models import (
     OnboardingAgentState,
     OrchestratorResponse,
     ProfileChecklist,
+    UIInstruction,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,7 @@ class OrchestratorService:
             show_profile = False
             is_complete = False
             keyboard_hint = None
+            ui_instruction: Optional[UIInstruction] = None
 
             if assistant_msg.tool_calls:
                 for tool_call in assistant_msg.tool_calls:
@@ -122,6 +124,14 @@ class OrchestratorService:
                         keyboard_hint = "confirm"
                     elif result.get("action") == "complete":
                         is_complete = True
+                    elif result.get("action") == "interact":
+                        ui_type = result.get("ui_type", "none")
+                        options = result.get("options", [])
+                        if ui_type != "none" and options:
+                            ui_instruction = UIInstruction(
+                                ui_type=ui_type,
+                                options=options[:6],
+                            )
 
                 # Store assistant message with tool calls
                 agent_state.messages.append({
@@ -145,9 +155,23 @@ class OrchestratorService:
                         "content": json.dumps(tool_results[i]),
                     })
 
-                # Skip follow-up API call if we're showing profile or completing
-                if show_profile or is_complete:
-                    reply_text = assistant_msg.content or ""
+                # Skip follow-up API call if we're showing profile, completing, or interact_with_user
+                if show_profile or is_complete or ui_instruction:
+                    # For interact_with_user, prefer the tool's message_text
+                    if ui_instruction:
+                        # Find the interact_with_user tool call args for its message_text
+                        for tc in assistant_msg.tool_calls:
+                            if tc.function.name == "interact_with_user":
+                                try:
+                                    iargs = json.loads(tc.function.arguments)
+                                    reply_text = iargs.get("message_text", assistant_msg.content or "")
+                                except Exception:
+                                    reply_text = assistant_msg.content or ""
+                                break
+                        else:
+                            reply_text = assistant_msg.content or ""
+                    else:
+                        reply_text = assistant_msg.content or ""
                     if reply_text:
                         agent_state.messages.append({"role": "assistant", "content": reply_text})
                 else:
@@ -189,6 +213,7 @@ class OrchestratorService:
                 show_profile=show_profile,
                 is_complete=is_complete,
                 keyboard_hint=keyboard_hint,
+                ui=ui_instruction,
             )
 
         except Exception as e:
@@ -233,6 +258,13 @@ class OrchestratorService:
             agent_state.phase = "complete"
             agent_state.set_checklist(checklist)
             return {"action": "complete", "status": "ok"}
+
+        elif tool_name == "interact_with_user":
+            return {
+                "action": "interact",
+                "ui_type": args.get("ui_type", "none"),
+                "options": args.get("options", []),
+            }
 
         else:
             return {"error": f"Unknown tool: {tool_name}"}

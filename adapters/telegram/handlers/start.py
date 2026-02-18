@@ -933,6 +933,16 @@ async def vibe_check_entry(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "agent_chat")
+async def agent_chat_entry(callback: CallbackQuery, state: FSMContext):
+    """Start AI agent chat from main menu."""
+    await callback.answer()
+    lang = detect_lang_callback(callback)
+
+    from adapters.telegram.handlers.agent_chat import start_agent_chat
+    await start_agent_chat(callback, state, lang=lang)
+
+
 @router.callback_query(F.data == "toggle_matching_mode")
 async def toggle_matching_mode(callback: CallbackQuery):
     """Toggle between event and city matching modes"""
@@ -1036,3 +1046,44 @@ async def catch_stuck_user(message: Message, state: FSMContext):
         # User completed onboarding but sent random text
         text = "What would you like to do?" if lang == "en" else "Что делаем?"
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+
+@router.message(StateFilter(None))
+async def catch_any_content(message: Message, state: FSMContext):
+    """Catch-all for non-text content (photos, stickers, voice, video, etc.)
+    when user has no active FSM state. Routes to a helpful response."""
+    lang = detect_lang(message)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(message.from_user.id)
+    )
+
+    if not user or not user.onboarding_completed:
+        text = (
+            "Похоже ты не завершил регистрацию.\n"
+            "Нажми /start чтобы начать заново!"
+        ) if lang == "ru" else (
+            "Looks like you haven't finished setting up.\n"
+            "Tap /start to begin!"
+        )
+        await message.answer(text)
+        return
+
+    # Determine what type was sent and guide the user
+    if message.voice:
+        hint = ("Чтобы обновить профиль голосом, нажми ✏️ Edit в профиле."
+                if lang == "ru" else
+                "To update your profile by voice, tap Edit in your profile.")
+    elif message.photo:
+        hint = ("Чтобы обновить фото, нажми ✏️ Edit в профиле."
+                if lang == "ru" else
+                "To update your photo, tap Edit in your profile.")
+    elif message.sticker:
+        hint = "😄" if lang == "ru" else "😄"
+        await message.answer(hint)
+        return
+    else:
+        hint = ("Что делаем?" if lang == "ru" else "What would you like to do?")
+
+    await message.answer(hint, reply_markup=get_main_menu_keyboard(lang))

@@ -17,7 +17,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from adapters.telegram.keyboards import get_main_menu_keyboard
+from adapters.telegram.keyboards import get_main_menu_keyboard, build_ai_keyboard
 from adapters.telegram.keyboards.inline import get_agent_confirm_keyboard
 from adapters.telegram.loader import (
     bot,
@@ -77,6 +77,30 @@ def _on_background_task_done(task: asyncio.Task, user_id: str = "unknown"):
     exc = task.exception()
     if exc:
         logger.error(f"Background task failed for user {user_id}: {exc}", exc_info=exc)
+
+
+async def _send_orchestrator_response(message: Message, state: FSMContext, response):
+    """Send orchestrator response text with optional AI-chosen keyboard."""
+    keyboard = None
+    if response.ui and response.ui.options and response.ui.ui_type != "none":
+        keyboard = build_ai_keyboard(
+            options=response.ui.options,
+            ui_type=response.ui.ui_type,
+        )
+        # Store options in FSM so callback handler can map index → label
+        await state.update_data(ai_choice_options=response.ui.options)
+
+    text = response.text
+    if response.ui and response.ui.ui_type != "none":
+        # If interact_with_user was called, its message_text may differ from response.text
+        # The orchestrator puts the tool's text into response.text after follow-up
+        pass
+
+    if text:
+        await message.answer(text, reply_markup=keyboard)
+    elif keyboard:
+        # AI returned only buttons with no text — shouldn't happen but handle it
+        await message.answer("Choose one:", reply_markup=keyboard)
 
 
 async def _handle_command_in_fsm(message: Message, state: FSMContext) -> bool:
@@ -156,8 +180,8 @@ async def start_agent_onboarding(
 
     if response.show_profile:
         await _show_profile_preview(message, state, agent_state)
-    elif response.text:
-        await message.answer(response.text)
+    elif response.text or (response.ui and response.ui.options):
+        await _send_orchestrator_response(message, state, response)
     else:
         # Fallback greeting if LLM returned nothing
         fallback = (
@@ -197,8 +221,8 @@ async def handle_text(message: Message, state: FSMContext):
         await _show_profile_preview(message, state, agent_state)
         return
 
-    if response.text:
-        await message.answer(response.text)
+    if response.text or (response.ui and response.ui.options):
+        await _send_orchestrator_response(message, state, response)
     else:
         lang = agent_state.lang
         await message.answer(
@@ -265,8 +289,8 @@ async def handle_voice(message: Message, state: FSMContext):
             await _show_profile_preview(message, state, agent_state)
             return
 
-        if response.text:
-            await message.answer(response.text)
+        if response.text or (response.ui and response.ui.options):
+            await _send_orchestrator_response(message, state, response)
         else:
             await message.answer(
                 "Got it! What else can you tell me?" if lang == "en"
@@ -308,6 +332,58 @@ async def handle_photo(message: Message, state: FSMContext):
         await message.answer(text)
     except Exception as e:
         logger.error(f"Failed to save photo during agent onboarding: {e}")
+
+
+# ------------------------------------------------------------------
+# AI-generated button callbacks
+# ------------------------------------------------------------------
+
+@router.callback_query(AgentOnboarding.in_conversation, F.data.startswith("ai_choice:"))
+async def handle_ai_choice(callback: CallbackQuery, state: FSMContext):
+    """Handle user pressing an AI-generated button."""
+    await callback.answer()
+
+    data = await state.get_data()
+    agent_state = OnboardingAgentState.from_fsm_data(data)
+    options = data.get("ai_choice_options", [])
+
+    # Map callback index to label text
+    try:
+        idx = int(callback.data.split(":")[1])
+        chosen_label = options[idx] if idx < len(options) else callback.data
+    except (ValueError, IndexError):
+        chosen_label = callback.data
+
+    # Remove the keyboard from the message
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    # Feed the chosen option back to the orchestrator as a user message
+    response = await orchestrator_service.process_turn(
+        agent_state,
+        user_message=f"User selected: {chosen_label}",
+        message_type="text",
+    )
+
+    await state.update_data(**agent_state.to_dict())
+
+    if response.is_complete:
+        await _do_complete_onboarding(callback.message, state, agent_state, from_user=callback.from_user)
+        return
+
+    if response.show_profile:
+        await _show_profile_preview(callback.message, state, agent_state)
+        return
+
+    if response.text or (response.ui and response.ui.options):
+        await _send_orchestrator_response(callback.message, state, response)
+    else:
+        lang = agent_state.lang
+        await callback.message.answer(
+            "Got it! Tell me more." if lang == "en" else "Понял! Расскажи ещё."
+        )
 
 
 # ------------------------------------------------------------------

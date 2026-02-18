@@ -224,6 +224,14 @@ class OnboardingAgentState:
 
 
 @dataclass
+class UIInstruction:
+    """AI-chosen UI element to render alongside the text response."""
+    ui_type: str = "none"  # "none" | "quick_replies" | "inline_choice"
+    options: List[str] = field(default_factory=list)
+    callback_prefix: str = "ai_choice"  # prefix for callback_data
+
+
+@dataclass
 class OrchestratorResponse:
     """What the orchestrator returns to the Telegram handler."""
 
@@ -231,3 +239,4 @@ class OrchestratorResponse:
     show_profile: bool = False
     is_complete: bool = False
     keyboard_hint: Optional[str] = None  # "confirm" | "none" | None
+    ui: Optional[UIInstruction] = None  # AI-chosen UI element

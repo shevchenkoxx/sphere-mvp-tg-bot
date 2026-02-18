@@ -59,6 +59,8 @@ from adapters.telegram.keyboards.inline import (
     get_vibe_waiting_keyboard,
     # Agent onboarding
     get_agent_confirm_keyboard,
+    # AI-driven UI
+    build_ai_keyboard,
 )
 
 __all__ = [
@@ -122,4 +124,6 @@ __all__ = [
     "get_vibe_waiting_keyboard",
     # Agent onboarding
     "get_agent_confirm_keyboard",
+    # AI-driven UI
+    "build_ai_keyboard",
 ]

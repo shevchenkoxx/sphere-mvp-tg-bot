@@ -21,6 +21,7 @@ from infrastructure.ai.meetup_ai_service import MeetupAIService
 from infrastructure.ai.orchestrator_service import OrchestratorService
 from infrastructure.database.speed_dating_repository import SpeedDatingRepository
 from infrastructure.database.meetup_repository import MeetupRepository
+from infrastructure.database.conversation_log_repository import ConversationLogRepository
 
 # Core services
 from core.services import UserService, EventService, MatchingService
@@ -51,6 +52,7 @@ orchestrator_service = OrchestratorService()
 # === ADDITIONAL REPOSITORIES ===
 speed_dating_repo = SpeedDatingRepository()
 meetup_repo = MeetupRepository()
+conv_log_repo = ConversationLogRepository()
 
 
 # === BUSINESS SERVICES ===

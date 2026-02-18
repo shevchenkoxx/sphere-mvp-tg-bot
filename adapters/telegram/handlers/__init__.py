@@ -1,5 +1,5 @@
 from adapters.telegram.config import ONBOARDING_VERSION
-from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check
+from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check, agent_chat
 
 # Build list of onboarding routers based on config
 # Audio mode includes v2 router because users can switch to text mode
@@ -33,6 +33,7 @@ routers = [
     *personalization_routers,  # Post-onboarding personalization - before start.py
     profile_edit.router,  # Profile editing - before start.py
     sphere_city.router,   # Sphere City - before start.py
+    agent_chat.router,    # Agent Chat - has FSM states (AgentChatStates), must be before start.py
     vibe_check.router,    # Vibe Check - has FSM states (VibeCheckStates), must be before start.py
     meetup.router,        # Meetup proposals - has FSM states, must be before start.py
     matches.router,       # Matches - has FSM states (MatchFeedbackStates), must be before start.py

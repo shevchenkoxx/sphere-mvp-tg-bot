@@ -12,9 +12,10 @@ import secrets
 import sys
 from aiohttp import web
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo
+from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo, conv_log_repo
 from adapters.telegram.handlers import routers
-from adapters.telegram.middleware import ThrottlingMiddleware
+from adapters.telegram.middleware import ThrottlingMiddleware, ConversationLoggingMiddleware, ContentTypeMiddleware
+from adapters.telegram.outgoing_logger import install_outgoing_logger
 from adapters.telegram.web.stats import create_stats_app
 from config.features import features
 
@@ -46,7 +47,7 @@ RETRY_DELAY = 10  # seconds
 async def run_web_server(stats_token: str):
     """Run aiohttp stats dashboard alongside the bot."""
     port = int(os.environ.get("PORT", 8080))
-    app = create_stats_app(user_repo, stats_token, bot, user_service, match_repo, event_repo)
+    app = create_stats_app(user_repo, stats_token, bot, user_service, match_repo, event_repo, conv_log_repo)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
@@ -63,10 +64,19 @@ async def main():
     for key, value in features.to_dict().items():
         logger.info(f"  {key}: {value}")
 
-    # Register rate limiting middleware
+    # Register middlewares
     dp.message.middleware(ThrottlingMiddleware())
     dp.callback_query.middleware(ThrottlingMiddleware())
-    logger.info("Rate limiting middleware registered")
+
+    conv_logging = ConversationLoggingMiddleware(conv_log_repo)
+    dp.message.middleware(conv_logging)
+    dp.callback_query.middleware(conv_logging)
+
+    dp.message.middleware(ContentTypeMiddleware())
+
+    install_outgoing_logger(bot, conv_log_repo)
+
+    logger.info("Middlewares registered (throttle + conv logging + content type + outgoing)")
 
     # Register Telegram routers
     for router in routers:

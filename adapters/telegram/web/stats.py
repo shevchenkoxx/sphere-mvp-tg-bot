@@ -102,12 +102,40 @@ textarea { resize: vertical; min-height: 80px; font-family: inherit; }
 .expand-row td { padding: 0; }
 .expand-row .detail { margin: 0; border-radius: 0; border-left: 3px solid #1f6feb; }
 
+/* chat bubbles */
+.chat-container { display: flex; flex-direction: column; gap: 6px; padding: 12px; max-height: 70vh;
+                  overflow-y: auto; }
+.chat-bubble { max-width: 75%; padding: 8px 12px; border-radius: 12px; font-size: .88em;
+               word-break: break-word; line-height: 1.4; position: relative; }
+.chat-bubble .meta { font-size: .72em; color: #8b949e; margin-top: 3px; }
+.chat-bubble.incoming { align-self: flex-start; background: #1f6feb; color: #fff;
+                        border-bottom-left-radius: 4px; }
+.chat-bubble.incoming .meta { color: rgba(255,255,255,.6); }
+.chat-bubble.outgoing { align-self: flex-end; background: #238636; color: #fff;
+                        border-bottom-right-radius: 4px; }
+.chat-bubble.outgoing .meta { color: rgba(255,255,255,.6); }
+.chat-bubble.callback { align-self: flex-start; background: #30363d; color: #e6edf3;
+                        border-bottom-left-radius: 4px; font-size: .82em; }
+.chat-date-sep { text-align: center; color: #8b949e; font-size: .78em; margin: 8px 0; }
+.chat-header { display: flex; justify-content: space-between; align-items: center;
+               padding: 10px 16px; border-bottom: 1px solid #30363d; }
+.user-list-item { display: flex; justify-content: space-between; align-items: center;
+                  padding: 10px 14px; border-bottom: 1px solid #21262d; cursor: pointer;
+                  transition: background .15s; }
+.user-list-item:hover { background: #1c2128; }
+.user-list-item .name { font-weight: 500; }
+.user-list-item .preview { color: #8b949e; font-size: .82em; overflow: hidden;
+                           text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+.user-list-item .time { color: #8b949e; font-size: .78em; white-space: nowrap; }
+
 /* responsive */
 @media (max-width: 700px) {
   .detail-grid { grid-template-columns: 1fr; }
   .grid { grid-template-columns: 1fr; }
   .nav { gap: 2px; }
   .nav a { padding: 5px 10px; font-size: .82em; }
+  .chat-bubble { max-width: 90%; }
+  .user-list-item .preview { max-width: 200px; }
 }
 """
 
@@ -119,6 +147,7 @@ def _shell_html(token: str, active_tab: str = "overview") -> str:
         ("users", "Users"),
         ("events", "Events"),
         ("matches", "Matches"),
+        ("conversations", "Conversations"),
         ("broadcast", "Broadcast"),
     ]
     nav_links = ""
@@ -193,7 +222,7 @@ def _list_to_str(val) -> str:
 # ---------------------------------------------------------------------------
 
 def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
-                     match_repo=None, event_repo=None) -> web.Application:
+                     match_repo=None, event_repo=None, conv_log_repo=None) -> web.Application:
     """Create aiohttp app with admin dashboard routes."""
 
     def _check_token(request: web.Request) -> bool:
@@ -1089,6 +1118,234 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
 </div>"""
         return web.Response(text=html, content_type="text/html")
 
+    # === CONVERSATIONS TAB ===
+    async def handle_conversations(request: web.Request) -> web.Response:
+        if not _check_token(request):
+            return web.Response(text="Unauthorized", status=401)
+
+        if not conv_log_repo:
+            return web.Response(
+                text='<div class="card muted">Conversation logging not configured</div>',
+                content_type="text/html",
+            )
+
+        q = request.query.get("q", "").strip()
+
+        try:
+            active_users = await conv_log_repo.get_active_users(limit=80, hours=168)
+        except Exception as e:
+            logger.error(f"Conversations query failed: {e}")
+            return web.Response(
+                text=f'<div class="card">DB error: {_esc(str(e))}</div>',
+                content_type="text/html",
+            )
+
+        # Build a user-info lookup from the users table
+        tg_ids = [u["telegram_user_id"] for u in active_users]
+        user_map: dict[int, dict] = {}
+        if tg_ids:
+            try:
+                from infrastructure.database.supabase_client import supabase, run_sync
+
+                @run_sync
+                def _get_user_info():
+                    resp = (
+                        supabase.table("users")
+                        .select("platform_user_id, display_name, first_name, username")
+                        .eq("platform", "telegram")
+                        .execute()
+                    )
+                    return resp.data or []
+
+                for u in await _get_user_info():
+                    pid = u.get("platform_user_id")
+                    if pid:
+                        user_map[int(pid)] = u
+            except Exception:
+                pass
+
+        rows = ""
+        for au in active_users:
+            tgid = au["telegram_user_id"]
+            info = user_map.get(tgid, {})
+            name = info.get("display_name") or info.get("first_name") or str(tgid)
+            uname = info.get("username") or ""
+            count = au.get("message_count", "")
+            last = _fmt_dt(au.get("last_active"))
+
+            # Apply search filter
+            if q and q.lower() not in f"{name} {uname} {tgid}".lower():
+                continue
+
+            rows += (
+                f'<div class="user-list-item" '
+                f'hx-get="/stats/conversation/{tgid}?token={stats_token}" '
+                f'hx-target="#content">'
+                f'<div><div class="name">{_esc(name)}'
+                f'{(" (@" + _esc(uname) + ")") if uname else ""}</div>'
+                f'<div class="preview">{count} messages</div></div>'
+                f'<div class="time">{last}</div>'
+                f'</div>'
+            )
+
+        html = f"""
+<div class="search-bar">
+  <span class="search-icon">&#128269;</span>
+  <input type="search" name="q" placeholder="Search by name, username, or TG ID..."
+         value="{_esc(q)}"
+         hx-get="/stats/conversations?token={stats_token}"
+         hx-trigger="keyup changed delay:300ms"
+         hx-target="#content"
+         hx-include="this">
+</div>
+<div class="card" style="padding:0">
+{rows if rows else '<div class="muted" style="padding:20px;text-align:center">No conversations yet</div>'}
+</div>"""
+        return web.Response(text=html, content_type="text/html")
+
+    # === SINGLE USER CONVERSATION ===
+    async def handle_user_conversation(request: web.Request) -> web.Response:
+        if not _check_token(request):
+            return web.Response(text="Unauthorized", status=401)
+
+        if not conv_log_repo:
+            return web.Response(
+                text='<div class="card muted">Not configured</div>',
+                content_type="text/html",
+            )
+
+        tgid = int(request.match_info["tgid"])
+        page = int(request.query.get("page", "0"))
+        per_page = 150
+
+        # Fetch messages
+        try:
+            messages = await conv_log_repo.get_user_conversation(
+                tgid, limit=per_page, offset=page * per_page
+            )
+            total = await conv_log_repo.get_message_count(tgid)
+        except Exception as e:
+            logger.error(f"Conversation fetch failed: {e}")
+            return web.Response(
+                text=f'<div class="card">Error: {_esc(str(e))}</div>',
+                content_type="text/html",
+            )
+
+        # User info
+        user_name = str(tgid)
+        try:
+            from infrastructure.database.supabase_client import supabase, run_sync
+
+            @run_sync
+            def _get_name():
+                resp = (
+                    supabase.table("users")
+                    .select("display_name, first_name, username")
+                    .eq("platform_user_id", str(tgid))
+                    .execute()
+                )
+                return resp.data[0] if resp.data else None
+
+            info = await _get_name()
+            if info:
+                user_name = info.get("display_name") or info.get("first_name") or str(tgid)
+                uname = info.get("username")
+                if uname:
+                    user_name += f" (@{uname})"
+        except Exception:
+            pass
+
+        # Build chat bubbles
+        bubbles = ""
+        last_date = ""
+        for msg in messages:
+            dt = _parse_dt(msg.get("created_at"))
+            if dt:
+                date_str = dt.strftime("%Y-%m-%d")
+                if date_str != last_date:
+                    bubbles += f'<div class="chat-date-sep">{date_str}</div>'
+                    last_date = date_str
+                time_str = dt.strftime("%H:%M:%S")
+            else:
+                time_str = ""
+
+            direction = msg.get("direction", "in")
+            msg_type = msg.get("message_type", "text")
+            content = msg.get("content") or ""
+            callback_data = msg.get("callback_data")
+            api_method = msg.get("api_method")
+            fsm_state = msg.get("fsm_state")
+            has_media = msg.get("has_media", False)
+
+            if direction == "in" and msg_type == "callback":
+                bubbles += (
+                    f'<div class="chat-bubble callback">'
+                    f'[button] {_esc(callback_data or "?")}'
+                    f'<div class="meta">{time_str}'
+                    f'{(" | state: " + _esc(fsm_state)) if fsm_state else ""}</div>'
+                    f'</div>'
+                )
+            elif direction == "in":
+                type_badge = ""
+                if msg_type != "text":
+                    type_badge = f'<span class="badge badge-blue" style="font-size:.7em;margin-right:4px">{_esc(msg_type)}</span>'
+                bubbles += (
+                    f'<div class="chat-bubble incoming">'
+                    f'{type_badge}{_esc(content)}'
+                    f'<div class="meta">{time_str}'
+                    f'{(" | state: " + _esc(fsm_state)) if fsm_state else ""}</div>'
+                    f'</div>'
+                )
+            else:  # out
+                method_hint = ""
+                if api_method and api_method != "SendMessage":
+                    method_hint = f'<span class="badge badge-green" style="font-size:.7em;margin-right:4px">{_esc(api_method)}</span>'
+                bubbles += (
+                    f'<div class="chat-bubble outgoing">'
+                    f'{method_hint}{_esc(content)}'
+                    f'{"[media]" if has_media and not content else ""}'
+                    f'<div class="meta">{time_str}</div>'
+                    f'</div>'
+                )
+
+        # Pagination
+        total_pages = (total + per_page - 1) // per_page if total else 1
+        pagination = ""
+        if total_pages > 1:
+            parts = []
+            if page > 0:
+                parts.append(
+                    f'<a class="btn btn-sm" hx-get="/stats/conversation/{tgid}?token={stats_token}&page={page - 1}" '
+                    f'hx-target="#content">Newer</a>'
+                )
+            parts.append(f'<span class="muted">Page {page + 1}/{total_pages} ({total} msgs)</span>')
+            if page < total_pages - 1:
+                parts.append(
+                    f'<a class="btn btn-sm" hx-get="/stats/conversation/{tgid}?token={stats_token}&page={page + 1}" '
+                    f'hx-target="#content">Older</a>'
+                )
+            pagination = '<div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px">' + "".join(parts) + "</div>"
+
+        html = f"""
+<div class="card" style="padding:0">
+  <div class="chat-header">
+    <div>
+      <a class="btn btn-sm" hx-get="/stats/conversations?token={stats_token}" hx-target="#content"
+         onclick="document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
+                  document.querySelectorAll('.nav a')[4].classList.add('active')">
+        Back</a>
+      <strong style="margin-left:8px">{_esc(user_name)}</strong>
+      <span class="muted" style="margin-left:8px">TG: {tgid}</span>
+    </div>
+    <span class="muted">{total} messages</span>
+  </div>
+  <div class="chat-container">
+    {bubbles if bubbles else '<div class="muted" style="padding:20px;text-align:center">No messages</div>'}
+  </div>
+  {pagination}
+</div>"""
+        return web.Response(text=html, content_type="text/html")
+
     # === CSV EXPORT ===
     async def handle_export_users(request: web.Request) -> web.Response:
         if not _check_token(request):
@@ -1133,6 +1390,8 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     app.router.add_get("/stats/event/{id}", handle_event_detail)
     app.router.add_get("/stats/matches", handle_matches)
     app.router.add_get("/stats/match/{id}", handle_match_detail)
+    app.router.add_get("/stats/conversations", handle_conversations)
+    app.router.add_get("/stats/conversation/{tgid}", handle_user_conversation)
     app.router.add_get("/stats/broadcast", handle_broadcast_form)
     app.router.add_post("/stats/broadcast", handle_broadcast_send)
     app.router.add_get("/stats/export/users", handle_export_users)

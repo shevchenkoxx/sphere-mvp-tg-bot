@@ -112,6 +112,11 @@ class AgentOnboarding(StatesGroup):
     confirming_profile = State()  # User reviewing profile preview
 
 
+class AgentChatStates(StatesGroup):
+    """FSM states for post-onboarding AI agent chat"""
+    chatting = State()  # Main conversation loop
+
+
 class VibeCheckStates(StatesGroup):
     """FSM states for Vibe Check AI compatibility game"""
     interviewing = State()        # AI agent is interviewing user

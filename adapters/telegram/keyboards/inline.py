@@ -10,6 +10,22 @@ from typing import List
 from core.domain.constants import INTERESTS, GOALS
 
 
+# === AI-DRIVEN UI ===
+
+def build_ai_keyboard(options: List[str], ui_type: str = "inline_choice",
+                      callback_prefix: str = "ai_choice") -> InlineKeyboardMarkup:
+    """Build a keyboard from AI-chosen options.
+    Returns InlineKeyboardMarkup with callback_data = prefix:index."""
+    builder = InlineKeyboardBuilder()
+    for i, label in enumerate(options[:6]):
+        builder.button(text=label, callback_data=f"{callback_prefix}:{i}")
+    if ui_type == "quick_replies":
+        builder.adjust(min(len(options), 3))
+    else:
+        builder.adjust(min(len(options), 2))
+    return builder.as_markup()
+
+
 # === ONBOARDING ===
 
 def get_skip_or_voice_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
@@ -254,14 +270,14 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
         builder.button(text="💫 Матчи", callback_data="my_matches")
         builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
         builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
-        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+        builder.button(text="💬 Чат с Sphere", callback_data="agent_chat")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🏙️ Sphere City", callback_data="sphere_city")
         builder.button(text="💫 Matches", callback_data="my_matches")
         builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
         builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
-        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+        builder.button(text="💬 Chat with Sphere", callback_data="agent_chat")
     builder.adjust(2, 2, 2)
     return builder.as_markup()
 
