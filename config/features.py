@@ -13,6 +13,10 @@ class Features:
     # Options: "v1" (buttons), "v2" (conversation), "audio" (voice message), "intent" (V1.1 intent-based)
     ONBOARDING_MODE: str = os.getenv("ONBOARDING_MODE", "intent")
 
+    # === EVENTS ===
+    # When False: event deep links, event menu items, and event router are disabled
+    EVENTS_ENABLED: bool = os.getenv("EVENTS_ENABLED", "false").lower() == "true"
+
     # === MATCHING ===
     MATCHING_ENABLED: bool = os.getenv("MATCHING_ENABLED", "true").lower() == "true"
     AUTO_MATCH_ON_JOIN: bool = os.getenv("AUTO_MATCH_ON_JOIN", "true").lower() == "true"

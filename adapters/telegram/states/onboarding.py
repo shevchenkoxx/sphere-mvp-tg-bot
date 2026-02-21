@@ -112,6 +112,11 @@ class AgentOnboarding(StatesGroup):
     confirming_profile = State()  # User reviewing profile preview
 
 
+class ProfileExpansion(StatesGroup):
+    """FSM states for post-onboarding profile expansion (no matches → ask more → rematch)"""
+    in_conversation = State()     # Agent asking targeted questions to broaden profile
+
+
 class AgentChatStates(StatesGroup):
     """FSM states for post-onboarding AI agent chat"""
     chatting = State()  # Main conversation loop

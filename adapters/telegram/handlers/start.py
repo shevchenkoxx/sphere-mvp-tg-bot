@@ -94,8 +94,9 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         await start_command(message, state)
         return
 
-    # Check if deep link is for event
-    if args and args.startswith("event_"):
+    # Check if deep link is for event (only when events are enabled)
+    from config.features import Features
+    if args and args.startswith("event_") and Features.EVENTS_ENABLED:
         raw_code = args.replace("event_", "")
 
         # Parse referral: event_SXN_ref_44420077 → event=SXN, referrer=44420077
@@ -268,20 +269,18 @@ async def help_command(message: Message):
     lang = detect_lang(message)
     if lang == "ru":
         text = (
-            "<b>Sphere</b> — умные знакомства на ивентах\n\n"
-            "📱 Сканируй QR → получай матчи → общайся\n\n"
+            "<b>Sphere</b> — находит людей, которых ты хочешь встретить\n\n"
+            "Расскажи о себе → получи матчи → общайся\n\n"
             "/start — начать\n"
             "/menu — меню\n"
-            "/demo — интерактивный тур\n"
             "/reset — сбросить профиль"
         )
     else:
         text = (
-            "<b>Sphere</b> — smart networking at events\n\n"
-            "📱 Scan QR → get matches → connect\n\n"
+            "<b>Sphere</b> — finds the people you want to meet\n\n"
+            "Tell us about yourself → get matches → connect\n\n"
             "/start — start\n"
             "/menu — menu\n"
-            "/demo — interactive walkthrough\n"
             "/reset — reset profile"
         )
     await message.answer(text)
@@ -565,7 +564,7 @@ async def refer_a_friend(callback: CallbackQuery):
     lang = detect_lang_callback(callback)
     user_tg_id = callback.from_user.id
 
-    bot_username = os.getenv("BOT_USERNAME", "Spheresocial_bot")
+    bot_username = os.getenv("BOT_USERNAME", "Matchd_bot")
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_tg_id}"
 
     if lang == "ru":
@@ -842,7 +841,12 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "my_events")
 async def show_events(callback: CallbackQuery):
-    """Show user's events with mode toggle"""
+    """Show user's events with mode toggle (only when events enabled)"""
+    from config.features import Features
+    if not Features.EVENTS_ENABLED:
+        await callback.answer("Events are not available" , show_alert=True)
+        return
+
     from adapters.telegram.keyboards.inline import get_events_keyboard
 
     lang = detect_lang_callback(callback)
@@ -886,9 +890,19 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_matches")
 async def show_matches(callback: CallbackQuery, state: FSMContext):
-    """Show matches menu — City / Global / Event"""
-    await callback.answer()
+    """Show matches — when events disabled, skip menu and go directly to global matching."""
+    from config.features import Features
+
     lang = detect_lang_callback(callback)
+
+    if not Features.EVENTS_ENABLED:
+        # Global mode: skip City/Event/Global menu, go straight to matches
+        from adapters.telegram.handlers.matches import list_matches_callback
+        await list_matches_callback(callback, match_scope="global", state=state)
+        return
+
+    # Legacy: show Event / City / Global picker
+    await callback.answer()
 
     try:
         user = await user_service.get_user_by_platform(
@@ -952,6 +966,35 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
         )
     except Exception:
         pass
+
+
+@router.callback_query(F.data == "share_bot")
+async def share_bot(callback: CallbackQuery):
+    """Show share link for inviting friends."""
+    lang = detect_lang_callback(callback)
+    from adapters.telegram.keyboards.inline import get_share_keyboard
+
+    bot_username = os.getenv("BOT_USERNAME", "Matchd_bot")
+    link = f"https://t.me/{bot_username}"
+
+    if lang == "ru":
+        text = (
+            "<b>📤 Пригласи друзей в Sphere!</b>\n\n"
+            "Чем больше интересных людей — тем лучше матчи для всех.\n\n"
+            f"Ссылка: {link}"
+        )
+    else:
+        text = (
+            "<b>📤 Invite friends to Sphere!</b>\n\n"
+            "More interesting people = better matches for everyone.\n\n"
+            f"Link: {link}"
+        )
+
+    try:
+        await callback.message.edit_text(text, reply_markup=get_share_keyboard(lang), disable_web_page_preview=True)
+    except Exception:
+        await callback.message.answer(text, reply_markup=get_share_keyboard(lang), disable_web_page_preview=True)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "vibe_check")

@@ -264,20 +264,22 @@ def get_profile_view_keyboard(match_id: str, lang: str = "en", partner_username:
 
 def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> InlineKeyboardMarkup:
     """Main menu keyboard - clean and focused"""
+    from config.features import Features
+
     builder = InlineKeyboardBuilder()
     inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
     if lang == "ru":
         builder.button(text="🔍 Найти людей", callback_data="my_matches")
         builder.button(text="🔮 Vibe Check", callback_data="vibe_check")
         builder.button(text="👤 Профиль", callback_data="my_profile")
-        builder.button(text="💬 Спросить Sphere", callback_data="agent_chat")
+        builder.button(text="📤 Пригласить друга", callback_data="share_bot")
         if pending_invitations > 0:
             builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
     else:
         builder.button(text="🔍 Find People", callback_data="my_matches")
         builder.button(text="🔮 Vibe Check", callback_data="vibe_check")
         builder.button(text="👤 Profile", callback_data="my_profile")
-        builder.button(text="💬 Ask Sphere", callback_data="agent_chat")
+        builder.button(text="📤 Invite a friend", callback_data="share_bot")
         if pending_invitations > 0:
             builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
     builder.adjust(2, 2, 1)
@@ -503,6 +505,34 @@ def get_global_menu_keyboard(match_count: int = 0, lang: str = "en") -> InlineKe
     builder.button(text=back_text, callback_data="back_to_menu")
 
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_share_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Share bot link with friends — shown after matches or from menu."""
+    from urllib.parse import quote
+    bot_username = os.getenv("BOT_USERNAME", "Matchd_bot")
+    link = f"https://t.me/{bot_username}"
+
+    builder = InlineKeyboardBuilder()
+
+    if lang == "ru":
+        share_text = quote("Sphere находит людей, которых ты хочешь встретить. Попробуй!")
+        builder.row(InlineKeyboardButton(
+            text="📤 Отправить другу",
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
+        ))
+    else:
+        share_text = quote("Sphere finds the people you actually want to meet. Try it!")
+        builder.row(InlineKeyboardButton(
+            text="📤 Share with a friend",
+            url=f"https://t.me/share/url?url={quote(link)}&text={share_text}"
+        ))
+
+    builder.row(InlineKeyboardButton(
+        text="← Menu" if lang == "en" else "← Меню",
+        callback_data="back_to_menu"
+    ))
     return builder.as_markup()
 
 
@@ -881,7 +911,7 @@ def get_vibe_share_keyboard(short_code: str, lang: str = "en", bot_username: str
     """Share vibe check link keyboard"""
     from urllib.parse import quote
     builder = InlineKeyboardBuilder()
-    username = bot_username or os.getenv("BOT_USERNAME", "Spheresocial_bot")
+    username = bot_username or os.getenv("BOT_USERNAME", "Matchd_bot")
     link = f"https://t.me/{username}?start=vibe_{short_code}"
     if lang == "ru":
         share_text = quote("Давай проверим нашу совместимость! 🔮")

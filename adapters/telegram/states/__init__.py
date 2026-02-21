@@ -13,6 +13,7 @@ from adapters.telegram.states.onboarding import (
     AgentOnboarding,
     AgentChatStates,
     VibeCheckStates,
+    ProfileExpansion,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "AgentOnboarding",
     "AgentChatStates",
     "VibeCheckStates",
+    "ProfileExpansion",
 ]

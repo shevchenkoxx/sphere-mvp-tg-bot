@@ -62,6 +62,8 @@ from adapters.telegram.keyboards.inline import (
     get_agent_confirm_keyboard,
     # AI-driven UI
     build_ai_keyboard,
+    # Share
+    get_share_keyboard,
 )
 
 __all__ = [
@@ -128,4 +130,6 @@ __all__ = [
     "get_agent_confirm_keyboard",
     # AI-driven UI
     "build_ai_keyboard",
+    # Share
+    "get_share_keyboard",
 ]

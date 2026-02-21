@@ -28,7 +28,7 @@ from adapters.telegram.loader import (
     user_service,
     voice_service,
 )
-from adapters.telegram.states.onboarding import AgentOnboarding
+from adapters.telegram.states.onboarding import AgentOnboarding, ProfileExpansion
 from config.features import Features
 from core.domain.models import MessagePlatform
 from core.prompts.audio_onboarding import WHISPER_PROMPT_EN, WHISPER_PROMPT_RU
@@ -552,7 +552,7 @@ async def _do_complete_onboarding(
     agent_state: OnboardingAgentState,
     from_user=None,
 ):
-    """Save profile to DB, generate embeddings, run matching, show menu."""
+    """Save profile to DB, generate embeddings, run matching, show results directly."""
     cl = agent_state.get_checklist()
     data = await state.get_data()
     lang = agent_state.lang
@@ -616,7 +616,7 @@ async def _do_complete_onboarding(
             city_current=city,
             passion_text=cl.passion_text,
             connection_mode=cl.connection_mode,
-            matching_scope=cl.matching_scope or "city",
+            matching_scope=cl.matching_scope or "global",
             meeting_preference=cl.meeting_preference or "both",
             onboarding_completed=True,
         )
@@ -631,90 +631,112 @@ async def _do_complete_onboarding(
                 MessagePlatform.TELEGRAM, user_id, ai_summary=summary
             )
 
-            # Background: embeddings + matching
-            event_code = agent_state.event_code
+            # AWAIT embeddings + matching (not background) — show results immediately
             chat_id = message.chat.id
-
-            async def _background_embeddings_and_match(user_obj, ev_code, cid):
-                try:
-                    result = await embedding_service.generate_embeddings(user_obj)
-                    if result:
-                        profile_emb, interests_emb, expertise_emb = result
-                        user_repo = SupabaseUserRepository()
-                        await user_repo.update_embeddings(
-                            user_obj.id,
-                            profile_embedding=profile_emb,
-                            interests_embedding=interests_emb,
-                            expertise_embedding=expertise_emb,
-                        )
-                        logger.info(f"Agent: embeddings generated for {user_obj.id}")
-
-                        if ev_code:
-                            updated_user = await user_repo.get_by_id(user_obj.id)
-                            if updated_user and updated_user.current_event_id:
-                                matches = await matching_service.find_matches_vector(
-                                    user=updated_user,
-                                    event_id=updated_user.current_event_id,
-                                    limit=5,
-                                )
-                                if matches and cid:
-                                    from adapters.telegram.handlers.matches import (
-                                        notify_about_match,
-                                        notify_admin_new_matches,
-                                    )
-                                    user_name = updated_user.display_name or updated_user.first_name or "Someone"
-                                    for partner, result_with_id in matches[:3]:
-                                        partner_name = partner.display_name or partner.first_name or "Someone"
-                                        await notify_about_match(
-                                            user_telegram_id=cid,
-                                            partner_name=partner_name,
-                                            explanation=result_with_id.explanation,
-                                            icebreaker=result_with_id.icebreaker,
-                                            match_id=str(result_with_id.match_id),
-                                            lang=lang,
-                                            partner_username=partner.username,
-                                        )
-                                    admin_info = [
-                                        (
-                                            p.display_name or p.first_name or "?",
-                                            p.username,
-                                            r.compatibility_score if hasattr(r, "compatibility_score") else "?",
-                                            str(r.match_id),
-                                        )
-                                        for p, r in matches
-                                    ]
-                                    await notify_admin_new_matches(
-                                        user_name=user_name,
-                                        user_username=updated_user.username,
-                                        matches_info=admin_info,
-                                        event_name=ev_code,
-                                    )
-                except Exception as e:
-                    logger.error(f"Agent background task failed for {user_obj.id}: {e}", exc_info=True)
-
-            task = asyncio.create_task(
-                _background_embeddings_and_match(user, event_code, chat_id)
-            )
-            task.add_done_callback(
-                lambda t: _on_background_task_done(t, user_id=str(user.id))
+            loading_msg = await message.answer(
+                "🔍 Finding your people..." if lang == "en" else "🔍 Ищу подходящих людей..."
             )
 
-        # Handle event join
-        event_code = agent_state.event_code
-        if event_code:
-            await event_service.join_event(
-                event_code,
-                MessagePlatform.TELEGRAM,
-                user_id,
-            )
+            matches_found = []
+            try:
+                result = await embedding_service.generate_embeddings(user)
+                if result:
+                    profile_emb, interests_emb, expertise_emb = result
+                    user_repo = SupabaseUserRepository()
+                    await user_repo.update_embeddings(
+                        user.id,
+                        profile_embedding=profile_emb,
+                        interests_embedding=interests_emb,
+                        expertise_embedding=expertise_emb,
+                    )
+                    logger.info(f"Agent: embeddings generated for {user.id}")
 
-        # Done! Show menu
-        if lang == "en":
-            done_text = "🎉 Profile saved! You're all set.\n\nUse the menu to find matches and explore."
-        else:
-            done_text = "🎉 Профиль сохранён! Всё готово.\n\nИспользуй меню для поиска и знакомств."
+                    # Run global matching
+                    updated_user = await user_repo.get_by_id(user.id)
+                    if updated_user:
+                        matches_found = await matching_service.find_global_matches(
+                            user=updated_user,
+                            limit=5,
+                        ) or []
 
-        await message.answer(done_text, reply_markup=get_main_menu_keyboard(lang))
+                        # Also match event if present
+                        event_code = agent_state.event_code
+                        if event_code and updated_user.current_event_id:
+                            event_matches = await matching_service.find_matches_vector(
+                                user=updated_user,
+                                event_id=updated_user.current_event_id,
+                                limit=5,
+                            ) or []
+                            matches_found.extend(event_matches)
+            except Exception as e:
+                logger.error(f"Embeddings/matching failed for {user.id}: {e}", exc_info=True)
+
+            # Delete loading message
+            try:
+                await loading_msg.delete()
+            except Exception:
+                pass
+
+            # Handle event join
+            event_code = agent_state.event_code
+            if event_code:
+                await event_service.join_event(
+                    event_code,
+                    MessagePlatform.TELEGRAM,
+                    user_id,
+                )
+
+            # Show results
+            match_count = len(matches_found)
+
+            if match_count > 0:
+                # Notify about matches + show the match card
+                from adapters.telegram.handlers.matches import (
+                    notify_about_match,
+                    notify_admin_new_matches,
+                    show_matches as show_matches_view,
+                )
+
+                admin_info = []
+                for partner, result_with_id in matches_found[:3]:
+                    partner_name = partner.display_name or partner.first_name or "Someone"
+                    admin_info.append((
+                        partner_name,
+                        partner.username,
+                        result_with_id.compatibility_score if hasattr(result_with_id, "compatibility_score") else "?",
+                        str(result_with_id.match_id),
+                    ))
+
+                user_name = user.display_name or user.first_name or "Someone"
+                await notify_admin_new_matches(
+                    user_name=user_name,
+                    user_username=user.username,
+                    matches_info=admin_info,
+                )
+
+                done_text = (
+                    f"🎉 Found {match_count} match{'es' if match_count != 1 else ''}!"
+                    if lang == "en" else
+                    f"🎉 Найдено {match_count} {'матчей' if match_count > 1 else 'матч'}!"
+                )
+                await message.answer(done_text)
+
+                # Show first match card directly
+                await state.clear()
+                await show_matches_view(message, user.id, lang=lang, edit=False, match_scope="global")
+                return
+
+            else:
+                # No matches — store state for expansion flow
+                await state.clear()
+                await _start_expansion_flow(message, state, user, lang)
+                return
+
+        # Fallback if user fetch failed
+        await message.answer(
+            "🎉 Profile saved!" if lang == "en" else "🎉 Профиль сохранён!",
+            reply_markup=get_main_menu_keyboard(lang),
+        )
 
     except Exception as e:
         logger.error(f"Agent onboarding save error: {e}", exc_info=True)
@@ -724,3 +746,296 @@ async def _do_complete_onboarding(
         )
     finally:
         await state.clear()
+
+
+# ------------------------------------------------------------------
+# Profile Expansion Flow — "No matches? Let me learn more about you"
+# ------------------------------------------------------------------
+
+EXPANSION_PROMPT = """\
+You are Sphere — a sharp, curious friend helping someone find their people.
+
+The user just finished onboarding but we found NO matches for them (or very few). Your job: ask 2-3 targeted questions that will BROADEN their matchability. The answers will be added to their profile and matching will run again.
+
+Language: {language}
+User's name: {first_name}
+
+Current profile:
+- About: {about}
+- Looking for: {looking_for}
+- Can help with: {can_help_with}
+- Interests: {interests}
+- Profession: {profession}
+
+## Strategy
+Ask questions that reveal NEW dimensions of this person — things that create unexpected connections:
+- "What kind of conversations light you up?"
+- "Is there something you'd love to teach someone?"
+- "What's a random skill or hobby people are always surprised you have?"
+- "If you could spend a day with anyone in our community, what would you want to do?"
+
+## Rules
+- 1-2 sentences per message. Casual, warm, NOT interview-y.
+- Ask ONE question at a time.
+- After 2-3 answers, say something like "Let me search again with this!" and stop.
+- NEVER use: "leverage", "robust", "innovative", "passionate about", "like-minded"
+- Extract as much as you can from each answer.
+"""
+
+EXPANSION_QUESTIONS = [
+    "What kind of conversations get you excited? Like the ones where you lose track of time.",
+    "Is there something you'd love to teach someone — or learn from someone?",
+    "What's a random thing people are always surprised about you?",
+]
+
+
+async def _start_expansion_flow(message: Message, state: FSMContext, user, lang: str):
+    """Start the expansion flow when no/few matches are found after onboarding."""
+    if lang == "ru":
+        text = (
+            "Пока не нашёл идеальных матчей — но это не страшно!\n\n"
+            "Расскажи мне чуть больше о себе, и я поищу снова 🔍"
+        )
+    else:
+        text = (
+            "Haven't found the perfect matches yet — but that's okay!\n\n"
+            "Tell me a bit more about yourself and I'll search again 🔍"
+        )
+    await message.answer(text)
+
+    # Ask first expansion question
+    q_index = 0
+    question = EXPANSION_QUESTIONS[q_index]
+    if lang == "ru":
+        # Simple Russian translations
+        ru_questions = [
+            "Какие разговоры тебя по-настоящему увлекают? Такие, где теряешь счёт времени.",
+            "Есть что-то, чему ты хотел бы научить кого-то — или научиться у кого-то?",
+            "Что-то необычное, чему люди всегда удивляются, узнав о тебе?",
+        ]
+        question = ru_questions[q_index]
+
+    await message.answer(question)
+
+    await state.set_state(ProfileExpansion.in_conversation)
+    await state.update_data(
+        expansion_user_id=str(user.id),
+        expansion_lang=lang,
+        expansion_q_index=0,
+        expansion_answers=[],
+        expansion_platform_user_id=str(message.from_user.id) if message.from_user else "",
+    )
+
+
+@router.message(ProfileExpansion.in_conversation, F.text)
+async def handle_expansion_text(message: Message, state: FSMContext):
+    """Handle text during expansion flow."""
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        return
+
+    data = await state.get_data()
+    lang = data.get("expansion_lang", "en")
+    q_index = data.get("expansion_q_index", 0)
+    answers = data.get("expansion_answers", [])
+    user_id = data.get("expansion_user_id")
+    platform_user_id = data.get("expansion_platform_user_id", "")
+
+    # Save answer
+    answers.append(message.text)
+    q_index += 1
+
+    if q_index >= len(EXPANSION_QUESTIONS):
+        # Done collecting — merge answers into profile and rematch
+        await state.clear()
+        await _finish_expansion(message, user_id, platform_user_id, answers, lang)
+        return
+
+    # Ask next question
+    question = EXPANSION_QUESTIONS[q_index]
+    if lang == "ru":
+        ru_questions = [
+            "Какие разговоры тебя по-настоящему увлекают? Такие, где теряешь счёт времени.",
+            "Есть что-то, чему ты хотел бы научить кого-то — или научиться у кого-то?",
+            "Что-то необычное, чему люди всегда удивляются, узнав о тебе?",
+        ]
+        question = ru_questions[q_index]
+
+    await message.answer(question)
+    await state.update_data(expansion_q_index=q_index, expansion_answers=answers)
+
+
+@router.message(ProfileExpansion.in_conversation, F.voice)
+async def handle_expansion_voice(message: Message, state: FSMContext):
+    """Handle voice during expansion — transcribe and treat as text."""
+    data = await state.get_data()
+    lang = data.get("expansion_lang", "en")
+
+    status = await message.answer("🎤 ..." if lang == "en" else "🎤 ...")
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(
+            file_url, language=lang, prompt=_whisper_prompt(lang)
+        )
+        try:
+            await status.delete()
+        except Exception:
+            pass
+
+        if transcription and len(transcription) > 5:
+            # Fake a text message with the transcription
+            message.text = transcription
+            await handle_expansion_text(message, state)
+        else:
+            await message.answer(
+                "Couldn't hear that. Please try again or type." if lang == "en"
+                else "Не расслышал. Попробуй ещё раз или напиши."
+            )
+    except Exception as e:
+        logger.error(f"Expansion voice error: {e}")
+        try:
+            await status.edit_text("Please try again." if lang == "en" else "Попробуй ещё раз.")
+        except Exception:
+            pass
+
+
+async def _finish_expansion(message: Message, user_id: str, platform_user_id: str, answers: list, lang: str):
+    """Merge expansion answers into profile, regenerate embeddings, and rematch."""
+    loading = await message.answer(
+        "🔍 Searching again with your new info..." if lang == "en"
+        else "🔍 Ищу снова с новой информацией..."
+    )
+
+    try:
+        # Use LLM to extract enrichment from answers
+        from infrastructure.ai.openai_service import OpenAIService
+        ai_svc = OpenAIService()
+
+        combined_text = "\n".join(answers)
+        extraction_prompt = (
+            "Extract profile enrichment from these answers. Return JSON with any of these fields "
+            "that you can extract: interests (array), can_help_with (string), looking_for (string addition), "
+            "skills (array), passion_text (string). Only include fields with real content.\n\n"
+            f"Answers:\n{combined_text}"
+        )
+
+        import json
+        response = await ai_svc.chat(extraction_prompt)
+        enrichment = {}
+        try:
+            # Try to parse JSON from response
+            json_str = response
+            if "```" in json_str:
+                json_str = json_str.split("```")[1].strip()
+                if json_str.startswith("json"):
+                    json_str = json_str[4:].strip()
+            enrichment = json.loads(json_str)
+        except (json.JSONDecodeError, IndexError):
+            logger.warning(f"Failed to parse expansion enrichment JSON: {response[:200]}")
+
+        # Get current user
+        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, platform_user_id)
+        if not user:
+            await loading.edit_text("Something went wrong." if lang == "en" else "Что-то пошло не так.")
+            return
+
+        # Merge enrichment into profile
+        update_kwargs = {}
+        if enrichment.get("interests"):
+            current = user.interests or []
+            new_interests = list(set(current + enrichment["interests"]))[:10]
+            update_kwargs["interests"] = new_interests
+        if enrichment.get("can_help_with"):
+            current = user.can_help_with or ""
+            addition = enrichment["can_help_with"]
+            update_kwargs["can_help_with"] = f"{current}; {addition}".strip("; ")[:300]
+        if enrichment.get("looking_for"):
+            current = user.looking_for or ""
+            addition = enrichment["looking_for"]
+            update_kwargs["looking_for"] = f"{current}; {addition}".strip("; ")[:300]
+        if enrichment.get("skills"):
+            current = getattr(user, 'skills', None) or []
+            new_skills = list(set(current + enrichment["skills"]))[:10]
+            update_kwargs["skills"] = new_skills
+        if enrichment.get("passion_text"):
+            update_kwargs["passion_text"] = enrichment["passion_text"][:200]
+
+        if update_kwargs:
+            await user_service.update_user(
+                MessagePlatform.TELEGRAM, platform_user_id, **update_kwargs
+            )
+
+        # Regenerate embeddings
+        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, platform_user_id)
+        if user:
+            result = await embedding_service.generate_embeddings(user)
+            if result:
+                user_repo = SupabaseUserRepository()
+                await user_repo.update_embeddings(
+                    user.id,
+                    profile_embedding=result[0],
+                    interests_embedding=result[1],
+                    expertise_embedding=result[2],
+                )
+
+            # Rematch
+            updated_user = await user_repo.get_by_id(user.id)
+            matches_found = []
+            if updated_user:
+                matches_found = await matching_service.find_global_matches(
+                    user=updated_user, limit=5
+                ) or []
+
+            try:
+                await loading.delete()
+            except Exception:
+                pass
+
+            match_count = len(matches_found)
+            if match_count > 0:
+                from adapters.telegram.handlers.matches import show_matches as show_matches_view
+
+                done_text = (
+                    f"🎉 Found {match_count} match{'es' if match_count != 1 else ''}!"
+                    if lang == "en" else
+                    f"🎉 Нашёл {match_count} {'матчей' if match_count > 1 else 'матч'}!"
+                )
+                await message.answer(done_text)
+                await show_matches_view(message, user.id, lang=lang, edit=False, match_scope="global")
+            else:
+                if lang == "ru":
+                    text = (
+                        "Пока матчей нет — но твой профиль уже работает!\n"
+                        "Как только появятся подходящие люди, ты получишь уведомление 🔔"
+                    )
+                else:
+                    text = (
+                        "No matches yet — but your profile is live!\n"
+                        "You'll get notified as soon as someone great joins 🔔"
+                    )
+                await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+        else:
+            try:
+                await loading.delete()
+            except Exception:
+                pass
+            await message.answer(
+                "Profile updated!" if lang == "en" else "Профиль обновлён!",
+                reply_markup=get_main_menu_keyboard(lang),
+            )
+
+    except Exception as e:
+        logger.error(f"Expansion finish error: {e}", exc_info=True)
+        try:
+            await loading.delete()
+        except Exception:
+            pass
+        await message.answer(
+            "Profile updated! Check back later for matches." if lang == "en"
+            else "Профиль обновлён! Заходи позже за матчами.",
+            reply_markup=get_main_menu_keyboard(lang),
+        )
