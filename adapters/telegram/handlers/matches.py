@@ -161,9 +161,16 @@ async def show_new_matches(message: Message, matches: list, event_name: str, lan
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
-async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None, state: FSMContext = None):
-    """Show user's matches via callback, optionally filtered by event"""
+async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None, match_scope=None, state: FSMContext = None):
+    """Show user's matches via callback, optionally filtered by event or scope (city/global)"""
     lang = detect_lang(callback)
+
+    # Store scope for navigation (prev/next/back)
+    if state:
+        await state.update_data(
+            match_scope=match_scope,
+            match_event_id=str(event_id) if event_id else None
+        )
 
     user = await user_service.get_user_by_platform(
         MessagePlatform.TELEGRAM,
@@ -180,7 +187,8 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         # Store context for after photo
         await state.update_data(
             matches_index=index,
-            matches_event_id=str(event_id) if event_id else None
+            matches_event_id=str(event_id) if event_id else None,
+            matches_scope=match_scope
         )
         await state.set_state(MatchesPhotoStates.waiting_photo)
 
@@ -202,24 +210,64 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         return
 
     await callback.answer()  # Answer early to avoid Telegram timeout
-    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id, match_scope=match_scope)
 
 
-async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None):
-    """Display user's matches with detailed profiles and pagination"""
+async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None, match_scope=None):
+    """Display user's matches with detailed profiles and pagination.
+    match_scope: 'city' (event_id=NULL, city!=NULL), 'global' (event_id=NULL, city=NULL), None=all
+    """
     matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
 
     # Filter by event if specified (use str() to avoid UUID type mismatch)
     if event_id:
         event_id_str = str(event_id)
         matches = [m for m in matches if str(m.event_id) == event_id_str]
+    elif match_scope == "city":
+        matches = [m for m in matches if m.event_id is None and m.city is not None]
+    elif match_scope == "global":
+        matches = [m for m in matches if m.event_id is None and m.city is None]
 
     # If no matches, try to create them automatically
     if not matches:
         user = await user_service.get_user(user_id)
 
+        if match_scope == "city" and user and user.city_current:
+            # Auto-create city matches
+            loading_text = "🔍 Finding people in your city..." if lang == "en" else "🔍 Ищу людей в городе..."
+            if not edit:
+                status_msg = await message.answer(loading_text)
+            try:
+                await matching_service.find_city_matches(user=user, limit=5)
+                matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
+                matches = [m for m in matches if m.event_id is None and m.city is not None]
+            except Exception as e:
+                logger.error(f"City auto-matching failed for user {user_id}: {e}")
+            if not edit and 'status_msg' in locals():
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+
+        elif match_scope == "global" and user:
+            # Auto-create global matches
+            loading_text = "🔍 Searching globally..." if lang == "en" else "🔍 Ищу по всему миру..."
+            if not edit:
+                status_msg = await message.answer(loading_text)
+            try:
+                await matching_service.find_global_matches(user=user, limit=5)
+                matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
+                matches = [m for m in matches if m.event_id is None and m.city is None]
+            except Exception as e:
+                logger.error(f"Global auto-matching failed for user {user_id}: {e}")
+            if not edit and 'status_msg' in locals():
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+
         # Check if user is in an event
-        if user and user.current_event_id:
+        elif user and user.current_event_id:
             # Show loading message (only for new messages, not edits to avoid double-flash)
             loading_text = (
                 "✨ Sphere is finding your best matches..."
@@ -284,60 +332,97 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     if not matches:
         user = await user_service.get_user(user_id) if not locals().get('user') else user
 
-        # Determine specific reason
-        has_event = user and user.current_event_id
-        has_profile = user and user.bio and user.looking_for
-        participant_count = 0
-        if has_event:
-            try:
-                participants = await event_service.get_event_participants(user.current_event_id)
-                participant_count = len(participants) if participants else 0
-            except Exception:
-                pass
-
-        if lang == "ru":
-            text = "<b>💫 Твои матчи</b>\n\n"
-            if not has_event:
-                text += "Ты ещё не присоединился к ивенту.\nСканируй QR-код или присоединись через ссылку!"
-            elif participant_count <= 1:
-                text += "Пока на ивенте мало участников.\nМатчи появятся, когда присоединятся другие!"
-            elif not has_profile:
-                text += (
-                    "Профиль пока не заполнен до конца.\n\n"
-                    "💡 <b>Совет:</b> Добавь информацию — чем ищешь, чем можешь помочь. "
-                    "Это поможет найти релевантных людей!"
-                )
-            else:
-                text += (
-                    "Пока нет подходящих матчей.\n\n"
-                    "💡 Попробуй позже — новые участники присоединяются постоянно!"
-                )
-        else:
-            text = "<b>💫 Your Matches</b>\n\n"
-            if not has_event:
-                text += "You haven't joined an event yet.\nScan a QR code or join via link!"
-            elif participant_count <= 1:
-                text += "Not many people at this event yet.\nMatches will appear when others join!"
-            elif not has_profile:
-                text += (
-                    "Your profile isn't complete yet.\n\n"
-                    "💡 <b>Tip:</b> Add what you're looking for and how you can help. "
-                    "This helps find better matches!"
-                )
-            else:
-                text += (
-                    "No matches found yet.\n\n"
-                    "💡 Try again later — new people are joining all the time!"
-                )
-
-        # Create keyboard with "Add more info" button
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        btn_text = "✏️ Add more info" if lang == "en" else "✏️ Добавить инфо"
-        builder.button(text=btn_text, callback_data="edit_my_profile")
-        builder.button(text="🔄 Try again", callback_data="retry_matching")
-        builder.button(text="◀️ Menu" if lang == "en" else "◀️ Меню", callback_data="back_to_menu")
-        builder.adjust(1)
+
+        if match_scope == "city":
+            city_name = user.city_current if user else ""
+            if lang == "ru":
+                text = (
+                    f"<b>🏙️ Матчи в городе</b>\n\n"
+                    f"Пока нет матчей в {city_name or 'твоём городе'}.\n"
+                    "Как только появятся новые люди — ты получишь уведомление!"
+                )
+            else:
+                text = (
+                    f"<b>🏙️ City Matches</b>\n\n"
+                    f"No matches in {city_name or 'your city'} yet.\n"
+                    "You'll be notified when new people join!"
+                )
+            builder.button(text="✏️ Edit profile" if lang == "en" else "✏️ Редактировать", callback_data="edit_my_profile")
+            builder.button(text="📍 Change city" if lang == "en" else "📍 Сменить город", callback_data="sphere_city_change")
+            builder.button(text="◀️ Back" if lang == "en" else "◀️ Назад", callback_data="my_matches")
+            builder.adjust(1)
+
+        elif match_scope == "global":
+            if lang == "ru":
+                text = (
+                    "<b>🌍 Глобальные матчи</b>\n\n"
+                    "Пока нет глобальных матчей.\n"
+                    "Как только появятся новые люди — ты получишь уведомление!"
+                )
+            else:
+                text = (
+                    "<b>🌍 Global Matches</b>\n\n"
+                    "No global matches yet.\n"
+                    "You'll be notified when new people join!"
+                )
+            builder.button(text="✏️ Edit profile" if lang == "en" else "✏️ Редактировать", callback_data="edit_my_profile")
+            builder.button(text="◀️ Back" if lang == "en" else "◀️ Назад", callback_data="my_matches")
+            builder.adjust(1)
+
+        else:
+            # Event matches or unscoped
+            has_event = user and user.current_event_id
+            has_profile = user and user.bio and user.looking_for
+            participant_count = 0
+            if has_event:
+                try:
+                    participants = await event_service.get_event_participants(user.current_event_id)
+                    participant_count = len(participants) if participants else 0
+                except Exception:
+                    pass
+
+            if lang == "ru":
+                text = "<b>💫 Твои матчи</b>\n\n"
+                if not has_event:
+                    text += "Ты ещё не присоединился к ивенту.\nСканируй QR-код или присоединись через ссылку!"
+                elif participant_count <= 1:
+                    text += "Пока на ивенте мало участников.\nМатчи появятся, когда присоединятся другие!"
+                elif not has_profile:
+                    text += (
+                        "Профиль пока не заполнен до конца.\n\n"
+                        "💡 <b>Совет:</b> Добавь информацию — чем ищешь, чем можешь помочь. "
+                        "Это поможет найти релевантных людей!"
+                    )
+                else:
+                    text += (
+                        "Пока нет подходящих матчей.\n\n"
+                        "💡 Попробуй позже — новые участники присоединяются постоянно!"
+                    )
+            else:
+                text = "<b>💫 Your Matches</b>\n\n"
+                if not has_event:
+                    text += "You haven't joined an event yet.\nScan a QR code or join via link!"
+                elif participant_count <= 1:
+                    text += "Not many people at this event yet.\nMatches will appear when others join!"
+                elif not has_profile:
+                    text += (
+                        "Your profile isn't complete yet.\n\n"
+                        "💡 <b>Tip:</b> Add what you're looking for and how you can help. "
+                        "This helps find better matches!"
+                    )
+                else:
+                    text += (
+                        "No matches found yet.\n\n"
+                        "💡 Try again later — new people are joining all the time!"
+                    )
+
+            btn_text = "✏️ Add more info" if lang == "en" else "✏️ Добавить инфо"
+            builder.button(text=btn_text, callback_data="edit_my_profile")
+            builder.button(text="🔄 Try again", callback_data="retry_matching")
+            builder.button(text="◀️ Menu" if lang == "en" else "◀️ Меню", callback_data="back_to_menu")
+            builder.adjust(1)
 
         if edit:
             await message.edit_text(text, reply_markup=builder.as_markup())
@@ -686,7 +771,7 @@ async def view_match_profile(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "back_to_matches")
-async def back_to_matches(callback: CallbackQuery):
+async def back_to_matches(callback: CallbackQuery, state: FSMContext):
     """Go back to matches list — handle photo messages gracefully"""
     lang = detect_lang(callback)
     user = await user_service.get_user_by_platform(
@@ -696,6 +781,11 @@ async def back_to_matches(callback: CallbackQuery):
         await callback.answer("Profile not found", show_alert=True)
         return
 
+    # Read scope from state for navigation continuity
+    data = await state.get_data() if state else {}
+    match_scope = data.get("match_scope")
+    event_id = data.get("match_event_id") or (str(user.current_event_id) if user.current_event_id and not match_scope else None)
+
     # If current message is a photo (from view_profile), delete and send new text
     if callback.message.photo:
         try:
@@ -703,10 +793,10 @@ async def back_to_matches(callback: CallbackQuery):
         except Exception:
             pass
         await callback.answer()
-        await show_matches(callback.message, user.id, lang=lang, edit=False, event_id=user.current_event_id)
+        await show_matches(callback.message, user.id, lang=lang, edit=False, event_id=event_id, match_scope=match_scope)
     else:
         await callback.answer()
-        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
+        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=event_id, match_scope=match_scope)
 
 
 @router.callback_query(F.data == "retry_matching")
@@ -789,7 +879,11 @@ async def match_prev(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     new_index = max(0, current_index - 1)
-    await list_matches_callback(callback, index=new_index, state=state)
+    # Preserve scope from state
+    data = await state.get_data() if state else {}
+    match_scope = data.get("match_scope")
+    event_id = data.get("match_event_id")
+    await list_matches_callback(callback, index=new_index, event_id=event_id, match_scope=match_scope, state=state)
 
 
 @router.callback_query(F.data.startswith("match_next_"))
@@ -801,7 +895,11 @@ async def match_next(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     new_index = current_index + 1
-    await list_matches_callback(callback, index=new_index, state=state)
+    # Preserve scope from state
+    data = await state.get_data() if state else {}
+    match_scope = data.get("match_scope")
+    event_id = data.get("match_event_id")
+    await list_matches_callback(callback, index=new_index, event_id=event_id, match_scope=match_scope, state=state)
 
 
 @router.callback_query(F.data == "match_counter")
@@ -957,8 +1055,9 @@ async def handle_matches_photo(message: Message, state: FSMContext):
     user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
     index = data.get("matches_index", 0)
     event_id = data.get("matches_event_id")
+    match_scope = data.get("matches_scope")
 
-    await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id)
+    await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id, match_scope=match_scope)
 
 
 @router.callback_query(F.data == "skip_matches_photo")
@@ -977,8 +1076,9 @@ async def skip_matches_photo(callback: CallbackQuery, state: FSMContext):
 
     index = data.get("matches_index", 0)
     event_id = data.get("matches_event_id")
+    match_scope = data.get("matches_scope")
 
-    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id, match_scope=match_scope)
 
 
 @router.message(MatchesPhotoStates.waiting_photo, F.text)
@@ -999,8 +1099,9 @@ async def handle_matches_photo_text(message: Message, state: FSMContext):
 
         index = data.get("matches_index", 0)
         event_id = data.get("matches_event_id")
+        match_scope = data.get("matches_scope")
 
-        await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id)
+        await show_matches(message, user.id, lang=lang, edit=False, index=index, event_id=event_id, match_scope=match_scope)
     else:
         if lang == "ru":
             await message.answer("📸 Отправь фото или напиши 'позже'")
