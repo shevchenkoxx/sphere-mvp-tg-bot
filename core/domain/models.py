@@ -111,6 +111,9 @@ class User(UserBase):
     personality_vibe: Optional[str] = None
     hookup_preference: Optional[str] = None
     language: str = "en"
+    # Matching scope (global matching)
+    matching_scope: str = "city"  # 'city' or 'global'
+    meeting_preference: str = "both"  # 'online', 'offline', or 'both'
 
     class Config:
         from_attributes = True
@@ -158,6 +161,9 @@ class UserUpdate(BaseModel):
     personality_vibe: Optional[str] = None
     hookup_preference: Optional[str] = None
     language: Optional[str] = None
+    # Matching scope (global matching)
+    matching_scope: Optional[str] = None  # 'city' or 'global'
+    meeting_preference: Optional[str] = None  # 'online', 'offline', or 'both'
 
 
 # === EVENT ===

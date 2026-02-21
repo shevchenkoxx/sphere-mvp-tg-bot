@@ -263,24 +263,22 @@ def get_profile_view_keyboard(match_id: str, lang: str = "en", partner_username:
 # === MAIN MENU ===
 
 def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> InlineKeyboardMarkup:
-    """Main menu keyboard - clean and simple"""
+    """Main menu keyboard - clean and focused"""
     builder = InlineKeyboardBuilder()
     inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
     if lang == "ru":
         builder.button(text="👤 Профиль", callback_data="my_profile")
-        builder.button(text="🏙️ Sphere City", callback_data="sphere_city")
-        builder.button(text="💫 Матчи", callback_data="my_matches")
-        builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
-        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
-        builder.button(text="💬 Чат с Sphere", callback_data="agent_chat")
+        builder.button(text="🔍 Найти людей", callback_data="my_matches")
+        builder.button(text="💬 Спросить Sphere", callback_data="agent_chat")
+        if pending_invitations > 0:
+            builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
     else:
         builder.button(text="👤 Profile", callback_data="my_profile")
-        builder.button(text="🏙️ Sphere City", callback_data="sphere_city")
-        builder.button(text="💫 Matches", callback_data="my_matches")
-        builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
-        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_check")
-        builder.button(text="💬 Chat with Sphere", callback_data="agent_chat")
-    builder.adjust(2, 2, 2)
+        builder.button(text="🔍 Find People", callback_data="my_matches")
+        builder.button(text="💬 Ask Sphere", callback_data="agent_chat")
+        if pending_invitations > 0:
+            builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -454,16 +452,49 @@ def get_sphere_city_menu_keyboard(has_matches: bool = True, lang: str = "en") ->
 def get_matches_menu_keyboard(
     has_event: bool = False,
     event_name: str = None,
+    city_name: str = None,
+    city_count: int = 0,
+    global_count: int = 0,
     lang: str = "en"
 ) -> InlineKeyboardMarkup:
-    """Matches menu with event and Sphere City options"""
+    """Matches menu with Event / City / Global options"""
     builder = InlineKeyboardBuilder()
 
     if has_event and event_name:
         event_text = f"🎉 {event_name}"
-        builder.button(text=event_text, callback_data="my_matches")
+        builder.button(text=event_text, callback_data="event_matches")
 
-    city_text = "🏙️ Sphere City" if lang == "en" else "🏙️ Sphere City"
+    city_label = city_name or ("My City" if lang == "en" else "Мой город")
+    if city_count:
+        city_badge = f" — {city_count} people" if lang == "en" else f" — {city_count} чел."
+    else:
+        city_badge = ""
+    city_text = f"🏙️ {city_label}{city_badge}"
+    builder.button(text=city_text, callback_data="sphere_city")
+
+    if global_count:
+        global_badge = f" — {global_count} people" if lang == "en" else f" — {global_count} чел."
+    else:
+        global_badge = ""
+    global_text = f"🌍 Global{global_badge}" if lang == "en" else f"🌍 Глобально{global_badge}"
+    builder.button(text=global_text, callback_data="global_matches_entry")
+
+    back_text = "← Menu" if lang == "en" else "← Меню"
+    builder.button(text=back_text, callback_data="back_to_menu")
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_global_menu_keyboard(match_count: int = 0, lang: str = "en") -> InlineKeyboardMarkup:
+    """Global matches menu"""
+    builder = InlineKeyboardBuilder()
+
+    if match_count > 0:
+        view_text = "👀 View matches" if lang == "en" else "👀 Посмотреть матчи"
+        builder.button(text=view_text, callback_data="global_matches_view")
+
+    city_text = "🏙️ Switch to My City" if lang == "en" else "🏙️ Мой город"
     builder.button(text=city_text, callback_data="sphere_city")
 
     back_text = "← Menu" if lang == "en" else "← Меню"

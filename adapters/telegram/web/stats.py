@@ -5,6 +5,7 @@ Access: GET /stats?token=SECRET
 
 import csv
 import io
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from aiohttp import web
@@ -128,6 +129,30 @@ textarea { resize: vertical; min-height: 80px; font-family: inherit; }
                            text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
 .user-list-item .time { color: #8b949e; font-size: .78em; white-space: nowrap; }
 
+/* filter bar */
+.filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.filter-group { display: flex; flex-direction: column; gap: 3px; }
+.filter-group label { font-size: .78em; color: #8b949e; }
+.filter-group select, .filter-group input { font-size: .85em; }
+
+/* funnel */
+.funnel-container { display: flex; flex-direction: column; gap: 6px; }
+.funnel-step { display: flex; align-items: center; gap: 10px; }
+.funnel-bar { background: linear-gradient(90deg, #1f6feb, #58a6ff); color: #fff; padding: 6px 12px;
+              border-radius: 4px; font-size: .85em; font-weight: 600; min-width: 40px;
+              transition: width .3s; white-space: nowrap; }
+.funnel-label { color: #8b949e; font-size: .82em; white-space: nowrap; }
+
+/* heatmap */
+.heatmap { display: grid; grid-template-columns: 50px repeat(24, 1fr); gap: 2px; font-size: .72em; }
+.heatmap-cell { aspect-ratio: 1; border-radius: 3px; display: flex; align-items: center;
+                justify-content: center; color: #8b949e; font-size: .7em; }
+.heatmap-label { display: flex; align-items: center; color: #8b949e; font-size: .78em; }
+.heatmap-header { display: flex; align-items: center; justify-content: center; color: #8b949e; }
+
+/* chart container */
+.chart-container { position: relative; margin: 8px 0; }
+
 /* responsive */
 @media (max-width: 700px) {
   .detail-grid { grid-template-columns: 1fr; }
@@ -136,6 +161,8 @@ textarea { resize: vertical; min-height: 80px; font-family: inherit; }
   .nav a { padding: 5px 10px; font-size: .82em; }
   .chat-bubble { max-width: 90%; }
   .user-list-item .preview { max-width: 200px; }
+  .heatmap { grid-template-columns: 40px repeat(24, 1fr); font-size: .6em; }
+  .filter-bar { gap: 4px; }
 }
 """
 
@@ -145,6 +172,7 @@ def _shell_html(token: str, active_tab: str = "overview") -> str:
     tabs = [
         ("overview", "Overview"),
         ("users", "Users"),
+        ("onboarding", "Onboarding"),
         ("events", "Events"),
         ("matches", "Matches"),
         ("conversations", "Conversations"),
@@ -166,6 +194,15 @@ def _shell_html(token: str, active_tab: str = "overview") -> str:
 <title>Sphere Admin</title>
 <style>{CSS}</style>
 <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+// Destroy all Chart.js instances before HTMX swap to prevent canvas reuse errors
+document.addEventListener('htmx:beforeSwap', function() {{
+  Object.keys(Chart.instances || {{}}).forEach(function(k) {{
+    try {{ Chart.instances[k].destroy(); }} catch(e) {{}}
+  }});
+}});
+</script>
 </head><body>
 <div class="shell">
 <div class="nav">
@@ -217,6 +254,79 @@ def _list_to_str(val) -> str:
     return str(val)
 
 
+def _parse_range(request):
+    """Parse date range from query param. Returns (key, cutoff_datetime_or_None)."""
+    key = request.query.get("range", "all")
+    now = datetime.now(timezone.utc)
+    if key == "today":
+        cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif key == "7d":
+        cutoff = now - timedelta(days=7)
+    elif key == "30d":
+        cutoff = now - timedelta(days=30)
+    else:
+        key = "all"
+        cutoff = None
+    return key, cutoff
+
+
+def _date_range_picker_html(token: str, tab: str, active: str = "all", extra_params: str = "") -> str:
+    """Render 4 date range buttons with HTMX."""
+    buttons = []
+    for key, label in [("today", "Today"), ("7d", "7d"), ("30d", "30d"), ("all", "All")]:
+        cls = "btn btn-sm btn-blue" if key == active else "btn btn-sm"
+        buttons.append(
+            f'<a class="{cls}" hx-get="/stats/{tab}?token={token}&range={key}{extra_params}" '
+            f'hx-target="#content">{label}</a>'
+        )
+    return f'<div class="filter-bar">{"".join(buttons)}</div>'
+
+
+def _chart_html(chart_id: str, chart_type: str, labels: list, datasets: list, height: int = 250) -> str:
+    """Render a Chart.js canvas with inline init script."""
+    options = {
+        "responsive": True,
+        "maintainAspectRatio": False,
+        "plugins": {"legend": {"labels": {"color": "#8b949e"}}},
+    }
+    if chart_type not in ("doughnut", "pie"):
+        options["scales"] = {
+            "x": {"ticks": {"color": "#8b949e"}, "grid": {"color": "#21262d"}},
+            "y": {"ticks": {"color": "#8b949e"}, "grid": {"color": "#21262d"}, "beginAtZero": True},
+        }
+    config = {"type": chart_type, "data": {"labels": labels, "datasets": datasets}, "options": options}
+    config_json = json.dumps(config)
+    return (
+        f'<div class="chart-container" style="height:{height}px"><canvas id="{chart_id}"></canvas></div>'
+        f'<script>(function(){{'
+        f'var c=document.getElementById("{chart_id}");'
+        f'if(!c)return;'
+        f'new Chart(c.getContext("2d"),{config_json});'
+        f'}})()</script>'
+    )
+
+
+def _funnel_html(steps) -> str:
+    """Render a horizontal funnel. steps = [(label, value), ...]"""
+    if not steps:
+        return '<span class="muted">No data</span>'
+    max_val = max(s[1] for s in steps) if steps else 1
+    html = '<div class="funnel-container">'
+    for i, (label, value) in enumerate(steps):
+        pct = round(value / max_val * 100) if max_val else 0
+        drop = ""
+        if i > 0 and steps[0][1] > 0:
+            drop = f" ({round(value / steps[0][1] * 100)}%)"
+        html += (
+            f'<div class="funnel-step">'
+            f'<div class="funnel-bar" style="width:{max(pct, 8)}%">{value}{drop}</div>'
+            f'<div class="funnel-label">{_esc(label)}</div>'
+            f'</div>'
+        )
+    html += '</div>'
+    return html
+
+
 # ---------------------------------------------------------------------------
 # Route handlers
 # ---------------------------------------------------------------------------
@@ -238,6 +348,9 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     async def handle_overview(request: web.Request) -> web.Response:
         if not _check_token(request):
             return web.Response(text="Unauthorized", status=401)
+
+        range_key, cutoff = _parse_range(request)
+
         try:
             users = await user_repo.get_all_users_full()
         except Exception as e:
@@ -245,7 +358,13 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             return web.Response(text=f'<div class="card">DB error: {_esc(str(e))}</div>',
                                 content_type="text/html")
 
+        # Filter users by date range
+        filtered_users = users
+        if cutoff:
+            filtered_users = [u for u in users if _parse_dt(u.get("created_at")) and _parse_dt(u.get("created_at")) >= cutoff]
+
         total = len(users)
+        filtered_total = len(filtered_users)
         onboarded = sum(1 for u in users if u.get("onboarding_completed"))
         in_progress = total - onboarded
         onboarded_pct = round(onboarded / total * 100) if total else 0
@@ -256,14 +375,16 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
         week_ago = today_start - timedelta(days=7)
 
         new_today = new_yesterday = new_week = 0
-        # intent distribution
         intent_counts: dict[str, int] = {}
-        # city distribution
         city_counts: dict[str, int] = {}
-        # profile completeness
-        has_photo = has_bio = has_profession = 0
-        # referral funnel
+        has_photo = has_bio = has_profession = has_interests = has_goals = 0
         referrers: dict[str, dict] = {}
+
+        # Daily signups for chart (last 30 days)
+        daily_signups: dict[str, int] = {}
+        for i in range(30):
+            d = (today_start - timedelta(days=29 - i)).strftime("%m/%d")
+            daily_signups[d] = 0
 
         for u in users:
             dt = _parse_dt(u.get("created_at"))
@@ -274,25 +395,29 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                     new_yesterday += 1
                 if dt >= week_ago:
                     new_week += 1
+                # Daily chart
+                day_key = dt.strftime("%m/%d")
+                if day_key in daily_signups:
+                    daily_signups[day_key] += 1
 
-            # intents
             for intent in (u.get("connection_intents") or []):
                 intent_counts[intent] = intent_counts.get(intent, 0) + 1
 
-            # city
             city = u.get("city_current")
             if city:
                 city_counts[city] = city_counts.get(city, 0) + 1
 
-            # completeness
             if u.get("photo_url"):
                 has_photo += 1
             if u.get("bio"):
                 has_bio += 1
             if u.get("profession"):
                 has_profession += 1
+            if u.get("interests"):
+                has_interests += 1
+            if u.get("goals"):
+                has_goals += 1
 
-            # referrals
             ref = u.get("referred_by")
             if ref:
                 referrers.setdefault(ref, {"total": 0, "onboarded": 0})
@@ -304,17 +429,24 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
         match_total = 0
         match_avg_score = 0
         feedback_good = feedback_bad = 0
+        users_with_matches = 0
         if match_repo:
             try:
                 from infrastructure.database.supabase_client import supabase, run_sync
                 @run_sync
                 def _get_match_stats():
-                    resp = supabase.table("matches").select("id, compatibility_score").execute()
+                    resp = supabase.table("matches").select("id, compatibility_score, user_a_id, user_b_id").execute()
                     return resp.data or []
                 all_matches = await _get_match_stats()
                 match_total = len(all_matches)
                 if match_total:
-                    match_avg_score = round(sum(m["compatibility_score"] for m in all_matches) / match_total, 2)
+                    scores = [m["compatibility_score"] for m in all_matches if m.get("compatibility_score")]
+                    match_avg_score = round(sum(scores) / len(scores), 2) if scores else 0
+                    matched_ids = set()
+                    for m in all_matches:
+                        matched_ids.add(m.get("user_a_id"))
+                        matched_ids.add(m.get("user_b_id"))
+                    users_with_matches = len(matched_ids)
 
                 @run_sync
                 def _get_feedback_stats():
@@ -328,6 +460,65 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                         feedback_bad += 1
             except Exception as e:
                 logger.warning(f"Match stats failed: {e}")
+
+        # Active users (7d) — users who sent a message in the last 7 days
+        active_7d = 0
+        if conv_log_repo:
+            try:
+                active_list = await conv_log_repo.get_active_users(limit=9999, hours=168)
+                active_7d = len(active_list)
+            except Exception:
+                pass
+
+        # Conversion funnel
+        funnel_steps = [
+            ("Total users", total),
+            ("Onboarded", onboarded),
+            ("Got matches", users_with_matches),
+            ("Active (7d)", active_7d),
+        ]
+
+        # Daily signups chart
+        signup_labels = list(daily_signups.keys())
+        signup_data = list(daily_signups.values())
+        signup_chart = _chart_html(
+            "signupChart", "line", signup_labels,
+            [{"label": "New users", "data": signup_data,
+              "borderColor": "#58a6ff", "backgroundColor": "rgba(88,166,255,0.1)",
+              "fill": True, "tension": 0.3}],
+            height=200,
+        )
+
+        # Profile completeness — depth distribution
+        depth_buckets = {"0-25%": 0, "25-50%": 0, "50-75%": 0, "75-100%": 0}
+        profile_fields = ["bio", "interests", "goals", "looking_for", "can_help_with",
+                          "photo_url", "profession", "city_current", "connection_intents", "skills"]
+        for u in users:
+            filled = sum(1 for f in profile_fields if u.get(f))
+            pct = filled / len(profile_fields) * 100
+            if pct < 25:
+                depth_buckets["0-25%"] += 1
+            elif pct < 50:
+                depth_buckets["25-50%"] += 1
+            elif pct < 75:
+                depth_buckets["50-75%"] += 1
+            else:
+                depth_buckets["75-100%"] += 1
+
+        avg_completeness = 0
+        if total:
+            total_filled = sum(
+                sum(1 for f in profile_fields if u.get(f)) for u in users
+            )
+            avg_completeness = round(total_filled / (total * len(profile_fields)) * 100)
+
+        depth_chart = _chart_html(
+            "depthChart", "doughnut",
+            list(depth_buckets.keys()),
+            [{"data": list(depth_buckets.values()),
+              "backgroundColor": ["#da3633", "#9e6a03", "#1f6feb", "#238636"]}],
+            height=200,
+        )
 
         # Build referral rows
         ref_rows = ""
@@ -352,13 +543,17 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
         for city, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:10]:
             city_html += f'<div class="row"><span>{_esc(city)}</span><span>{cnt}</span></div>'
 
-        # Profile completeness
+        # Profile completeness bars
         photo_pct = round(has_photo / total * 100) if total else 0
         bio_pct = round(has_bio / total * 100) if total else 0
         prof_pct = round(has_profession / total * 100) if total else 0
 
+        range_picker = _date_range_picker_html(stats_token, "overview", range_key)
+
         html = f"""
-<div hx-get="/stats/overview?token={stats_token}" hx-trigger="every 30s" hx-target="#content">
+<div hx-get="/stats/overview?token={stats_token}&range={range_key}" hx-trigger="every 30s" hx-target="#content">
+
+{range_picker}
 
 <div class="grid">
   <div class="card">
@@ -380,16 +575,32 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     <div class="row"><span>Feedback</span><span>{feedback_good} good / {feedback_bad} bad</span></div>
   </div>
   <div class="card">
-    <h3>Profile Completeness</h3>
+    <h3>Profile Quality</h3>
+    <div class="row"><span>Avg completeness</span><span>{avg_completeness}%</span></div>
     <div class="row"><span>Has photo</span><span>{has_photo} ({photo_pct}%)</span></div>
     <div class="row"><span>Has bio</span><span>{has_bio} ({bio_pct}%)</span></div>
-    <div class="row"><span>Has profession</span><span>{has_profession} ({prof_pct}%)</span></div>
   </div>
 </div>
 
 <div class="card">
-  <h3>Intent Distribution</h3>
-  {intent_html if intent_html else '<span class="muted">No intent data</span>'}
+  <h3>Daily Signups (30 days)</h3>
+  {signup_chart}
+</div>
+
+<div class="card">
+  <h3>Conversion Funnel</h3>
+  {_funnel_html(funnel_steps)}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="card">
+    <h3>Profile Depth Distribution</h3>
+    {depth_chart}
+  </div>
+  <div class="card">
+    <h3>Intent Distribution</h3>
+    {intent_html if intent_html else '<span class="muted">No intent data</span>'}
+  </div>
 </div>
 
 <div class="card">
@@ -413,7 +624,15 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     async def handle_users(request: web.Request) -> web.Response:
         if not _check_token(request):
             return web.Response(text="Unauthorized", status=401)
+
+        # Parse all filters
         q = request.query.get("q", "").strip()
+        city_filter = request.query.get("city", "").strip()
+        intent_filter = request.query.get("intent", "").strip()
+        onb_filter = request.query.get("onb", "").strip()
+        photo_filter = request.query.get("photo", "").strip()
+        range_key, cutoff = _parse_range(request)
+
         try:
             if q:
                 users = await user_repo.search_users(q)
@@ -424,8 +643,77 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             return web.Response(text=f'<div class="card">DB error: {_esc(str(e))}</div>',
                                 content_type="text/html")
 
-        rows = ""
+        # Collect unique cities and intents for dropdowns (before filtering)
+        all_cities: dict[str, int] = {}
+        all_intents: dict[str, int] = {}
         for u in users:
+            c = u.get("city_current")
+            if c:
+                all_cities[c] = all_cities.get(c, 0) + 1
+            for intent in (u.get("connection_intents") or []):
+                all_intents[intent] = all_intents.get(intent, 0) + 1
+
+        # Apply filters
+        filtered = users
+        if city_filter:
+            filtered = [u for u in filtered if u.get("city_current") == city_filter]
+        if intent_filter:
+            filtered = [u for u in filtered if intent_filter in (u.get("connection_intents") or [])]
+        if onb_filter == "yes":
+            filtered = [u for u in filtered if u.get("onboarding_completed")]
+        elif onb_filter == "no":
+            filtered = [u for u in filtered if not u.get("onboarding_completed")]
+        if photo_filter == "yes":
+            filtered = [u for u in filtered if u.get("photo_url")]
+        elif photo_filter == "no":
+            filtered = [u for u in filtered if not u.get("photo_url")]
+        if cutoff:
+            filtered = [u for u in filtered if _parse_dt(u.get("created_at")) and _parse_dt(u.get("created_at")) >= cutoff]
+
+        # Build filter params for HTMX
+        def _filter_params():
+            parts = []
+            if q:
+                parts.append(f"q={_esc(q)}")
+            if city_filter:
+                parts.append(f"city={_esc(city_filter)}")
+            if intent_filter:
+                parts.append(f"intent={_esc(intent_filter)}")
+            if onb_filter:
+                parts.append(f"onb={_esc(onb_filter)}")
+            if photo_filter:
+                parts.append(f"photo={_esc(photo_filter)}")
+            parts.append(f"range={range_key}")
+            return "&".join(parts)
+
+        params = _filter_params()
+
+        # City dropdown
+        city_options = '<option value="">All cities</option>'
+        for c, cnt in sorted(all_cities.items(), key=lambda x: -x[1]):
+            sel = " selected" if c == city_filter else ""
+            city_options += f'<option value="{_esc(c)}"{sel}>{_esc(c)} ({cnt})</option>'
+
+        # Intent dropdown
+        intent_options = '<option value="">All intents</option>'
+        for intent, cnt in sorted(all_intents.items(), key=lambda x: -x[1]):
+            sel = " selected" if intent == intent_filter else ""
+            intent_options += f'<option value="{_esc(intent)}"{sel}>{_esc(intent)} ({cnt})</option>'
+
+        # Onboarding dropdown
+        onb_options = '<option value="">All</option>'
+        for val, label in [("yes", "Completed"), ("no", "In progress")]:
+            sel = " selected" if val == onb_filter else ""
+            onb_options += f'<option value="{val}"{sel}>{label}</option>'
+
+        # Photo dropdown
+        photo_options = '<option value="">All</option>'
+        for val, label in [("yes", "Yes"), ("no", "No")]:
+            sel = " selected" if val == photo_filter else ""
+            photo_options += f'<option value="{val}"{sel}>{label}</option>'
+
+        rows = ""
+        for u in filtered:
             uid = u.get("id", "")
             active_badge = ('<span class="badge badge-green">Active</span>'
                             if u.get("is_active", True)
@@ -449,18 +737,45 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 f'<tr class="expand-row"><td colspan="8" id="detail-{uid}"></td></tr>'
             )
 
+        # Date range picker
+        range_buttons = ""
+        for key, label in [("today", "Today"), ("7d", "7d"), ("30d", "30d"), ("all", "All")]:
+            cls = "btn btn-sm btn-blue" if key == range_key else "btn btn-sm"
+            range_buttons += f'<a class="{cls}" onclick="document.getElementById(\'user-range\').value=\'{key}\';document.getElementById(\'user-filter-form\').dispatchEvent(new Event(\'submit\',{{bubbles:true}}))">{label}</a> '
+
         html = f"""
-<div class="search-bar">
-  <span class="search-icon">&#128269;</span>
-  <input type="search" name="q" placeholder="Search by name or username..."
-         value="{_esc(q)}"
-         hx-get="/stats/users?token={stats_token}"
-         hx-trigger="keyup changed delay:300ms"
-         hx-target="#content"
-         hx-include="this">
-</div>
+<form id="user-filter-form" class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end"
+      hx-get="/stats/users?token={stats_token}" hx-target="#content" hx-trigger="submit, change from:select">
+  <div class="filter-group">
+    <label>Search</label>
+    <input type="search" name="q" placeholder="Name or username..." value="{_esc(q)}" style="width:180px"
+           hx-get="/stats/users?token={stats_token}" hx-trigger="keyup changed delay:400ms"
+           hx-target="#content" hx-include="closest form">
+  </div>
+  <div class="filter-group">
+    <label>City</label>
+    <select name="city" style="width:150px">{city_options}</select>
+  </div>
+  <div class="filter-group">
+    <label>Intent</label>
+    <select name="intent" style="width:130px">{intent_options}</select>
+  </div>
+  <div class="filter-group">
+    <label>Onboarded</label>
+    <select name="onb" style="width:110px">{onb_options}</select>
+  </div>
+  <div class="filter-group">
+    <label>Photo</label>
+    <select name="photo" style="width:90px">{photo_options}</select>
+  </div>
+  <input type="hidden" name="range" id="user-range" value="{range_key}">
+  <div class="filter-group">
+    <label>Period</label>
+    <div style="display:flex;gap:4px">{range_buttons}</div>
+  </div>
+</form>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-  <span class="muted">{len(users)} users</span>
+  <span class="muted">{len(filtered)} users{f' (filtered from {len(users)})' if len(filtered) != len(users) else ''}</span>
   <a href="/stats/export/users?token={stats_token}" class="btn btn-sm">Export CSV</a>
 </div>
 <div class="card" style="overflow-x:auto">
@@ -872,10 +1187,25 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
         event_filter = request.query.get("event", "")
         min_score = request.query.get("min_score", "")
         status_filter = request.query.get("status", "")
+        range_key, cutoff = _parse_range(request)
 
         try:
             from infrastructure.database.supabase_client import supabase, run_sync
 
+            # Get ALL matches for analytics (unfiltered)
+            @run_sync
+            def _get_all_matches():
+                resp = supabase.table("matches").select("id, compatibility_score, status, user_a_id, user_b_id, created_at").order("created_at", desc=True).execute()
+                return resp.data or []
+            all_matches_raw = await _get_all_matches()
+
+            # Apply date cutoff to analytics
+            analytics_matches = all_matches_raw
+            if cutoff:
+                analytics_matches = [m for m in all_matches_raw
+                                     if _parse_dt(m.get("created_at")) and _parse_dt(m.get("created_at")) >= cutoff]
+
+            # Filtered matches for the table
             @run_sync
             def _get_matches():
                 q = supabase.table("matches").select("*").order("created_at", desc=True).limit(200)
@@ -891,6 +1221,9 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 resp = q.execute()
                 return resp.data or []
             matches = await _get_matches()
+            if cutoff:
+                matches = [m for m in matches
+                           if _parse_dt(m.get("created_at")) and _parse_dt(m.get("created_at")) >= cutoff]
 
             # Get all events for dropdown
             @run_sync
@@ -899,16 +1232,16 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 return resp.data or []
             events = await _get_events()
 
-            # Build user lookup
-            user_ids = set()
-            for m in matches:
-                user_ids.add(m.get("user_a_id"))
-                user_ids.add(m.get("user_b_id"))
+            # Feedback
+            @run_sync
+            def _get_feedback():
+                resp = supabase.table("match_feedback").select("match_id, feedback_type").execute()
+                return resp.data or []
+            all_feedback = await _get_feedback()
 
+            # Build user lookup
             @run_sync
             def _get_user_names():
-                if not user_ids:
-                    return []
                 resp = supabase.table("users").select("id, display_name, first_name, username").execute()
                 return resp.data or []
             all_users = await _get_user_names()
@@ -922,7 +1255,77 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             u = user_map.get(uid, {})
             return u.get("display_name") or u.get("first_name") or u.get("username") or "?"
 
-        # Event options
+        # --- Analytics ---
+        a_total = len(analytics_matches)
+        a_pending = sum(1 for m in analytics_matches if m.get("status") == "pending")
+        a_accepted = sum(1 for m in analytics_matches if m.get("status") == "accepted")
+        a_declined = sum(1 for m in analytics_matches if m.get("status") == "declined")
+        a_scores = [m["compatibility_score"] for m in analytics_matches if m.get("compatibility_score")]
+        a_avg_score = round(sum(a_scores) / len(a_scores), 2) if a_scores else 0
+
+        # Feedback for analytics period
+        analytics_match_ids = {m["id"] for m in analytics_matches}
+        fb_good = sum(1 for f in all_feedback if f.get("match_id") in analytics_match_ids and f.get("feedback_type") == "good")
+        fb_bad = sum(1 for f in all_feedback if f.get("match_id") in analytics_match_ids and f.get("feedback_type") == "bad")
+        fb_ratio = f"{round(fb_good / (fb_good + fb_bad) * 100)}%" if (fb_good + fb_bad) > 0 else "—"
+
+        # Score distribution histogram (5 buckets)
+        score_buckets = {"0.0-0.2": 0, "0.2-0.4": 0, "0.4-0.6": 0, "0.6-0.8": 0, "0.8-1.0": 0}
+        for s in a_scores:
+            if s < 0.2:
+                score_buckets["0.0-0.2"] += 1
+            elif s < 0.4:
+                score_buckets["0.2-0.4"] += 1
+            elif s < 0.6:
+                score_buckets["0.4-0.6"] += 1
+            elif s < 0.8:
+                score_buckets["0.6-0.8"] += 1
+            else:
+                score_buckets["0.8-1.0"] += 1
+
+        score_chart = _chart_html(
+            "scoreDistChart", "bar",
+            list(score_buckets.keys()),
+            [{"label": "Matches", "data": list(score_buckets.values()),
+              "backgroundColor": ["#da3633", "#9e6a03", "#1f6feb", "#238636", "#2ea043"]}],
+            height=200,
+        )
+
+        # Matches over time (daily, last 30 days)
+        now = datetime.now(timezone.utc)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        daily_matches: dict[str, int] = {}
+        for i in range(30):
+            d = (today_start - timedelta(days=29 - i)).strftime("%m/%d")
+            daily_matches[d] = 0
+        for m in all_matches_raw:
+            dt = _parse_dt(m.get("created_at"))
+            if dt:
+                dk = dt.strftime("%m/%d")
+                if dk in daily_matches:
+                    daily_matches[dk] += 1
+
+        matches_time_chart = _chart_html(
+            "matchesTimeChart", "line",
+            list(daily_matches.keys()),
+            [{"label": "Matches", "data": list(daily_matches.values()),
+              "borderColor": "#238636", "backgroundColor": "rgba(35,134,54,0.1)",
+              "fill": True, "tension": 0.3}],
+            height=200,
+        )
+
+        # Top matched users (top 10)
+        user_match_counts: dict[str, int] = {}
+        for m in analytics_matches:
+            for uid in [m.get("user_a_id"), m.get("user_b_id")]:
+                if uid:
+                    user_match_counts[uid] = user_match_counts.get(uid, 0) + 1
+        top_matched = sorted(user_match_counts.items(), key=lambda x: -x[1])[:10]
+        top_rows = ""
+        for uid, cnt in top_matched:
+            top_rows += f'<tr><td>{_esc(_user_name(uid))}</td><td>{cnt}</td></tr>'
+
+        # --- Filters ---
         ev_options = '<option value="">All events</option>'
         for ev in events:
             sel = " selected" if ev["id"] == event_filter else ""
@@ -933,6 +1336,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             sel = " selected" if s == status_filter else ""
             status_options += f'<option value="{s}"{sel}>{s.title()}</option>'
 
+        # Table rows
         rows = ""
         for m in matches:
             mid = m.get("id", "")
@@ -951,9 +1355,52 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 f'<tr class="expand-row"><td colspan="6" id="match-detail-{mid}"></td></tr>'
             )
 
+        range_picker = _date_range_picker_html(stats_token, "matches", range_key)
+
         html = f"""
+{range_picker}
+
+<div class="grid">
+  <div class="card">
+    <div class="big">{a_total}</div>
+    <div class="label">Total Matches</div>
+  </div>
+  <div class="card">
+    <h3>Status</h3>
+    <div class="row"><span>Pending</span><span>{a_pending}</span></div>
+    <div class="row"><span>Accepted</span><span>{a_accepted}</span></div>
+    <div class="row"><span>Declined</span><span>{a_declined}</span></div>
+  </div>
+  <div class="card">
+    <h3>Quality</h3>
+    <div class="row"><span>Avg score</span><span>{a_avg_score}</span></div>
+    <div class="row"><span>Feedback</span><span>{fb_good} / {fb_bad}</span></div>
+    <div class="row"><span>Positive rate</span><span>{fb_ratio}</span></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="card">
+    <h3>Score Distribution</h3>
+    {score_chart}
+  </div>
+  <div class="card">
+    <h3>Matches Over Time (30d)</h3>
+    {matches_time_chart}
+  </div>
+</div>
+
+<div class="card">
+  <h3>Top Matched Users</h3>
+  <table>
+    <tr><th>User</th><th>Matches</th></tr>
+    {top_rows if top_rows else '<tr><td colspan="2" class="muted">No data</td></tr>'}
+  </table>
+</div>
+
 <form class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"
       hx-get="/stats/matches?token={stats_token}" hx-target="#content">
+  <input type="hidden" name="range" value="{range_key}">
   <div><label class="muted" style="font-size:.8em">Event</label><br>
     <select name="event" style="width:200px">{ev_options}</select></div>
   <div><label class="muted" style="font-size:.8em">Min Score</label><br>
@@ -962,7 +1409,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     <select name="status" style="width:120px">{status_options}</select></div>
   <button class="btn btn-sm btn-blue" type="submit">Filter</button>
 </form>
-<span class="muted">{len(matches)} matches (max 200)</span>
+<span class="muted">{len(matches)} matches</span>
 <div class="card" style="overflow-x:auto;margin-top:8px">
 <table>
 <tr><th>User A</th><th>User B</th><th>Score</th><th>Type</th><th>Status</th><th>Created</th></tr>
@@ -1130,7 +1577,72 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             )
 
         q = request.query.get("q", "").strip()
+        search_mode = request.query.get("search_mode", "name")  # "name" or "messages"
+        range_key, cutoff = _parse_range(request)
 
+        # Message content search
+        if search_mode == "messages" and q:
+            try:
+                search_results = await conv_log_repo.search_conversations(q, limit=100)
+            except Exception as e:
+                logger.error(f"Message search failed: {e}")
+                search_results = []
+
+            # Build user lookup for search results
+            sr_tg_ids = list(set(r["telegram_user_id"] for r in search_results))
+            sr_user_map: dict[int, dict] = {}
+            if sr_tg_ids:
+                try:
+                    from infrastructure.database.supabase_client import supabase, run_sync
+                    @run_sync
+                    def _get_sr_users():
+                        resp = supabase.table("users").select("platform_user_id, display_name, first_name, username").eq("platform", "telegram").in_("platform_user_id", [str(t) for t in sr_tg_ids]).execute()
+                        return resp.data or []
+                    for u in await _get_sr_users():
+                        pid = u.get("platform_user_id")
+                        if pid:
+                            sr_user_map[int(pid)] = u
+                except Exception:
+                    pass
+
+            sr_rows = ""
+            for r in search_results:
+                tgid = r["telegram_user_id"]
+                info = sr_user_map.get(tgid, {})
+                name = info.get("display_name") or info.get("first_name") or str(tgid)
+                content = _trunc(r.get("content", ""), 120)
+                dt = _fmt_dt(r.get("created_at"))
+                sr_rows += (
+                    f'<div class="user-list-item" '
+                    f'hx-get="/stats/conversation/{tgid}?token={stats_token}" hx-target="#content">'
+                    f'<div><div class="name">{_esc(name)}</div>'
+                    f'<div class="preview">{content}</div></div>'
+                    f'<div class="time">{dt}</div></div>'
+                )
+
+            search_toggle = (
+                f'<div class="filter-bar" style="margin-top:10px">'
+                f'<a class="btn btn-sm" hx-get="/stats/conversations?token={stats_token}&search_mode=name" hx-target="#content">Search by name</a>'
+                f'<a class="btn btn-sm btn-blue">Search messages</a></div>'
+            )
+
+            html = f"""
+{search_toggle}
+<div class="search-bar">
+  <span class="search-icon">&#128269;</span>
+  <input type="search" name="q" placeholder="Search message content..."
+         value="{_esc(q)}"
+         hx-get="/stats/conversations?token={stats_token}&search_mode=messages"
+         hx-trigger="keyup changed delay:400ms"
+         hx-target="#content" hx-include="this">
+</div>
+<span class="muted">{len(search_results)} results</span>
+<div class="card" style="padding:0;margin-top:8px">
+{sr_rows if sr_rows else '<div class="muted" style="padding:20px;text-align:center">No messages matching "' + _esc(q) + '"</div>'}
+</div>"""
+            return web.Response(text=html, content_type="text/html")
+
+        # Normal conversations view
         try:
             active_users = await conv_log_repo.get_active_users(limit=80, hours=168)
         except Exception as e:
@@ -1140,7 +1652,63 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 content_type="text/html",
             )
 
-        # Build a user-info lookup from the users table
+        # Get message stats for analytics
+        msg_stats = []
+        if conv_log_repo:
+            try:
+                msg_stats = await conv_log_repo.get_message_stats(cutoff, limit=10000)
+            except Exception as e:
+                logger.warning(f"Message stats failed: {e}")
+
+        # Analytics calculations
+        total_msgs = len(msg_stats)
+        msgs_in = sum(1 for m in msg_stats if m.get("direction") == "in")
+        msgs_out = total_msgs - msgs_in
+        unique_users = len(set(m.get("telegram_user_id") for m in msg_stats))
+        avg_per_user = round(total_msgs / unique_users, 1) if unique_users else 0
+
+        # Message type distribution
+        type_counts: dict[str, int] = {}
+        for m in msg_stats:
+            mt = m.get("message_type", "text")
+            type_counts[mt] = type_counts.get(mt, 0) + 1
+
+        type_chart = ""
+        if type_counts:
+            type_labels = list(type_counts.keys())
+            type_data = list(type_counts.values())
+            type_colors = ["#1f6feb", "#238636", "#9e6a03", "#da3633", "#8b949e", "#58a6ff"]
+            type_chart = _chart_html(
+                "msgTypeChart", "doughnut", type_labels,
+                [{"data": type_data, "backgroundColor": type_colors[:len(type_labels)]}],
+                height=200,
+            )
+
+        # Activity heatmap (7 days x 24 hours)
+        heatmap_data: dict[tuple[int, int], int] = {}
+        for m in msg_stats:
+            dt = _parse_dt(m.get("created_at"))
+            if dt:
+                heatmap_data[(dt.weekday(), dt.hour)] = heatmap_data.get((dt.weekday(), dt.hour), 0) + 1
+
+        max_heat = max(heatmap_data.values()) if heatmap_data else 1
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        heatmap_html = '<div class="heatmap">'
+        # Header row
+        heatmap_html += '<div class="heatmap-label"></div>'
+        for h in range(24):
+            heatmap_html += f'<div class="heatmap-header">{h}</div>'
+        # Data rows
+        for d in range(7):
+            heatmap_html += f'<div class="heatmap-label">{day_names[d]}</div>'
+            for h in range(24):
+                val = heatmap_data.get((d, h), 0)
+                intensity = round(val / max_heat * 0.9, 2) if max_heat else 0
+                bg = f"rgba(31,111,235,{intensity})" if val > 0 else "#161b22"
+                heatmap_html += f'<div class="heatmap-cell" style="background:{bg}" title="{day_names[d]} {h}:00 — {val} msgs">{val if val else ""}</div>'
+        heatmap_html += '</div>'
+
+        # Build user-info lookup
         tg_ids = [u["telegram_user_id"] for u in active_users]
         user_map: dict[int, dict] = {}
         if tg_ids:
@@ -1167,7 +1735,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             except Exception:
                 pass
 
-        rows = ""
+        user_rows = ""
         for au in active_users:
             tgid = au["telegram_user_id"]
             info = user_map.get(tgid, {})
@@ -1176,11 +1744,10 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             count = au.get("message_count", "")
             last = _fmt_dt(au.get("last_active"))
 
-            # Apply search filter
             if q and q.lower() not in f"{name} {uname} {tgid}".lower():
                 continue
 
-            rows += (
+            user_rows += (
                 f'<div class="user-list-item" '
                 f'hx-get="/stats/conversation/{tgid}?token={stats_token}" '
                 f'hx-target="#content">'
@@ -1191,18 +1758,51 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
                 f'</div>'
             )
 
+        range_picker = _date_range_picker_html(stats_token, "conversations", range_key)
+        search_toggle = (
+            f'<div class="filter-bar" style="margin-top:10px">'
+            f'<a class="btn btn-sm btn-blue">Search by name</a>'
+            f'<a class="btn btn-sm" hx-get="/stats/conversations?token={stats_token}&search_mode=messages" hx-target="#content">Search messages</a></div>'
+        )
+
         html = f"""
+{range_picker}
+
+<div class="grid">
+  <div class="card">
+    <div class="big">{total_msgs}</div>
+    <div class="label">Total Messages</div>
+    <div class="row"><span>In</span><span>{msgs_in}</span></div>
+    <div class="row"><span>Out</span><span>{msgs_out}</span></div>
+  </div>
+  <div class="card">
+    <h3>Users</h3>
+    <div class="row"><span>Unique users</span><span>{unique_users}</span></div>
+    <div class="row"><span>Avg per user</span><span>{avg_per_user}</span></div>
+  </div>
+  <div class="card">
+    <h3>Message Types</h3>
+    {type_chart if type_chart else '<span class="muted">No data</span>'}
+  </div>
+</div>
+
+<div class="card">
+  <h3>Activity Heatmap (by day/hour)</h3>
+  {heatmap_html}
+</div>
+
+{search_toggle}
 <div class="search-bar">
   <span class="search-icon">&#128269;</span>
   <input type="search" name="q" placeholder="Search by name, username, or TG ID..."
          value="{_esc(q)}"
-         hx-get="/stats/conversations?token={stats_token}"
+         hx-get="/stats/conversations?token={stats_token}&range={range_key}"
          hx-trigger="keyup changed delay:300ms"
          hx-target="#content"
          hx-include="this">
 </div>
 <div class="card" style="padding:0">
-{rows if rows else ('<div class="muted" style="padding:20px;text-align:center">No results for "' + _esc(q) + '"</div>' if q else '<div class="muted" style="padding:20px;text-align:center">No conversations yet</div>')}
+{user_rows if user_rows else ('<div class="muted" style="padding:20px;text-align:center">No results for "' + _esc(q) + '"</div>' if q else '<div class="muted" style="padding:20px;text-align:center">No conversations yet</div>')}
 </div>"""
         return web.Response(text=html, content_type="text/html")
 
@@ -1335,7 +1935,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     <div>
       <a class="btn btn-sm" hx-get="/stats/conversations?token={stats_token}" hx-target="#content"
          onclick="document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
-                  document.querySelectorAll('.nav a')[4].classList.add('active')">
+                  document.querySelectorAll('.nav a')[5].classList.add('active')">
         Back</a>
       <strong style="margin-left:8px">{_esc(user_name)}</strong>
       <span class="muted" style="margin-left:8px">TG: {tgid}</span>
@@ -1346,6 +1946,186 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     {bubbles if bubbles else '<div class="muted" style="padding:20px;text-align:center">No messages</div>'}
   </div>
   {pagination}
+</div>"""
+        return web.Response(text=html, content_type="text/html")
+
+    # === ONBOARDING TAB ===
+    async def handle_onboarding(request: web.Request) -> web.Response:
+        if not _check_token(request):
+            return web.Response(text="Unauthorized", status=401)
+
+        range_key, cutoff = _parse_range(request)
+
+        try:
+            users = await user_repo.get_all_users_full()
+        except Exception as e:
+            logger.error(f"Onboarding query failed: {e}")
+            return web.Response(text=f'<div class="card">DB error: {_esc(str(e))}</div>',
+                                content_type="text/html")
+
+        if cutoff:
+            users = [u for u in users if _parse_dt(u.get("created_at")) and _parse_dt(u.get("created_at")) >= cutoff]
+
+        total = len(users)
+        onboarded = sum(1 for u in users if u.get("onboarding_completed"))
+        not_onboarded = total - onboarded
+
+        # FSM state funnel from conversation logs
+        fsm_state_counts: dict[str, int] = {}
+        fsm_logs: list[dict] = []
+        if conv_log_repo:
+            try:
+                fsm_logs = await conv_log_repo.get_fsm_state_logs(limit=10000)
+                if cutoff:
+                    fsm_logs = [l for l in fsm_logs if _parse_dt(l.get("created_at")) and _parse_dt(l.get("created_at")) >= cutoff]
+
+                # Count distinct users per FSM state
+                state_users: dict[str, set] = {}
+                for log in fsm_logs:
+                    state = log.get("fsm_state")
+                    uid = log.get("telegram_user_id")
+                    if state and uid:
+                        state_users.setdefault(state, set()).add(uid)
+                fsm_state_counts = {s: len(uids) for s, uids in state_users.items()}
+            except Exception as e:
+                logger.warning(f"FSM state query failed: {e}")
+
+        # Build FSM funnel — ordered by common onboarding flow
+        onboarding_states_order = [
+            "IntentOnboarding:choosing_intents",
+            "IntentOnboarding:choosing_mode",
+            "AgentOnboarding:chatting",
+            "AgentOnboarding:confirming",
+            "IntentOnboarding:choosing_city",
+            "IntentOnboarding:requesting_photo",
+            "IntentOnboarding:confirming_profile",
+        ]
+        # Also include any states not in the predefined order
+        all_states = list(fsm_state_counts.keys())
+        ordered_states = [s for s in onboarding_states_order if s in fsm_state_counts]
+        remaining_states = [s for s in all_states if s not in ordered_states]
+        ordered_states.extend(sorted(remaining_states))
+
+        fsm_funnel_steps = [(s.split(":")[-1] if ":" in s else s, fsm_state_counts[s])
+                            for s in ordered_states if fsm_state_counts.get(s, 0) > 0]
+
+        # Onboarding mode distribution — infer from FSM states
+        mode_counts = {"agent": 0, "voice": 0, "quick": 0, "social": 0}
+        if conv_log_repo:
+            try:
+                # Count users per mode based on FSM state prefixes
+                mode_state_map = {
+                    "AgentOnboarding": "agent",
+                    "VoiceOnboarding": "voice",
+                    "QuickOnboarding": "quick",
+                    "SocialOnboarding": "social",
+                }
+                mode_users: dict[str, set] = {}
+                for log in fsm_logs:
+                    state = log.get("fsm_state") or ""
+                    uid = log.get("telegram_user_id")
+                    prefix = state.split(":")[0] if ":" in state else state
+                    mode = mode_state_map.get(prefix)
+                    if mode and uid:
+                        mode_users.setdefault(mode, set()).add(uid)
+                mode_counts = {m: len(mode_users.get(m, set())) for m in mode_counts}
+            except Exception:
+                pass
+
+        mode_labels = [k for k, v in mode_counts.items() if v > 0]
+        mode_data = [v for v in mode_counts.values() if v > 0]
+        mode_chart = ""
+        if mode_labels:
+            mode_chart = _chart_html(
+                "modeChart", "doughnut", mode_labels,
+                [{"data": mode_data,
+                  "backgroundColor": ["#1f6feb", "#238636", "#9e6a03", "#da3633"]}],
+                height=220,
+            )
+
+        # Avg onboarding duration
+        avg_duration = "—"
+        if conv_log_repo and onboarded > 0:
+            try:
+                # Estimate: time from first log to last log before onboarding_completed
+                durations = []
+                for u in users:
+                    if not u.get("onboarding_completed"):
+                        continue
+                    created = _parse_dt(u.get("created_at"))
+                    updated = _parse_dt(u.get("updated_at"))
+                    if created and updated and updated > created:
+                        dur = (updated - created).total_seconds()
+                        if dur < 86400:  # Ignore > 24h as likely not a single session
+                            durations.append(dur)
+                if durations:
+                    avg_secs = sum(durations) / len(durations)
+                    if avg_secs < 60:
+                        avg_duration = f"{round(avg_secs)}s"
+                    elif avg_secs < 3600:
+                        avg_duration = f"{round(avg_secs / 60)}m"
+                    else:
+                        avg_duration = f"{round(avg_secs / 3600, 1)}h"
+            except Exception:
+                pass
+
+        # Profile completeness histogram
+        profile_fields = ["bio", "interests", "goals", "looking_for", "can_help_with",
+                          "photo_url", "profession", "city_current", "connection_intents", "skills"]
+        completeness_buckets = {"0-20%": 0, "20-40%": 0, "40-60%": 0, "60-80%": 0, "80-100%": 0}
+        for u in users:
+            filled = sum(1 for f in profile_fields if u.get(f))
+            pct = filled / len(profile_fields) * 100
+            if pct < 20:
+                completeness_buckets["0-20%"] += 1
+            elif pct < 40:
+                completeness_buckets["20-40%"] += 1
+            elif pct < 60:
+                completeness_buckets["40-60%"] += 1
+            elif pct < 80:
+                completeness_buckets["60-80%"] += 1
+            else:
+                completeness_buckets["80-100%"] += 1
+
+        completeness_chart = _chart_html(
+            "completenessChart", "bar",
+            list(completeness_buckets.keys()),
+            [{"label": "Users", "data": list(completeness_buckets.values()),
+              "backgroundColor": "#1f6feb"}],
+            height=200,
+        )
+
+        range_picker = _date_range_picker_html(stats_token, "onboarding", range_key)
+        onb_pct = round(onboarded / total * 100) if total else 0
+
+        html = f"""
+{range_picker}
+
+<div class="grid">
+  <div class="card">
+    <div class="big">{onboarded}<span style="font-size:.4em;color:#8b949e"> / {total}</span></div>
+    <div class="label">Onboarded ({onb_pct}%)</div>
+    <div class="row"><span>In progress</span><span>{not_onboarded}</span></div>
+  </div>
+  <div class="card">
+    <h3>Avg Duration</h3>
+    <div class="big" style="font-size:1.8em">{avg_duration}</div>
+    <div class="label">signup to complete</div>
+  </div>
+  <div class="card">
+    <h3>Onboarding Mode</h3>
+    {mode_chart if mode_chart else '<span class="muted">No mode data</span>'}
+  </div>
+</div>
+
+<div class="card">
+  <h3>FSM State Funnel (where users drop off)</h3>
+  {_funnel_html(fsm_funnel_steps) if fsm_funnel_steps else '<span class="muted">No FSM state data — enable conversation logging</span>'}
+</div>
+
+<div class="card">
+  <h3>Profile Completeness Distribution</h3>
+  {completeness_chart}
 </div>"""
         return web.Response(text=html, content_type="text/html")
 
@@ -1389,6 +2169,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     app.router.add_post("/stats/user/{id}/reset", handle_user_reset)
     app.router.add_post("/stats/user/{id}/dm", handle_user_dm)
     app.router.add_post("/stats/user/{id}/toggle", handle_user_toggle)
+    app.router.add_get("/stats/onboarding", handle_onboarding)
     app.router.add_get("/stats/events", handle_events)
     app.router.add_get("/stats/event/{id}", handle_event_detail)
     app.router.add_get("/stats/matches", handle_matches)

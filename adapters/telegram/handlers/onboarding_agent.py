@@ -616,6 +616,8 @@ async def _do_complete_onboarding(
             city_current=city,
             passion_text=cl.passion_text,
             connection_mode=cl.connection_mode,
+            matching_scope=cl.matching_scope or "city",
+            meeting_preference=cl.meeting_preference or "both",
             onboarding_completed=True,
         )
 

@@ -46,6 +46,7 @@ def build_agent_chat_prompt(profile_dict: dict, lang: str = "en") -> str:
         "goals": "Goals", "profession": "Profession", "company": "Company",
         "skills": "Skills", "city_current": "City",
         "experience_level": "Experience", "passion_text": "Passion",
+        "matching_scope": "Matching scope", "meeting_preference": "Meeting preference",
     }
 
     for key, label in field_labels.items():

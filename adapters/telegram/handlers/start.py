@@ -886,25 +886,72 @@ async def show_events(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_matches")
 async def show_matches(callback: CallbackQuery, state: FSMContext):
-    """Show matches — defaults to Sphere City (city-based matching)"""
-    from adapters.telegram.handlers.sphere_city import sphere_city_entry
-
+    """Show matches menu — City / Global / Event"""
+    await callback.answer()
     lang = detect_lang_callback(callback)
 
-    user = await user_service.get_user_by_platform(
-        MessagePlatform.TELEGRAM,
-        str(callback.from_user.id)
-    )
-
-    if not user:
-        await callback.answer()
-        await callback.message.edit_text(
-            "Profile not found" if lang == "en" else "Профиль не найден"
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id)
         )
-        return
+    except Exception:
+        user = None
 
-    # Route to Sphere City (handles its own callback.answer)
-    await sphere_city_entry(callback, state)
+    # Determine event info
+    has_event = False
+    event_name = None
+    if user and user.current_event_id:
+        try:
+            event = await event_service.get_event_by_id(user.current_event_id)
+            if event:
+                has_event = True
+                event_name = event.name
+        except Exception:
+            pass
+
+    city_name = user.city_current if user else None
+
+    # Get real counts
+    city_count = 0
+    global_count = 0
+    if user:
+        from infrastructure.database.user_repository import SupabaseUserRepository
+        _user_repo = SupabaseUserRepository()
+        try:
+            if city_name:
+                city_candidates = await _user_repo.get_users_by_city(
+                    city=city_name, exclude_user_id=user.id, limit=100
+                )
+                city_count = len(city_candidates)
+            global_candidates = await _user_repo.get_global_candidates(
+                exclude_user_id=user.id, limit=100
+            )
+            global_count = len(global_candidates)
+        except Exception:
+            pass
+
+    from adapters.telegram.keyboards.inline import get_matches_menu_keyboard
+
+    if lang == "ru":
+        text = "🔍 <b>Найти людей</b>\n\nГде искать?"
+    else:
+        text = "🔍 <b>Find People</b>\n\nWhere to look?"
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_matches_menu_keyboard(
+                has_event=has_event,
+                event_name=event_name,
+                city_name=city_name,
+                city_count=city_count,
+                global_count=global_count,
+                lang=lang
+            )
+        )
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "vibe_check")
@@ -964,12 +1011,12 @@ async def toggle_matching_mode(callback: CallbackQuery):
     # If switching to city mode and no city set, ask for city first
     if new_mode == "city" and not user.city_current:
         from adapters.telegram.handlers.sphere_city import sphere_city_entry
-        # Set mode first, then ask for city
         await user_service.update_user(
             MessagePlatform.TELEGRAM,
             str(callback.from_user.id),
             matching_mode=new_mode
         )
+        # sphere_city_entry calls callback.answer() internally
         await sphere_city_entry(callback, None)
         return
 
@@ -980,15 +1027,12 @@ async def toggle_matching_mode(callback: CallbackQuery):
         matching_mode=new_mode
     )
 
-    # Show confirmation and refresh events view
     if lang == "ru":
         msg = "🏙️ Режим: Sphere City" if new_mode == "city" else "🎉 Режим: Event"
     else:
         msg = "🏙️ Mode: Sphere City" if new_mode == "city" else "🎉 Mode: Event"
 
     await callback.answer(msg)
-
-    # Refresh the events screen
     await show_events(callback)
 
 

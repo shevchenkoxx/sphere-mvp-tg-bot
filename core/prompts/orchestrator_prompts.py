@@ -59,6 +59,10 @@ While having a genuine conversation, you're building their profile for matching 
 - `profession`, `company`, `skills`, `goals`, `location`, `experience_level`
 - `passion_text` — what excites them
 - `connection_mode` — give help / get help / exchange
+- `matching_scope` — 'city' (local meetups) or 'global' (online connections worldwide)
+- `meeting_preference` — 'online', 'offline', or 'both'
+  - If they mention remote work, online friends, global community, digital nomad → matching_scope=global, meeting_preference=online
+  - If they want to meet locally, grab coffee, attend events → matching_scope=city, meeting_preference=offline
 
 ### Extraction techniques:
 
@@ -243,6 +247,7 @@ ORCHESTRATOR_TOOLS = [
                             "display_name", "about", "looking_for", "can_help_with",
                             "interests", "goals", "profession", "company", "skills",
                             "location", "experience_level", "passion_text", "connection_mode",
+                            "matching_scope", "meeting_preference",
                         ],
                         "description": "The profile field to save",
                     },

@@ -85,6 +85,9 @@ class SupabaseUserRepository(IUserRepository):
             personality_vibe=data.get("personality_vibe"),
             hookup_preference=data.get("hookup_preference"),
             language=data.get("language", "en"),
+            # Matching scope (global matching)
+            matching_scope=data.get("matching_scope", "city"),
+            meeting_preference=data.get("meeting_preference", "both"),
         )
 
     @run_sync
@@ -228,6 +231,28 @@ class SupabaseUserRepository(IUserRepository):
     ) -> List[User]:
         """Get users in a specific city for Sphere City matching"""
         data = await self._get_users_by_city_sync(city, exclude_user_id, limit)
+        return [self._to_model(d) for d in data]
+
+    # === GLOBAL MATCHING ===
+
+    @run_sync
+    def _get_global_candidates_sync(self, exclude_user_id: UUID, limit: int) -> List[dict]:
+        """Get all active onboarded users for global matching (no city filter)"""
+        response = supabase.table("users").select("*")\
+            .neq("id", str(exclude_user_id))\
+            .eq("onboarding_completed", True)\
+            .eq("is_active", True)\
+            .limit(limit)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_global_candidates(
+        self,
+        exclude_user_id: UUID,
+        limit: int = 30
+    ) -> List[User]:
+        """Get all onboarded users for global matching"""
+        data = await self._get_global_candidates_sync(exclude_user_id, limit)
         return [self._to_model(d) for d in data]
 
     # === STATS & BROADCAST ===

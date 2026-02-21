@@ -2,6 +2,8 @@
 Conversation Log Repository — fire-and-forget message logging.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Optional
 from infrastructure.database.supabase_client import supabase, run_sync
@@ -149,3 +151,35 @@ class ConversationLogRepository:
     async def search_conversations(self, query: str, limit: int = 50) -> list[dict]:
         """Search message content across all users."""
         return await self._search_conversations_sync(query, limit)
+
+    @run_sync
+    def _get_fsm_state_logs_sync(self, limit: int):
+        resp = (
+            supabase.table("conversation_logs")
+            .select("telegram_user_id, fsm_state, created_at")
+            .not_.is_("fsm_state", "null")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return resp.data or []
+
+    async def get_fsm_state_logs(self, limit: int = 10000) -> list[dict]:
+        """Get logs with FSM state for onboarding funnel analysis."""
+        return await self._get_fsm_state_logs_sync(limit)
+
+    @run_sync
+    def _get_message_stats_sync(self, cutoff_iso: str | None, limit: int):
+        q = (
+            supabase.table("conversation_logs")
+            .select("telegram_user_id, direction, message_type, created_at")
+        )
+        if cutoff_iso:
+            q = q.gte("created_at", cutoff_iso)
+        resp = q.order("created_at", desc=True).limit(limit).execute()
+        return resp.data or []
+
+    async def get_message_stats(self, cutoff=None, limit: int = 10000) -> list[dict]:
+        """Get message metadata for analytics (direction, type, timestamps)."""
+        cutoff_iso = cutoff.isoformat() if cutoff else None
+        return await self._get_message_stats_sync(cutoff_iso, limit)

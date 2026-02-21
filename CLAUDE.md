@@ -150,6 +150,7 @@ sphere-bot/
 │   │   ├── sphere_city.py      # City-based matching (Sphere City)
 │   │   └── events.py           # Event creation & joining
 │   ├── keyboards/inline.py     # All keyboards + city picker + Sphere City
+│   ├── web/stats.py              # Admin dashboard (aiohttp + HTMX + Chart.js)
 │   ├── states/onboarding.py    # FSM states (includes ProfileEditStates)
 │   └── loader.py               # Bot & services init (includes embedding_service)
 ├── core/
@@ -166,6 +167,7 @@ sphere-bot/
 │   │   ├── user_repository.py  # includes update_embeddings(), get_users_by_city()
 │   │   ├── match_repository.py # includes get_city_matches()
 │   │   ├── speed_dating_repository.py # AI Speed Dating cache
+│   │   ├── conversation_log_repository.py # Message logging + analytics queries
 │   │   └── supabase_client.py
 │   └── ai/
 │       ├── openai_service.py   # GPT-4o-mini + profession/skills in matching
@@ -465,6 +467,79 @@ DB_SCHEMA=v1_1                  # Optional: schema isolation
 ---
 
 ## Recent Session Changes
+
+### February 21, 2026 — Dashboard Analytics Full Upgrade
+
+**Admin dashboard** (`adapters/telegram/web/stats.py`) — major upgrade from basic stats to full analytics suite.
+
+**Foundation:**
+- Chart.js CDN + auto-destroy on HTMX swap
+- New CSS: filter bars, funnel visualization, activity heatmap
+- Helpers: `_parse_range()`, `_date_range_picker_html()`, `_chart_html()`, `_funnel_html()`
+
+**Overview tab:**
+- Date range picker (Today/7d/30d/All)
+- Daily signups line chart (30d)
+- Conversion funnel: Total → Onboarded → Got matches → Active (7d)
+- Profile depth distribution doughnut
+
+**Users tab — multi-filter:**
+- City dropdown (with counts), Intent dropdown, Onboarding status, Has photo, Date range
+- HTMX `change` triggers on selects
+
+**Onboarding tab (NEW — `/stats/onboarding`):**
+- FSM state funnel (drop-off analysis)
+- Onboarding mode distribution doughnut (agent/voice/quick/social)
+- Avg onboarding duration
+- Profile completeness histogram
+
+**Matches tab — analytics:**
+- Stat cards: total, pending/accepted/declined, avg score, feedback ratio
+- Score distribution bar chart (5 buckets)
+- Matches over time line chart (30d)
+- Top 10 matched users table
+
+**Conversations tab — analytics:**
+- Summary cards: total messages, in/out, unique users, avg per user
+- Message type doughnut (text/voice/photo/callback)
+- Activity heatmap (7 days × 24 hours)
+- Content search toggle (search by name / search messages)
+
+**Files modified:** `adapters/telegram/web/stats.py` (1402→2182 lines), `infrastructure/database/conversation_log_repository.py` (+2 methods: `get_fsm_state_logs`, `get_message_stats`)
+
+---
+
+### February 19, 2026 — Agent Onboarding Bug Fixes + SOTA Prompt
+
+**Bug fixes (agent onboarding — silent bot):**
+1. `orchestrator_service.py`: `tool_choice="none"` on follow-up, skip when show_profile/complete, fallback text
+2. `onboarding_agent.py`: `parse_mode="HTML"`, HTML escape, always respond, fix user_id fallback
+3. `orchestrator_models.py`: fix `trim_messages` (don't break tool groups), fix `from_dict`
+
+**Matches / Sphere City:**
+4. Fix `show_matches` crash (None state), double callback.answer()
+5. Sphere City: random 10-150 available matches, "🔒 Unlock" instead of @username
+6. Profile edit: handle URL text gracefully
+
+**SOTA Prompt (complete rewrite):**
+7. Personality-driven: "friend at a party" not "service bot"
+8. Zero topic restrictions
+9. Stealth data extraction through stories
+10. Mirror matching: adapts to user's style
+11. Banned corporate speak, conversational markers
+
+**Data:**
+12. 10 fake Warsaw users (diverse profiles, no usernames)
+
+**Files modified:** `orchestrator_service.py`, `orchestrator_models.py`, `orchestrator_prompts.py`, `onboarding_agent.py`, `sphere_city.py`, `start.py`, `profile_edit.py`
+
+---
+
+### February 18, 2026 — Conversation Logging + AI UI + Agent Chat
+
+See `progress.md` for full details.
+
+---
 
 ### February 12, 2026 - SXN Event Day Session 4 (Pre-Event Final)
 

@@ -760,13 +760,33 @@ async def retry_matching(callback: CallbackQuery):
         )
 
 
+@router.callback_query(F.data == "event_matches")
+async def event_matches_entry(callback: CallbackQuery, state: FSMContext):
+    """Show event-specific matches"""
+    lang = detect_lang(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user or not user.current_event_id:
+        await callback.answer(
+            "No active event" if lang == "en" else "Нет активного ивента",
+            show_alert=True
+        )
+        return
+
+    await list_matches_callback(callback, index=0, event_id=user.current_event_id, state=state)
+
+
 @router.callback_query(F.data.startswith("match_prev_"))
 async def match_prev(callback: CallbackQuery, state: FSMContext):
     """Navigate to previous match"""
-    await callback.answer()
     try:
         current_index = int(callback.data.replace("match_prev_", ""))
     except ValueError:
+        await callback.answer()
         return
     new_index = max(0, current_index - 1)
     await list_matches_callback(callback, index=new_index, state=state)
@@ -775,10 +795,10 @@ async def match_prev(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("match_next_"))
 async def match_next(callback: CallbackQuery, state: FSMContext):
     """Navigate to next match"""
-    await callback.answer()
     try:
         current_index = int(callback.data.replace("match_next_", ""))
     except ValueError:
+        await callback.answer()
         return
     new_index = current_index + 1
     await list_matches_callback(callback, index=new_index, state=state)

@@ -22,6 +22,7 @@ from adapters.telegram.keyboards.inline import (
     get_sphere_city_menu_keyboard,
     get_back_to_menu_keyboard,
     get_main_menu_keyboard,
+    get_global_menu_keyboard,
     SPHERE_CITIES,
 )
 
@@ -44,16 +45,30 @@ class SphereCityStates(StatesGroup):
 @router.callback_query(F.data == "sphere_city")
 async def sphere_city_entry(callback: CallbackQuery, state: FSMContext):
     """Entry point to Sphere City"""
+    await callback.answer()  # Answer immediately to prevent Telegram loading spinner
     lang = detect_lang(callback)
 
-    user = await user_service.get_user_by_platform(
-        MessagePlatform.TELEGRAM,
-        str(callback.from_user.id)
-    )
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id)
+        )
+    except Exception as e:
+        logger.error(f"Sphere City entry DB error: {e}")
+        await callback.message.edit_text(
+            "Something went wrong. Try again." if lang == "en" else "Что-то пошло не так. Попробуй ещё раз.",
+            reply_markup=get_back_to_menu_keyboard(lang)
+        )
+        return
 
     if not user:
-        msg = "Profile not found" if lang == "en" else "Профиль не найден"
-        await callback.answer(msg, show_alert=True)
+        try:
+            await callback.message.edit_text(
+                "Profile not found" if lang == "en" else "Профиль не найден",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
         return
 
     # Check if user has a city set
@@ -71,12 +86,23 @@ async def sphere_city_entry(callback: CallbackQuery, state: FSMContext):
                 "Choose your city to find interesting people nearby.\n\n"
                 "What city are you in?"
             )
-        await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang))
+        try:
+            await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang))
+        except Exception:
+            pass
     else:
         # Show Sphere City menu
-        await show_sphere_city_menu(callback, user, lang)
-
-    await callback.answer()
+        try:
+            await show_sphere_city_menu(callback, user, lang)
+        except Exception as e:
+            logger.error(f"Sphere City menu error: {e}")
+            try:
+                await callback.message.edit_text(
+                    "Something went wrong. Try again." if lang == "en" else "Что-то пошло не так. Попробуй ещё раз.",
+                    reply_markup=get_back_to_menu_keyboard(lang)
+                )
+            except Exception:
+                pass
 
 
 async def show_sphere_city_menu(callback: CallbackQuery, user, lang: str):
@@ -116,8 +142,20 @@ async def show_sphere_city_menu(callback: CallbackQuery, user, lang: str):
 
 
 async def get_city_match_count(user) -> int:
-    """Get count of available city matches — shows random number for engagement."""
-    return random.randint(10, 150)
+    """Get count of users in the same city (potential matches)."""
+    if not user or not user.city_current:
+        return 0
+    from infrastructure.database.user_repository import SupabaseUserRepository
+    user_repo = SupabaseUserRepository()
+    try:
+        candidates = await user_repo.get_users_by_city(
+            city=user.city_current,
+            exclude_user_id=user.id,
+            limit=100
+        )
+        return len(candidates)
+    except Exception:
+        return 0
 
 
 # === City Selection ===
@@ -168,7 +206,8 @@ async def handle_city_selection(callback: CallbackQuery, state: FSMContext):
     )
 
     if lang == "ru":
-        await callback.answer(f"✅ Город сохранён: {city_names.get('ru', city_name)}")
+        display = city_names.get('ru', city_name) if city_names else city_name
+        await callback.answer(f"✅ Город сохранён: {display}")
     else:
         await callback.answer(f"✅ City saved: {city_name}")
 
@@ -248,17 +287,42 @@ async def handle_custom_city(message: Message, state: FSMContext):
 @router.callback_query(F.data == "sphere_city_matches")
 async def show_city_matches(callback: CallbackQuery):
     """Show city-based matches"""
+    await callback.answer()  # Answer immediately to prevent loading spinner
     lang = detect_lang(callback)
 
-    user = await user_service.get_user_by_platform(
-        MessagePlatform.TELEGRAM,
-        str(callback.from_user.id)
-    )
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id)
+        )
+    except Exception as e:
+        logger.error(f"City matches DB error: {e}")
+        try:
+            await callback.message.edit_text(
+                "Something went wrong. Try again." if lang == "en" else "Что-то пошло не так. Попробуй ещё раз.",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
+        return
 
     if not user or not user.city_current:
-        msg = "Set your city first" if lang == "en" else "Сначала выбери город"
-        await callback.answer(msg, show_alert=True)
+        try:
+            await callback.message.edit_text(
+                "Set your city first" if lang == "en" else "Сначала выбери город",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
         return
+
+    # Show loading message
+    try:
+        await callback.message.edit_text(
+            "🔍 Finding people..." if lang == "en" else "🔍 Ищу людей..."
+        )
+    except Exception:
+        pass
 
     # Get or create city matches
     try:
@@ -282,7 +346,6 @@ async def show_city_matches(callback: CallbackQuery):
                 text,
                 reply_markup=get_sphere_city_menu_keyboard(False, lang)
             )
-            await callback.answer()
             return
 
         # Format matches
@@ -316,16 +379,19 @@ async def show_city_matches(callback: CallbackQuery):
             text,
             reply_markup=get_sphere_city_menu_keyboard(True, lang)
         )
-        await callback.answer()
 
     except Exception as e:
         err_str = str(e)
         if "message is not modified" in err_str:
-            await callback.answer()
             return
-        logger.error(f"Error showing city matches: {e}")
-        msg = "Error loading matches" if lang == "en" else "Ошибка загрузки матчей"
-        await callback.answer(msg, show_alert=True)
+        logger.error(f"Error showing city matches: {e}", exc_info=True)
+        try:
+            await callback.message.edit_text(
+                "Error loading matches. Try again." if lang == "en" else "Ошибка загрузки. Попробуй ещё раз.",
+                reply_markup=get_sphere_city_menu_keyboard(False, lang)
+            )
+        except Exception:
+            pass
 
 
 # === Change City ===
@@ -342,3 +408,222 @@ async def change_city(callback: CallbackQuery):
 
     await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang))
     await callback.answer()
+
+
+# === GLOBAL MATCHING ===
+
+@router.callback_query(F.data == "global_matches_entry")
+async def global_entry(callback: CallbackQuery):
+    """Entry point for global matching"""
+    await callback.answer()
+    lang = detect_lang(callback)
+
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id)
+        )
+    except Exception as e:
+        logger.error(f"Global entry DB error: {e}")
+        try:
+            await callback.message.edit_text(
+                "Something went wrong. Try again." if lang == "en" else "Что-то пошло не так.",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
+        return
+
+    if not user:
+        try:
+            await callback.message.edit_text(
+                "Profile not found" if lang == "en" else "Профиль не найден",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
+        return
+
+    # Auto-set matching_scope to global when entering
+    if user.matching_scope != "global":
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id),
+            matching_scope="global"
+        )
+
+    # Get real global candidate count
+    from infrastructure.database.user_repository import SupabaseUserRepository
+    user_repo = SupabaseUserRepository()
+    try:
+        candidates = await user_repo.get_global_candidates(
+            exclude_user_id=user.id, limit=100
+        )
+        match_count = len(candidates)
+    except Exception:
+        match_count = 0
+
+    meeting_badge = ""
+    if user.meeting_preference == "online":
+        meeting_badge = " 🌐 Online"
+    elif user.meeting_preference == "offline":
+        meeting_badge = " 📍 Offline"
+    else:
+        meeting_badge = " 🌐 Online & Offline"
+
+    if lang == "ru":
+        text = (
+            f"🌍 <b>Глобальный Матчинг</b>{meeting_badge}\n\n"
+            "Находи интересных людей по всему миру.\n"
+            "Общайтесь онлайн или встречайтесь, если вы в одном городе.\n\n"
+            f"📊 Доступно матчей: <b>{match_count}</b>"
+        )
+    else:
+        text = (
+            f"🌍 <b>Global Matching</b>{meeting_badge}\n\n"
+            "Find interesting people around the world.\n"
+            "Connect online or meet IRL if you're in the same city.\n\n"
+            f"📊 Available matches: <b>{match_count}</b>"
+        )
+
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_global_menu_keyboard(match_count, lang)
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "global_matches_view")
+async def show_global_matches(callback: CallbackQuery):
+    """Show global matches"""
+    await callback.answer()
+    lang = detect_lang(callback)
+
+    try:
+        user = await user_service.get_user_by_platform(
+            MessagePlatform.TELEGRAM,
+            str(callback.from_user.id)
+        )
+    except Exception as e:
+        logger.error(f"Global matches DB error: {e}")
+        try:
+            await callback.message.edit_text(
+                "Something went wrong." if lang == "en" else "Что-то пошло не так.",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
+        return
+
+    if not user:
+        try:
+            await callback.message.edit_text(
+                "Profile not found" if lang == "en" else "Профиль не найден",
+                reply_markup=get_back_to_menu_keyboard(lang)
+            )
+        except Exception:
+            pass
+        return
+
+    # Show loading
+    try:
+        await callback.message.edit_text(
+            "🔍 Searching globally..." if lang == "en" else "🔍 Ищу по всему миру..."
+        )
+    except Exception:
+        pass
+
+    try:
+        matches = await matching_service.find_global_matches(user=user, limit=5)
+
+        if not matches:
+            if lang == "ru":
+                text = (
+                    "👀 Пока нет глобальных матчей.\n\n"
+                    "Как только появятся новые люди — ты получишь уведомление!"
+                )
+            else:
+                text = (
+                    "👀 No global matches yet.\n\n"
+                    "You'll be notified when new people join!"
+                )
+            await callback.message.edit_text(
+                text,
+                reply_markup=get_global_menu_keyboard(0, lang)
+            )
+            return
+
+        # Format matches
+        if lang == "ru":
+            header = "🌍 <b>Глобальные матчи</b>\n\n"
+        else:
+            header = "🌍 <b>Global Matches</b>\n\n"
+
+        lines = []
+        for i, (matched_user, match_result) in enumerate(matches):
+            name = matched_user.display_name or matched_user.first_name or "Anonymous"
+            city = matched_user.city_current or ""
+            city_badge = f"  🌐 {city}" if city else ""
+
+            line = f"<b>{i+1}. {name}</b>{city_badge}"
+            line += "  🔒 <i>Unlock</i>"
+
+            if matched_user.profession:
+                line += f"\n   🏢 {matched_user.profession}"
+
+            if match_result.explanation:
+                expl = match_result.explanation[:80]
+                if len(match_result.explanation) > 80:
+                    expl += "..."
+                line += f"\n   💡 {expl}"
+
+            lines.append(line)
+
+        text = header + "\n\n".join(lines)
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_global_menu_keyboard(len(matches), lang)
+        )
+
+    except Exception as e:
+        err_str = str(e)
+        if "message is not modified" in err_str:
+            return
+        logger.error(f"Error showing global matches: {e}", exc_info=True)
+        try:
+            await callback.message.edit_text(
+                "Error loading matches. Try again." if lang == "en" else "Ошибка загрузки.",
+                reply_markup=get_global_menu_keyboard(0, lang)
+            )
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data == "toggle_scope")
+async def toggle_scope(callback: CallbackQuery):
+    """Toggle matching scope between city and global"""
+    lang = detect_lang(callback)
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id)
+    )
+
+    if not user:
+        await callback.answer("Profile not found", show_alert=True)
+        return
+
+    new_scope = "global" if user.matching_scope == "city" else "city"
+    await user_service.update_user(
+        MessagePlatform.TELEGRAM,
+        str(callback.from_user.id),
+        matching_scope=new_scope
+    )
+
+    if new_scope == "global":
+        await global_entry(callback)
+    else:
+        await sphere_city_entry(callback, None)

@@ -152,6 +152,24 @@ class SupabaseMatchRepository(IMatchRepository):
         data = await self._get_city_matches_sync(user_id, city)
         return [self._to_model(d) for d in data]
 
+    # === GLOBAL MATCHING ===
+
+    @run_sync
+    def _get_global_matches_sync(self, user_id: UUID) -> List[dict]:
+        """Get global matches for a user (event_id IS NULL AND city IS NULL)"""
+        response = supabase.table("matches").select("*")\
+            .is_("event_id", "null")\
+            .is_("city", "null")\
+            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")\
+            .order("compatibility_score", desc=True)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_global_matches(self, user_id: UUID) -> List[Match]:
+        """Get global matches for a user"""
+        data = await self._get_global_matches_sync(user_id)
+        return [self._to_model(d) for d in data]
+
     @run_sync
     def _exists_any_sync(self, user_a_id: UUID, user_b_id: UUID) -> bool:
         """Check if any match exists between two users (regardless of event)"""

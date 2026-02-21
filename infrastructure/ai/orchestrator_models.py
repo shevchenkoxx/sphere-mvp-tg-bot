@@ -20,7 +20,7 @@ OPTIONAL_FIELDS = {
     "profession", "company", "skills", "goals",
     "location", "experience_level",
 }
-PERSONALIZATION_FIELDS = {"passion_text", "connection_mode"}
+PERSONALIZATION_FIELDS = {"passion_text", "connection_mode", "matching_scope", "meeting_preference"}
 
 ALL_PROFILE_FIELDS = REQUIRED_FIELDS | IMPORTANT_FIELDS | OPTIONAL_FIELDS | PERSONALIZATION_FIELDS
 
@@ -42,6 +42,8 @@ class ProfileChecklist:
     experience_level: Optional[str] = None
     passion_text: Optional[str] = None
     connection_mode: Optional[str] = None
+    matching_scope: Optional[str] = None  # 'city' or 'global'
+    meeting_preference: Optional[str] = None  # 'online', 'offline', or 'both'
     photo_url: Optional[str] = None
 
     # ---- helpers ----
@@ -71,6 +73,7 @@ class ProfileChecklist:
             "profession": 1, "company": 1, "skills": 1,
             "location": 0.5, "experience_level": 0.5,
             "passion_text": 1, "connection_mode": 0.5,
+            "matching_scope": 0.3, "meeting_preference": 0.3,
         }
         for f, w in weights.items():
             total += w
@@ -101,6 +104,8 @@ class ProfileChecklist:
             "experience_level": self.experience_level,
             "passion_text": self.passion_text,
             "connection_mode": self.connection_mode,
+            "matching_scope": self.matching_scope,
+            "meeting_preference": self.meeting_preference,
             "photo_url": self.photo_url,
         }
 
@@ -149,6 +154,15 @@ class ProfileChecklist:
 
         if self.passion_text:
             lines.append(f"\n🔥 <b>Passion:</b> {e(self.passion_text)}")
+
+        # Matching preferences
+        scope_labels = {"global": "🌍 Global", "city": "🏙️ My City"}
+        pref_labels = {"online": "Online", "offline": "Offline", "both": "Online & Offline"}
+        scope = scope_labels.get(self.matching_scope or "", "")
+        pref = pref_labels.get(self.meeting_preference or "", "")
+        if scope or pref:
+            parts = [p for p in [scope, pref] if p]
+            lines.append(f"\n🎯 <b>Matching:</b> {' · '.join(parts)}")
 
         return "\n".join(lines)
 

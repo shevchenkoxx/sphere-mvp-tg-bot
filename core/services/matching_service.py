@@ -622,3 +622,125 @@ class MatchingService:
         # Sort by score
         matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
         return matches[:limit]
+
+    # === GLOBAL MATCHING ===
+
+    async def get_global_matches(
+        self,
+        user_id: UUID,
+    ) -> List[Match]:
+        """Get existing global matches for a user"""
+        return await self.match_repo.get_global_matches(user_id)
+
+    async def find_global_candidates(
+        self,
+        user: User,
+        limit: int = 20
+    ) -> List[User]:
+        """Find users with global matching scope"""
+        from infrastructure.database.user_repository import SupabaseUserRepository
+
+        user_repo = SupabaseUserRepository()
+
+        try:
+            candidates = await user_repo.get_global_candidates(
+                exclude_user_id=user.id,
+                limit=limit
+            )
+            return candidates
+        except Exception as e:
+            logger.warning(f"Failed to get global candidates: {e}")
+            return []
+
+    async def find_global_matches(
+        self,
+        user: User,
+        limit: int = 5
+    ) -> List[Tuple[User, MatchResultWithId]]:
+        """
+        Find matches for a user globally (no city filter).
+        Creates match records with event_id=NULL, city=NULL.
+        """
+        # First check for existing global matches
+        existing = await self.match_repo.get_global_matches(user.id)
+        if existing:
+            from infrastructure.database.user_repository import SupabaseUserRepository
+            user_repo = SupabaseUserRepository()
+
+            results = []
+            for match in existing[:limit]:
+                other_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
+                other_user = await user_repo.get_by_id(other_id)
+                if other_user:
+                    result_with_id = MatchResultWithId(
+                        compatibility_score=match.compatibility_score,
+                        match_type=match.match_type,
+                        explanation=match.ai_explanation,
+                        icebreaker=match.icebreaker,
+                        match_id=match.id
+                    )
+                    results.append((other_user, result_with_id))
+            return results
+
+        # Find new global candidates
+        candidates = await self.find_global_candidates(user, limit=20)
+
+        if not candidates:
+            logger.info(f"No global candidates found for {user.display_name or user.id}")
+            return []
+
+        logger.info(f"Found {len(candidates)} global candidates for {user.display_name or user.id}")
+
+        # Build context based on meeting preferences
+        def _build_global_context(user_a: User, user_b: User) -> str:
+            same_city = (
+                user_a.city_current and user_b.city_current
+                and user_a.city_current.lower() == user_b.city_current.lower()
+            )
+            if same_city:
+                return f"Global Online Matching — both in {user_a.city_current}, can meet IRL"
+            else:
+                cities = []
+                if user_a.city_current:
+                    cities.append(user_a.city_current)
+                if user_b.city_current:
+                    cities.append(user_b.city_current)
+                city_info = f" ({' & '.join(cities)})" if cities else ""
+                return f"Global Online Matching{city_info}"
+
+        # Analyze pairs and create matches
+        matches = []
+        for candidate in candidates:
+            if await self.match_repo.exists_any(user.id, candidate.id):
+                continue
+
+            context = _build_global_context(user, candidate)
+            result = await self.analyze_pair(user, candidate, context)
+
+            if result and result.compatibility_score >= self.threshold:
+                match_create = MatchCreate(
+                    event_id=None,
+                    user_a_id=user.id,
+                    user_b_id=candidate.id,
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    ai_explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    city=None,  # Global match — no city filter
+                )
+                created_match = await self.match_repo.create(match_create)
+
+                result_with_id = MatchResultWithId(
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    match_id=created_match.id
+                )
+                matches.append((candidate, result_with_id))
+
+                if len(matches) >= limit:
+                    break
+
+        matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
+        return matches[:limit]

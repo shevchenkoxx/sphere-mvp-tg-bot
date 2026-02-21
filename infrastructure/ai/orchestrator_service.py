@@ -340,6 +340,8 @@ class OrchestratorService:
                 "skills": "skills",
                 "location": "location",
                 "experience_level": "experience_level",
+                "matching_scope": "matching_scope",
+                "meeting_preference": "meeting_preference",
             }
 
             for ext_key, cl_key in field_mapping.items():
