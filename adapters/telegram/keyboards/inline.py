@@ -267,18 +267,20 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
     builder = InlineKeyboardBuilder()
     inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
     if lang == "ru":
-        builder.button(text="👤 Профиль", callback_data="my_profile")
         builder.button(text="🔍 Найти людей", callback_data="my_matches")
+        builder.button(text="🔮 Vibe Check", callback_data="vibe_check")
+        builder.button(text="👤 Профиль", callback_data="my_profile")
         builder.button(text="💬 Спросить Sphere", callback_data="agent_chat")
         if pending_invitations > 0:
             builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
     else:
-        builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🔍 Find People", callback_data="my_matches")
+        builder.button(text="🔮 Vibe Check", callback_data="vibe_check")
+        builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="💬 Ask Sphere", callback_data="agent_chat")
         if pending_invitations > 0:
             builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
-    builder.adjust(1)
+    builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 

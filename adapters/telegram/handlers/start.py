@@ -956,28 +956,9 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "vibe_check")
 async def vibe_check_entry(callback: CallbackQuery, state: FSMContext):
-    """Vibe Check — coming soon in v1.1."""
-    lang = detect_lang_callback(callback)
-    if lang == "ru":
-        text = (
-            "🔮 <b>Check Our Vibe</b>\n\n"
-            "Эта фича скоро будет доступна!\n"
-            "Ты сможешь проверить совместимость с любым человеком через AI-интервью."
-        )
-    else:
-        text = (
-            "🔮 <b>Check Our Vibe</b>\n\n"
-            "This feature is coming soon!\n"
-            "You'll be able to check your compatibility with anyone through an AI interview."
-        )
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    builder.button(text="← Menu" if lang == "en" else "← Меню", callback_data="back_to_menu")
-    try:
-        await callback.message.edit_text(text, reply_markup=builder.as_markup())
-    except Exception:
-        pass
-    await callback.answer()
+    """Vibe Check — start a new compatibility game."""
+    from adapters.telegram.handlers.vibe_check import create_vibe_check_handler
+    await create_vibe_check_handler(callback, state)
 
 
 @router.callback_query(F.data == "agent_chat")
