@@ -1,34 +1,38 @@
 # Current Status
 
-Branch: `global-mode-v1`
+Branch: `community-v1`
 Bot: @Matchd_bot
-Deploy: Railway (auto-deploy from `global-mode-v1` / service `humorous-enchantment`)
-Last session: 2026-02-24
+Deploy: Not yet deployed (Railway needs branch config)
+Last session: 2026-02-25
 
-## What Works
-- Global mode onboarding (agent-driven, no events required)
-- Profile creation + editing
+## What Works (inherited from global-mode-v1)
+- Agent onboarding (AI-driven, personalized)
 - Global matching (vector + LLM re-ranking)
 - Sphere City (city-based matching)
-- Profile expansion flow (no matches -> ask more -> rematch)
+- Profile expansion flow
 - Agent chat (post-onboarding AI conversation)
 - Vibe Check (AI compatibility game)
 - Share/referral system
-- Admin dashboard (`/stats` web UI)
-- Events system (just enabled: `EVENTS_ENABLED=true`)
-- `/quickevent` command (create event + QR in one step)
-- QR code generation (programmatic via `core/utils/qr_generator.py`)
+- Admin dashboard (HTMX)
+- Events system (enabled, /quickevent + QR)
+- Conversation logging
+
+## What's New on This Branch
+- Design doc: `docs/plans/2026-02-25-community-v1-design.md`
+- Implementation plan: `docs/plans/2026-02-25-community-v1-implementation.md`
+- Nothing implemented yet — plan is ready, execution next
 
 ## What's Broken / WIP
-- Event onboarding ordering bug: `join_event()` called AFTER event-scoped matching check in `onboarding_agent.py:662-687` — event matches won't trigger on first join
-- QR font falls back to tiny bitmap on Linux (Railway) — works fine on macOS
+- No community/group handling yet (Phase 1 not started)
+- Event join ordering bug fixed on global-mode-v1 (inherited)
 
-## Active Events
-- `CORAD` — created 2026-02-24, active, deep link: `t.me/Matchd_bot?start=event_CORAD`
-- `SXN`, `POSTSW24`, `TEST2024` — legacy events from main branch
+## Worktree Layout
+| Location | Branch | Purpose |
+|----------|--------|---------|
+| `sphere-bot/` | `main` | Archive |
+| `worktrees/sphere-community/` | `community-v1` | Active dev (HERE) |
+| `worktrees/sphere-global/` | `global-mode-v1` | Global mode testing |
 
-## Environment (Railway)
-- `ONBOARDING_MODE=agent`
-- `EVENTS_ENABLED=true` (changed from false, 2026-02-24)
-- `TELEGRAM_BOT_TOKEN=8551957014:AAF7...` (@Matchd_bot)
-- `DEBUG=true`
+## Next Steps
+- Execute Phase 1, Task 1: DB migration (016_community_tables.sql)
+- Follow implementation plan task by task

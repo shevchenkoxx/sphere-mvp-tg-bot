@@ -19,3 +19,43 @@
 **Context:** Creating events required a 3-step FSM flow (/create_event → name → description → location). QR had to be made separately.
 **Decision:** Added `/quickevent <name>` — single message creates event with derived code, generates QR, and sends both.
 **Rationale:** Fastest possible event creation for live situations. Full FSM still available via `/create_event`.
+
+## 2026-02-25 — Same DB for All Modes
+**Context:** Community mode needs new tables (communities, community_members, etc.). Could use separate DB or shared.
+**Decision:** Share the same Supabase DB across all modes/branches. New tables prefixed with purpose.
+**Rationale:** No cross-DB joins needed, simpler infra, Supabase free tier limits. Users are the same across modes.
+
+## 2026-02-25 — Branch from global-mode-v1 (not main)
+**Context:** Community-v1 needs all global mode features as foundation.
+**Decision:** Branch `community-v1` from `global-mode-v1`, not `main`. Main stays as archive.
+**Rationale:** global-mode-v1 has agent onboarding, vector matching, expansion flow — all needed for community mode.
+
+## 2026-02-25 — One Bot, Multiple Modes
+**Context:** Could have separate bots per mode or one bot handling all.
+**Decision:** Single bot (@Matchd_bot) handles community + event + global modes. Mode determined by entry context.
+**Rationale:** Users shouldn't manage multiple bots. Deep link prefix determines context.
+
+## 2026-02-25 — Games Drive DM Traffic via Deep Links
+**Context:** Bot can't initiate DMs (Telegram API limitation). Need to get group users into DM.
+**Decision:** In-group games (Mystery Profile, This or That, etc.) post results with deep link buttons to DM.
+**Rationale:** Only way to reach users in DM. Games provide value AND drive onboarding.
+
+## 2026-02-25 — Monetization: Free Community, Paid Cross-Community
+**Context:** Need revenue model for community matching.
+**Decision:** Free matching within community. 1 free cross-community match, then $3/match or $10/mo Pro.
+**Rationale:** Free community matching drives adoption. Cross-community is premium value.
+
+## 2026-02-25 — Git Commits as Primary Long-Term Memory
+**Context:** `.memory/` files provide structured overview but lack detail.
+**Decision:** Write commit messages as self-contained memory units (WHY, context, gotchas). `.memory/` is the index, commits are the detail.
+**Rationale:** `git log --grep` makes commits searchable. No duplication between memory and commits.
+
+## 2026-02-25 — Events as Separate Future Branch
+**Context:** Offline events have different flow from community mode.
+**Decision:** Plan `events-v2` as separate branch, not part of community-v1.
+**Rationale:** Different UX (QR scan → quick onboard → event-scoped matching). Mixing concerns would slow both.
+
+## 2026-02-25 — Three Worktrees by Purpose
+**Context:** Had messy worktree setup (v1.1, unnamed).
+**Decision:** Three clear worktrees: `sphere-bot/` (main/archive), `worktrees/sphere-community/` (community-v1), `worktrees/sphere-global/` (global-mode-v1).
+**Rationale:** Each worktree = one product line. Clear naming prevents mistakes.
