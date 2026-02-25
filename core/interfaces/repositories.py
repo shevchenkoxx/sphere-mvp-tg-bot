@@ -64,8 +64,8 @@ class IEventRepository(ABC):
         pass
 
     @abstractmethod
-    async def create(self, event_data: EventCreate) -> Event:
-        """Create a new event"""
+    async def create(self, event_data: EventCreate, code_override: Optional[str] = None) -> Event:
+        """Create a new event. If code_override is set, use that code."""
         pass
 
     @abstractmethod

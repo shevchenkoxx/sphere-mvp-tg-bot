@@ -1,14 +1,13 @@
-# Sphere Bot V1.1 — Intent-Based Onboarding
+# Sphere Bot — Global Mode
 
-## THIS IS THE V1.1 BRANCH (NOT MAIN!)
-- **Branch:** v1.1
-- **Worktree:** `/Users/artemshevchenko/Desktop/Claude Code Terminal MVP TG/worktrees/sphere-bot-v1.1/`
-- **Bot:** Separate test bot (NOT @Spheresocial_bot)
-- **Railway:** Deploys from v1.1 branch automatically
-- **DO NOT** push to main from this worktree!
+## Branch: `global-mode-v1` (@Matchd_bot)
+- **Branch:** `global-mode-v1`
+- **Bot:** @Matchd_bot (not production!)
+- **Railway:** Auto-deploys from `global-mode-v1` branch (service: `humorous-enchantment`)
+- **DO NOT** push to main from here!
 
 ## Overview
-Telegram bot for meaningful connections. V1.1 adds intent-based onboarding with 4 modes (Agent/Voice/Quick Choices/Social Media), daily questions, and profile enrichment.
+Telegram bot for meaningful connections. Global Mode = no events required, universal matching. Events supported optionally.
 
 **Repo:** https://github.com/shevchenkoxx/sphere-mvp-tg-bot
 **Production (main):** @Spheresocial_bot — DO NOT TOUCH from here
@@ -17,11 +16,26 @@ Telegram bot for meaningful connections. V1.1 adds intent-based onboarding with 
 
 ## IMPORTANT for Claude Code
 
+### Git Memory (MANDATORY)
+**Read `.memory/status.md` at session start. Update at session end.**
+
+- `.memory/FORMAT.md` — format rules
+- `.memory/status.md` — current state (overwrite each session)
+- `.memory/decisions.md` — append-only decision log
+- `.memory/sessions/YYYY-MM-DD.md` — session changelogs
+
+**Every session must:**
+1. Read `.memory/status.md` to understand current state
+2. Create/append `.memory/sessions/YYYY-MM-DD.md` with changes
+3. Update `.memory/status.md` with new state
+4. Append to `.memory/decisions.md` for any architectural decisions
+5. Commit `.memory/` changes with the rest of the code
+
 ### Branch Safety
-- This is `worktrees/sphere-bot-v1.1/` on branch **v1.1**
-- Production is in `sphere-bot/` on branch **main**
+- This is `sphere-bot/` on branch **global-mode-v1**
+- Production is on branch **main**
 - ALWAYS verify `git branch` before committing
-- Push with `git push origin v1.1` (NOT main!)
+- Push with `git push origin global-mode-v1` (NOT main!)
 
 ### Credentials
 - **All credentials stored in:** `.credentials/keys.md` (gitignored)

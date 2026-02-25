@@ -31,9 +31,10 @@ class EventService:
         organizer_platform: MessagePlatform,
         organizer_platform_id: str,
         description: Optional[str] = None,
-        location: Optional[str] = None
+        location: Optional[str] = None,
+        code_override: Optional[str] = None,
     ) -> Event:
-        """Create a new event"""
+        """Create a new event. If code_override is set, use it instead of random code."""
         event_data = EventCreate(
             name=name,
             description=description,
@@ -41,7 +42,7 @@ class EventService:
             organizer_platform=organizer_platform,
             organizer_platform_id=organizer_platform_id
         )
-        return await self.event_repo.create(event_data)
+        return await self.event_repo.create(event_data, code_override=code_override)
 
     async def get_event_by_code(self, code: str) -> Optional[Event]:
         """Get event by code"""

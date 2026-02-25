@@ -66,8 +66,8 @@ class SupabaseEventRepository(IEventRepository):
         return self._to_model(data) if data else None
 
     @run_sync
-    def _create_sync(self, event_data: EventCreate, organizer_id: Optional[UUID]) -> dict:
-        code = self._generate_code()
+    def _create_sync(self, event_data: EventCreate, organizer_id: Optional[UUID], code_override: Optional[str] = None) -> dict:
+        code = code_override or self._generate_code()
         data = {
             "code": code,
             "name": event_data.name,
@@ -80,7 +80,7 @@ class SupabaseEventRepository(IEventRepository):
         response = supabase.table("events").insert(data).execute()
         return response.data[0]
 
-    async def create(self, event_data: EventCreate) -> Event:
+    async def create(self, event_data: EventCreate, code_override: Optional[str] = None) -> Event:
         # Get organizer user ID
         organizer = await self._user_repo.get_by_platform_id(
             event_data.organizer_platform,
@@ -88,7 +88,7 @@ class SupabaseEventRepository(IEventRepository):
         )
         organizer_id = organizer.id if organizer else None
 
-        data = await self._create_sync(event_data, organizer_id)
+        data = await self._create_sync(event_data, organizer_id, code_override=code_override)
         return self._to_model(data)
 
     @run_sync

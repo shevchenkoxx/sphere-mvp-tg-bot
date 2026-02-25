@@ -651,6 +651,15 @@ async def _do_complete_onboarding(
                     )
                     logger.info(f"Agent: embeddings generated for {user.id}")
 
+                    # Join event BEFORE matching so current_event_id is set
+                    event_code = agent_state.event_code
+                    if event_code:
+                        await event_service.join_event(
+                            event_code,
+                            MessagePlatform.TELEGRAM,
+                            user_id,
+                        )
+
                     # Run global matching
                     updated_user = await user_repo.get_by_id(user.id)
                     if updated_user:
@@ -660,7 +669,6 @@ async def _do_complete_onboarding(
                         ) or []
 
                         # Also match event if present
-                        event_code = agent_state.event_code
                         if event_code and updated_user.current_event_id:
                             event_matches = await matching_service.find_matches_vector(
                                 user=updated_user,
@@ -676,15 +684,6 @@ async def _do_complete_onboarding(
                 await loading_msg.delete()
             except Exception:
                 pass
-
-            # Handle event join
-            event_code = agent_state.event_code
-            if event_code:
-                await event_service.join_event(
-                    event_code,
-                    MessagePlatform.TELEGRAM,
-                    user_id,
-                )
 
             # Show results
             match_count = len(matches_found)

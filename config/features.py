@@ -15,7 +15,7 @@ class Features:
 
     # === EVENTS ===
     # When False: event deep links, event menu items, and event router are disabled
-    EVENTS_ENABLED: bool = os.getenv("EVENTS_ENABLED", "false").lower() == "true"
+    EVENTS_ENABLED: bool = os.getenv("EVENTS_ENABLED", "true").lower() == "true"
 
     # === MATCHING ===
     MATCHING_ENABLED: bool = os.getenv("MATCHING_ENABLED", "true").lower() == "true"

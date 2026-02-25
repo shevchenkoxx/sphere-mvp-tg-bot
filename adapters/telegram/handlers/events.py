@@ -183,12 +183,125 @@ async def process_event_location(message: Message, state: FSMContext):
         f"<b>Ивент создан!</b>\n\n"
         f"<b>Название:</b> {event.name}\n"
         f"<b>Код:</b> <code>{event.code}</code>\n\n"
-        f"<b>Ссылка для QR:</b>\n<code>{deep_link}</code>\n\n"
-        "Эту ссылку можно превратить в QR-код и разместить на мероприятии!",
+        f"<b>Ссылка:</b>\n<code>{deep_link}</code>",
         reply_markup=get_event_actions_keyboard(event.code)
     )
 
+    # Auto-generate and send QR
+    from core.utils.qr_generator import generate_event_qr
+    import os
+    from aiogram.types import FSInputFile
+    try:
+        qr_path = generate_event_qr(event.code, bot_info.username)
+        if os.path.exists(qr_path):
+            await message.answer_photo(
+                FSInputFile(qr_path),
+                caption=f"📎 QR for <b>{event.name}</b>\n\n{deep_link}",
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        logger.warning(f"QR generation failed: {e}")
+
     await state.clear()
+
+
+# === QUICK EVENT (one-step: name → create + QR + send) ===
+
+@router.message(Command("quickevent"))
+async def quick_event(message: Message):
+    """
+    /quickevent <name> [description] — Create event + generate QR + send it in one step.
+    Usage: /quickevent Corad
+           /quickevent Corad | Optional description here
+    Admin only.
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "<b>Usage:</b> /quickevent EventName\n"
+            "Or: /quickevent EventName | Description\n\n"
+            "Example: <code>/quickevent Corad</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    raw = parts[1].strip()
+    # Support "Name | Description" format
+    if "|" in raw:
+        name_part, desc_part = raw.split("|", 1)
+        event_name = name_part.strip()
+        description = desc_part.strip() or None
+    else:
+        event_name = raw.strip()
+        description = None
+
+    if not event_name:
+        await message.answer("Event name cannot be empty.")
+        return
+
+    # Generate code from name (uppercase, alphanumeric only, max 10 chars)
+    import re
+    event_code = re.sub(r'[^A-Z0-9]', '', event_name.upper())[:10]
+
+    if not event_code:
+        await message.answer("Could not generate a valid code. Use letters/numbers in the name.")
+        return
+
+    # Check if event already exists
+    existing = await event_service.get_event_by_code(event_code)
+    if existing:
+        await message.answer(
+            f"Event <code>{event_code}</code> already exists!\n"
+            f"Use /event {event_code} to see details.",
+            parse_mode="HTML"
+        )
+        return
+
+    status_msg = await message.answer("Creating event...")
+
+    # Create event
+    event = await event_service.create_event(
+        name=event_name,
+        organizer_platform=MessagePlatform.TELEGRAM,
+        organizer_platform_id=str(message.from_user.id),
+        description=description,
+        location=None,
+        code_override=event_code,
+    )
+
+    # Generate deep link
+    bot_info = await bot.me()
+    deep_link = event_service.generate_deep_link(event.code, bot_info.username)
+
+    # Send event card
+    await status_msg.edit_text(
+        f"<b>Event created!</b>\n\n"
+        f"<b>Name:</b> {event.name}\n"
+        f"<b>Code:</b> <code>{event.code}</code>\n"
+        f"<b>Deep link:</b>\n<code>{deep_link}</code>",
+        parse_mode="HTML",
+        reply_markup=get_event_actions_keyboard(event.code),
+    )
+
+    # Generate and send QR
+    try:
+        from core.utils.qr_generator import generate_event_qr
+        import os
+        from aiogram.types import FSInputFile
+        qr_path = generate_event_qr(event.code, bot_info.username, label=f"{event_name} — Scan to Join")
+        if os.path.exists(qr_path):
+            await message.answer_photo(
+                FSInputFile(qr_path),
+                caption=f"📎 QR for <b>{event.name}</b>\n\n{deep_link}",
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        logger.warning(f"QR generation failed for {event.code}: {e}")
+        await message.answer(f"QR generation failed, but event was created successfully.")
 
 
 # === JOIN EVENT ===
