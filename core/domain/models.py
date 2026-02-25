@@ -284,6 +284,79 @@ class OnboardingData(BaseModel):
 
 # === MEETUP PROPOSAL ===
 
+class Community(BaseModel):
+    """Telegram group registered with the bot"""
+    id: UUID
+    telegram_group_id: int
+    name: Optional[str] = None
+    description: Optional[str] = None
+    invite_link: Optional[str] = None
+    settings: dict = Field(default_factory=dict)
+    owner_user_id: Optional[UUID] = None
+    is_active: bool = True
+    member_count: int = 0
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CommunityMember(BaseModel):
+    """Membership link between a user and a community"""
+    id: UUID
+    community_id: UUID
+    user_id: UUID
+    role: str = "member"
+    joined_via: Optional[str] = None
+    is_onboarded: bool = False
+    joined_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserSource(BaseModel):
+    """Append-only attribution record for how a user arrived"""
+    id: UUID
+    user_id: UUID
+    source_type: str
+    source_id: Optional[str] = None
+    referrer_tg_id: Optional[str] = None
+    deep_link_raw: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GameSession(BaseModel):
+    """An in-group game instance (mystery profile, this-or-that, etc.)"""
+    id: UUID
+    community_id: UUID
+    game_type: str
+    status: str = "active"
+    game_data: dict = Field(default_factory=dict)
+    telegram_message_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GameResponse(BaseModel):
+    """A user's response to a game session"""
+    id: UUID
+    game_session_id: UUID
+    user_id: UUID
+    response: Optional[dict] = None
+    is_correct: Optional[bool] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MeetupProposal(BaseModel):
     """Structured meetup proposal between matched users"""
     id: UUID

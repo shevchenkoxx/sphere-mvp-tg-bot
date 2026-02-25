@@ -35,6 +35,11 @@ GOALS = {
     "learning": {"emoji": "graduation_cap", "label_ru": "Обучение", "label_en": "Learning"},
 }
 
+# === Community Mode ===
+GAME_TYPES = ["mystery_profile", "this_or_that", "vibe_check", "hot_take", "common_ground", "bingo"]
+SOURCE_TYPES = ["community", "event", "referral", "game", "organic"]
+COMMUNITY_ROLES = ["admin", "member"]
+
 # Limits
 MAX_INTERESTS = 5
 MAX_GOALS = 3
