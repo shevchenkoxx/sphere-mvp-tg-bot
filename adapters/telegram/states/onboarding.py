@@ -106,6 +106,13 @@ class DailyQuestionStates(StatesGroup):
     chatting = State()    # User is in free-form LLM conversation
 
 
+class StoryOnboarding(StatesGroup):
+    """FSM states for branded story onboarding"""
+    playing = State()           # Story is auto-playing with delays
+    waiting_game_tap = State()  # Interactive #1: mini-game choice
+    waiting_next_tap = State()  # Interactive #2: "see what happened"
+
+
 class AgentOnboarding(StatesGroup):
     """FSM states for AI agent-driven onboarding"""
     in_conversation = State()     # Main conversation loop
