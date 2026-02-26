@@ -59,3 +59,23 @@
 **Context:** Had messy worktree setup (v1.1, unnamed).
 **Decision:** Three clear worktrees: `sphere-bot/` (main/archive), `worktrees/sphere-community/` (community-v1), `worktrees/sphere-global/` (global-mode-v1).
 **Rationale:** Each worktree = one product line. Clear naming prevents mistakes.
+
+## 2026-02-26 — Observation Queue Uses deque(maxlen=1000)
+**Context:** community_group.py used list with pop(0) for observation queue, which is O(N).
+**Decision:** Switched to `collections.deque(maxlen=1000)` for O(1) eviction and bounded size.
+**Rationale:** Hot path (every group message) needs to be fast. deque handles both.
+
+## 2026-02-26 — Scheduler Skips Sphere Global Sentinel
+**Context:** Sphere Global has telegram_group_id=-1. Scheduler iterated all communities including this virtual one, firing Bot API calls with invalid -1 group ID.
+**Decision:** Skip communities with `telegram_group_id == -1` in scheduler tick and auto_associate_user.
+**Rationale:** Virtual communities should never trigger real TG API calls.
+
+## 2026-02-26 — First-Run Guard for New Communities
+**Context:** New communities with no `last_game_at` or `last_pulse_at` timestamps would immediately trigger games/pulse on first tick.
+**Decision:** On first tick for a community, initialize timestamps to "now" and return. Games/pulse start after the configured interval.
+**Rationale:** Prevents immediate LLM calls on community creation. Games should start after enough members join.
+
+## 2026-02-26 — Code Review as Standard Practice
+**Context:** 26 issues found by 3 parallel review agents across Phase 2+3 code. 11 were critical runtime crashes.
+**Decision:** Run code review agents after each phase completion, before merging.
+**Rationale:** Catches bugs that compile-checks miss: wrong enum types, missing model fields, broken method calls, race conditions.
