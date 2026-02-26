@@ -2266,13 +2266,38 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
 
             @run_sync
             def _get_matches():
-                resp = supabase.table("matches").select("id, compatibility_score, created_at")\
-                    .eq("community_id", cid).order("created_at", desc=True).limit(20).execute()
+                resp = supabase.table("matches").select("id, compatibility_score, created_at, user_a_id, user_b_id")\
+                    .eq("community_id", cid).order("created_at", desc=True).execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_game_sessions():
+                resp = supabase.table("game_sessions").select("id, game_type, status, created_at")\
+                    .eq("community_id", cid).order("created_at", desc=True).limit(100).execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_game_responses(session_ids):
+                if not session_ids:
+                    return []
+                resp = supabase.table("game_responses").select("game_session_id, user_id")\
+                    .in_("game_session_id", session_ids).execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_observations():
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+                resp = supabase.table("message_observations").select("topics, sentiment, user_id, created_at")\
+                    .eq("community_id", cid).gte("created_at", cutoff).execute()
                 return resp.data or []
 
             community = await _get_community()
             members = await _get_members()
             matches = await _get_matches()
+            game_sessions = await _get_game_sessions()
+            session_ids = [g["id"] for g in game_sessions]
+            game_responses = await _get_game_responses(session_ids)
+            observations = await _get_observations()
         except Exception as e:
             logger.error(f"Community detail query failed: {e}")
             return web.Response(text=f'<div class="detail">DB error: {_esc(str(e))}</div>',
@@ -2287,7 +2312,117 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
         onboarded = sum(1 for m in members if m.get("is_onboarded"))
         admins = sum(1 for m in members if m.get("role") == "admin")
 
-        # Member rows
+        # ---- Source attribution breakdown ----
+        source_counts: dict = {}
+        for m in members:
+            src = m.get("joined_via") or "unknown"
+            source_counts[src] = source_counts.get(src, 0) + 1
+
+        source_bars = ""
+        source_colors = {"deep_link": "#1f6feb", "auto_detected": "#238636", "referral": "#a371f7",
+                         "tg_admin_sync": "#f0883e", "post_onboarding": "#58a6ff", "unknown": "#484f58"}
+        for src, count in sorted(source_counts.items(), key=lambda x: -x[1]):
+            pct = round(count / total_members * 100) if total_members else 0
+            color = source_colors.get(src, "#484f58")
+            source_bars += (
+                f'<div class="funnel-step">'
+                f'<div class="funnel-bar" style="width:{max(pct, 8)}%;background:{color}">{count}</div>'
+                f'<span class="funnel-label">{_esc(src)} ({pct}%)</span>'
+                f'</div>'
+            )
+
+        # ---- Onboarding funnel ----
+        matched_user_ids = set()
+        for m in matches:
+            matched_user_ids.add(m.get("user_a_id"))
+            matched_user_ids.add(m.get("user_b_id"))
+        member_user_ids = {m.get("user_id") for m in members}
+        matched_in_community = len(matched_user_ids & member_user_ids)
+
+        funnel_steps = [
+            ("Joined group", total_members, "#58a6ff"),
+            ("Onboarded", onboarded, "#1f6feb"),
+            ("Got matched", matched_in_community, "#238636"),
+        ]
+        funnel_html = ""
+        for label, count, color in funnel_steps:
+            pct = round(count / total_members * 100) if total_members else 0
+            funnel_html += (
+                f'<div class="funnel-step">'
+                f'<div class="funnel-bar" style="width:{max(pct, 8)}%;background:{color}">{count}</div>'
+                f'<span class="funnel-label">{label} ({pct}%)</span>'
+                f'</div>'
+            )
+
+        # ---- Member growth (last 14 days) ----
+        now = datetime.now(timezone.utc)
+        day_counts = {}
+        for i in range(13, -1, -1):
+            day = (now - timedelta(days=i)).strftime("%m/%d")
+            day_counts[day] = 0
+
+        for m in members:
+            dt = _parse_dt(m.get("joined_at"))
+            if dt:
+                day_key = dt.strftime("%m/%d")
+                if day_key in day_counts:
+                    day_counts[day_key] += 1
+
+        growth_labels = json.dumps(list(day_counts.keys()))
+        growth_data = json.dumps(list(day_counts.values()))
+        chart_id = f"growth_{cid[:8]}"
+
+        # ---- Game engagement ----
+        total_games = len(game_sessions)
+        game_type_counts: dict = {}
+        for g in game_sessions:
+            gt = g.get("game_type", "unknown")
+            game_type_counts[gt] = game_type_counts.get(gt, 0) + 1
+
+        # Participation: unique users who responded
+        unique_participants = set()
+        responses_per_session: dict = {}
+        for r in game_responses:
+            unique_participants.add(r.get("user_id"))
+            sid = r.get("game_session_id")
+            responses_per_session[sid] = responses_per_session.get(sid, 0) + 1
+
+        avg_participation = (round(sum(responses_per_session.values()) / len(responses_per_session), 1)
+                             if responses_per_session else 0)
+        most_popular_game = max(game_type_counts, key=game_type_counts.get) if game_type_counts else "—"
+
+        game_rows = ""
+        for gt, cnt in sorted(game_type_counts.items(), key=lambda x: -x[1]):
+            game_rows += f'<tr><td>{_esc(gt)}</td><td>{cnt}</td></tr>'
+
+        # ---- Matching stats ----
+        match_count = len(matches)
+        avg_score = (round(sum(m.get("compatibility_score", 0) or 0 for m in matches) / match_count, 2)
+                     if match_count else 0)
+
+        # ---- Observation topics (last 30 days) ----
+        topic_counts: dict = {}
+        sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+        obs_user_ids = set()
+        for obs in observations:
+            for t in (obs.get("topics") or []):
+                topic_counts[t] = topic_counts.get(t, 0) + 1
+            s = obs.get("sentiment", "neutral")
+            sentiment_counts[s] = sentiment_counts.get(s, 0) + 1
+            obs_user_ids.add(obs.get("user_id"))
+
+        top_topics = sorted(topic_counts.items(), key=lambda x: -x[1])[:10]
+        topic_tags = " ".join(
+            f'<span class="badge badge-blue" style="margin:2px">#{_esc(t)} ({c})</span>'
+            for t, c in top_topics
+        ) if top_topics else '<span class="muted">No topics yet</span>'
+
+        obs_total = len(observations)
+        obs_pos = sentiment_counts["positive"]
+        obs_neg = sentiment_counts["negative"]
+        obs_neu = sentiment_counts["neutral"]
+
+        # ---- Member rows ----
         member_rows = ""
         for m in members[:50]:
             user = m.get("users") or {}
@@ -2307,27 +2442,97 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
 
         # Settings display
         games = settings.get("games_enabled", [])
-        games_str = ", ".join(games) if games else "none"
+        games_str = ", ".join(games) if games else "all (default)"
 
         html = f"""
 <div class="detail">
   <h3 style="margin-bottom:12px;font-size:1.1em;color:#e6edf3">{_esc(community.get("name") or "Community")}</h3>
-  <div class="detail-grid">
-    <div class="field"><div class="field-label">Group ID</div><div class="field-value"><code>{community.get("telegram_group_id")}</code></div></div>
-    <div class="field"><div class="field-label">Status</div><div class="field-value">{"Active" if community.get("is_active") else "Inactive"}</div></div>
-    <div class="field"><div class="field-label">Members</div><div class="field-value">{total_members} ({onboarded} onboarded, {admins} admins)</div></div>
-    <div class="field"><div class="field-label">Matches</div><div class="field-value">{len(matches)}</div></div>
-    <div class="field"><div class="field-label">Reminders</div><div class="field-value">{"Enabled" if settings.get("reminder_enabled", True) else "Disabled"} (every {settings.get("reminder_hours", 48)}h)</div></div>
-    <div class="field"><div class="field-label">Games</div><div class="field-value">{_esc(games_str)}</div></div>
-    <div class="field"><div class="field-label">Cross-community</div><div class="field-value">{"Yes" if settings.get("cross_community_matching", True) else "No"} (max {settings.get("max_free_cross_matches", 1)} free)</div></div>
-    <div class="field"><div class="field-label">Created</div><div class="field-value">{_fmt_dt(community.get("created_at"))}</div></div>
+
+  <!-- Summary cards -->
+  <div class="grid" style="margin-bottom:14px">
+    <div class="card"><h3>Members</h3><div class="big">{total_members}</div><span class="muted">{onboarded} onboarded, {admins} admins</span></div>
+    <div class="card"><h3>Matches</h3><div class="big">{match_count}</div><span class="muted">avg score: {avg_score}</span></div>
+    <div class="card"><h3>Games Played</h3><div class="big">{total_games}</div><span class="muted">{len(unique_participants)} participants, ~{avg_participation}/game</span></div>
+    <div class="card"><h3>Messages Analyzed</h3><div class="big">{obs_total}</div><span class="muted">{len(obs_user_ids)} active users (30d)</span></div>
   </div>
 
-  <h3 style="margin:16px 0 8px;color:#e6edf3">Members</h3>
-  <table>
-  <tr><th>Name</th><th>Role</th><th>Status</th><th>Joined via</th><th>Joined</th></tr>
-  {member_rows if member_rows else '<tr><td colspan="5" class="muted">No members</td></tr>'}
-  </table>
+  <!-- Growth chart + Funnel side by side -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div class="card">
+      <h3>Member Growth (14 days)</h3>
+      <div class="chart-container" style="height:160px">
+        <canvas id="{chart_id}"></canvas>
+      </div>
+      <script>
+        (function() {{
+          var ctx = document.getElementById('{chart_id}');
+          if (ctx) new Chart(ctx, {{
+            type: 'bar',
+            data: {{
+              labels: {growth_labels},
+              datasets: [{{ data: {growth_data}, backgroundColor: '#1f6feb', borderRadius: 3 }}]
+            }},
+            options: {{
+              responsive: true, maintainAspectRatio: false,
+              plugins: {{ legend: {{ display: false }} }},
+              scales: {{
+                x: {{ ticks: {{ color: '#8b949e', font: {{ size: 10 }} }}, grid: {{ display: false }} }},
+                y: {{ ticks: {{ color: '#8b949e', stepSize: 1 }}, grid: {{ color: '#21262d' }},
+                     beginAtZero: true }}
+              }}
+            }}
+          }});
+        }})();
+      </script>
+    </div>
+    <div class="card">
+      <h3>Onboarding Funnel</h3>
+      <div class="funnel-container" style="margin-top:8px">{funnel_html}</div>
+      <h3 style="margin-top:14px">Source Attribution</h3>
+      <div class="funnel-container" style="margin-top:8px">{source_bars if source_bars else '<span class="muted">No data</span>'}</div>
+    </div>
+  </div>
+
+  <!-- Game engagement + Topics -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div class="card">
+      <h3>Game Engagement</h3>
+      {f'<table><tr><th>Game Type</th><th>Played</th></tr>{game_rows}</table>' if game_rows else '<span class="muted">No games yet</span>'}
+      <div style="margin-top:8px"><span class="muted">Most popular: <b>{_esc(most_popular_game)}</b></span></div>
+    </div>
+    <div class="card">
+      <h3>Community Topics (30d)</h3>
+      <div style="margin:8px 0;line-height:1.8">{topic_tags}</div>
+      <div style="margin-top:10px">
+        <span class="badge badge-green">+{obs_pos}</span>
+        <span class="badge" style="background:#484f58;color:#e6edf3">{obs_neu} neutral</span>
+        <span class="badge badge-red">-{obs_neg}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card" style="margin-bottom:14px">
+    <h3>Settings</h3>
+    <div class="detail-grid">
+      <div class="field"><div class="field-label">Group ID</div><div class="field-value"><code>{community.get("telegram_group_id")}</code></div></div>
+      <div class="field"><div class="field-label">Status</div><div class="field-value">{"Active" if community.get("is_active") else "Inactive"}</div></div>
+      <div class="field"><div class="field-label">Reminders</div><div class="field-value">{"Enabled" if settings.get("reminder_enabled", True) else "Disabled"} (every {settings.get("reminder_hours", 48)}h)</div></div>
+      <div class="field"><div class="field-label">Games</div><div class="field-value">{_esc(games_str)}</div></div>
+      <div class="field"><div class="field-label">Cross-community</div><div class="field-value">{"Yes" if settings.get("cross_community_matching", True) else "No"} (max {settings.get("max_free_cross_matches", 1)} free)</div></div>
+      <div class="field"><div class="field-label">Created</div><div class="field-value">{_fmt_dt(community.get("created_at"))}</div></div>
+    </div>
+  </div>
+
+  <!-- Members table -->
+  <div class="card">
+    <h3>Members ({total_members})</h3>
+    <table>
+    <tr><th>Name</th><th>Role</th><th>Status</th><th>Joined via</th><th>Joined</th></tr>
+    {member_rows if member_rows else '<tr><td colspan="5" class="muted">No members</td></tr>'}
+    </table>
+    {f'<div class="muted" style="margin-top:8px">Showing first 50 of {total_members}</div>' if total_members > 50 else ''}
+  </div>
 </div>"""
         return web.Response(text=html, content_type="text/html")
 
