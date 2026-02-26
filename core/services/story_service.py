@@ -364,7 +364,7 @@ class StoryService:
             data = json.loads(resp.choices[0].message.content)
 
             # Validate structure
-            if "steps" not in data or len(data["steps"]) < 10:
+            if "steps" not in data or len(data["steps"]) < 11:
                 logger.warning(f"LLM story missing steps, falling back to default")
                 return GLOBAL_DEFAULT_EN
 

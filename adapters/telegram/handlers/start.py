@@ -163,7 +163,13 @@ async def _start_onboarding_with_context(message, state, event_name=None, event_
                                           skip_story=False):
     """Start onboarding with optional event/community context.
     Shows story first (unless skip_story=True), then dispatches to onboarding."""
-    lang = detect_lang(message)
+    # When called from story CTA callback, message.from_user is the bot.
+    # Use story_lang from FSM state if available, fall back to detect_lang.
+    if skip_story:
+        fsm_data = await state.get_data()
+        lang = fsm_data.get("story_lang") or detect_lang(message)
+    else:
+        lang = detect_lang(message)
 
     # Store context in FSM state
     state_data = {}

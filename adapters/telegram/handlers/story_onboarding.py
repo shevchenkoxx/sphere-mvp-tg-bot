@@ -141,7 +141,8 @@ async def _continue_after_match(callback: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=cta_text, callback_data="story_start_onboarding")]
     ])
-    await bot.send_message(chat_id, steps[10], reply_markup=kb, parse_mode="HTML")
+    cta_content = steps[10] if len(steps) > 10 else "Your turn.\n\nTell me about yourself and I'll find\npeople you should know."
+    await bot.send_message(chat_id, cta_content, reply_markup=kb, parse_mode="HTML")
     # Wait for CTA tap — handled by callback
 
 
