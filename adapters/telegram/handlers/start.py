@@ -4,6 +4,7 @@ Fast, friendly, conversational.
 Multilingual: English default, Russian supported.
 """
 
+import logging
 import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
@@ -23,14 +24,113 @@ from adapters.telegram.states import OnboardingStates
 from adapters.telegram.config import ONBOARDING_VERSION
 from core.utils.language import detect_lang
 
+logger = logging.getLogger(__name__)
 router = Router()
+
+
+# === Deep Link Parser ===
+
+def parse_deep_link(args: str) -> dict:
+    """Parse deep link args into structured attribution data.
+
+    Supported formats:
+      community_{uuid}                    → source_type=community
+      community_{uuid}_ref_{tg_id}        → source_type=community + referral
+      event_{code}                        → source_type=event
+      event_{code}_ref_{tg_id}            → source_type=event + referral
+      event_{code}_community_{uuid}       → event within community
+      game_{type}_{session_id}            → source_type=game
+      ref_{tg_id}                         → source_type=referral
+      vibe_{short_code}                   → source_type=vibe (existing)
+
+    Returns dict with keys: type, community_id, event_code, referrer_tg_id,
+                            game_type, game_session_id, vibe_code, raw
+    """
+    result = {
+        "type": "organic",
+        "community_id": None,
+        "event_code": None,
+        "referrer_tg_id": None,
+        "game_type": None,
+        "game_session_id": None,
+        "vibe_code": None,
+        "raw": args,
+    }
+
+    if not args:
+        return result
+
+    # --- community_{uuid} or community_{uuid}_ref_{tg_id} ---
+    if args.startswith("community_"):
+        result["type"] = "community"
+        rest = args[len("community_"):]
+        if "_ref_" in rest:
+            parts = rest.split("_ref_", 1)
+            result["community_id"] = parts[0]
+            result["referrer_tg_id"] = parts[1] if len(parts) > 1 else None
+        else:
+            result["community_id"] = rest
+        return result
+
+    # --- event_{code}, event_{code}_ref_{tg_id}, event_{code}_community_{uuid} ---
+    if args.startswith("event_"):
+        result["type"] = "event"
+        rest = args[len("event_"):]
+        if "_community_" in rest:
+            parts = rest.split("_community_", 1)
+            result["event_code"] = parts[0]
+            result["community_id"] = parts[1] if len(parts) > 1 else None
+        elif "_ref_" in rest:
+            parts = rest.split("_ref_", 1)
+            result["event_code"] = parts[0]
+            result["referrer_tg_id"] = parts[1] if len(parts) > 1 else None
+        else:
+            result["event_code"] = rest
+        return result
+
+    # --- game_{type}_{session_id} ---
+    if args.startswith("game_"):
+        result["type"] = "game"
+        rest = args[len("game_"):]
+        parts = rest.split("_", 1)
+        result["game_type"] = parts[0]
+        result["game_session_id"] = parts[1] if len(parts) > 1 else None
+        return result
+
+    # --- ref_{tg_id} ---
+    if args.startswith("ref_"):
+        result["type"] = "referral"
+        result["referrer_tg_id"] = args[len("ref_"):]
+        return result
+
+    # --- vibe_{short_code} ---
+    if args.startswith("vibe_"):
+        result["type"] = "vibe"
+        result["vibe_code"] = args[len("vibe_"):]
+        return result
+
+    return result
+
+
+async def _log_attribution(user_id, link_data: dict):
+    """Log user source attribution (fire-and-forget, never fails handler)."""
+    try:
+        from adapters.telegram.loader import user_source_repo
+        await user_source_repo.create(
+            user_id=user_id,
+            source_type=link_data["type"],
+            source_id=link_data.get("community_id") or link_data.get("event_code") or link_data.get("game_session_id"),
+            referrer_tg_id=link_data.get("referrer_tg_id"),
+            deep_link_raw=link_data.get("raw"),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log attribution: {e}")
 
 
 async def _increment_referral_count(referrer_telegram_id: str):
     """Increment referral_count for the referrer user."""
     from infrastructure.database.supabase_client import supabase
     try:
-        # Get current count
         resp = supabase.table("users").select("referral_count").eq(
             "platform_user_id", referrer_telegram_id
         ).eq("platform", "telegram").execute()
@@ -41,14 +141,81 @@ async def _increment_referral_count(referrer_telegram_id: str):
                 {"referral_count": current + 1}
             ).eq("platform_user_id", referrer_telegram_id).eq("platform", "telegram").execute()
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Failed to increment referral count: {e}")
+        logger.warning(f"Failed to increment referral count: {e}")
+
+
+async def _handle_referral(user, message, referrer_tg_id: str):
+    """Track referral for new users. Shared by all link types."""
+    if not user.onboarding_completed and referrer_tg_id:
+        try:
+            await user_service.update_user(
+                platform=MessagePlatform.TELEGRAM,
+                platform_user_id=str(message.from_user.id),
+                referred_by=referrer_tg_id
+            )
+            await _increment_referral_count(referrer_tg_id)
+        except Exception as e:
+            logger.warning(f"Referral tracking failed: {e}")
+
+
+async def _start_onboarding_with_context(message, state, event_name=None, event_code=None, community_id=None, community_name=None):
+    """Start onboarding with optional event/community context. Dispatches to correct onboarding version."""
+    lang = detect_lang(message)
+
+    # Store context in FSM state for onboarding to pick up
+    state_data = {}
+    if event_code:
+        state_data["pending_event"] = event_code
+    if community_id:
+        state_data["community_id"] = community_id
+    if community_name:
+        state_data["community_name"] = community_name
+    if state_data:
+        await state.update_data(**state_data)
+
+    if ONBOARDING_VERSION == "agent":
+        from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
+        await start_agent_onboarding(
+            message, state,
+            event_name=event_name,
+            event_code=event_code,
+        )
+    elif ONBOARDING_VERSION == "intent":
+        from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
+        await start_intent_onboarding(
+            message, state,
+            event_name=event_name,
+            event_code=event_code,
+        )
+    elif ONBOARDING_VERSION == "audio":
+        from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
+        await start_audio_onboarding(
+            message, state,
+            event_name=event_name,
+            event_code=event_code,
+        )
+    elif ONBOARDING_VERSION == "v2":
+        from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+        await start_conversational_onboarding(
+            message, state,
+            event_name=event_name,
+            event_code=event_code,
+        )
+    else:
+        await state.update_data(pending_event=event_code, language=lang)
+        if lang == "ru":
+            text = f"👋 Привет!\n\nДавай познакомимся! Как тебя зовут?"
+        else:
+            text = f"👋 Hi!\n\nLet's get to know each other! What's your name?"
+        await message.answer(text)
+        await state.set_state(OnboardingStates.waiting_name)
 
 
 @router.message(CommandStart(deep_link=True))
 async def start_with_deep_link(message: Message, command: CommandObject, state: FSMContext):
-    """Handle /start with deep link (QR code entry)"""
+    """Handle /start with deep link — unified parser + attribution logging."""
     args = command.args
+    link_data = parse_deep_link(args)
 
     # Get or create user
     try:
@@ -59,121 +226,103 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             first_name=message.from_user.first_name
         )
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Failed to get/create user (deep link): {e}", exc_info=True)
+        logger.error(f"Failed to get/create user (deep link): {e}", exc_info=True)
         lang = detect_lang(message)
         await message.answer(
-            "⚠️ Something went wrong connecting to the server. Please try again in a minute."
+            "Something went wrong connecting to the server. Please try again in a minute."
             if lang == "en" else
-            "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
+            "Ошибка подключения к серверу. Попробуй через минуту."
         )
         return
 
-    # Handle vibe check deep link: vibe_<short_code>
-    if args and args.startswith("vibe_"):
-        short_code = args[5:]  # strip "vibe_" prefix
+    # Log attribution (fire-and-forget)
+    import asyncio
+    asyncio.create_task(_log_attribution(user.id, link_data))
+
+    # Handle referral if present in any link type
+    if link_data.get("referrer_tg_id"):
+        await _handle_referral(user, message, link_data["referrer_tg_id"])
+
+    # === VIBE CHECK ===
+    if link_data["type"] == "vibe":
         from adapters.telegram.handlers.vibe_check import handle_vibe_deep_link
-        await handle_vibe_deep_link(message, state, short_code)
+        await handle_vibe_deep_link(message, state, link_data["vibe_code"])
         return
 
-    # Handle referral deep link (no event): ref_<tg_id>
-    if args and args.startswith("ref_") and not args.startswith("ref_event"):
-        referrer_tg_id = args.replace("ref_", "")
-        if not user.onboarding_completed and referrer_tg_id:
+    # === GAME ===
+    if link_data["type"] == "game":
+        # Game deep links drive users to DM for onboarding
+        if not user.onboarding_completed:
+            await _start_onboarding_with_context(message, state)
+        else:
+            await start_command(message, state)
+        return
+
+    # === COMMUNITY ===
+    if link_data["type"] == "community":
+        from adapters.telegram.loader import community_service
+        community = None
+        community_name = None
+        if link_data["community_id"]:
             try:
-                await user_service.update_user(
-                    platform=MessagePlatform.TELEGRAM,
-                    platform_user_id=str(message.from_user.id),
-                    referred_by=referrer_tg_id
-                )
-                await _increment_referral_count(referrer_tg_id)
+                from uuid import UUID as _UUID
+                community = await community_service.community_repo.get_by_id(_UUID(link_data["community_id"]))
+                if community:
+                    community_name = community.name
+                    # Auto-add as member
+                    await community_service.community_repo.add_member(
+                        community.id, user.id, role="member", joined_via="deep_link"
+                    )
+                    await community_service.community_repo.update_member_count(community.id)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Referral tracking failed: {e}")
-        # Continue to normal /start flow
+                logger.warning(f"Community association failed: {e}")
+
+        if not user.onboarding_completed:
+            await _start_onboarding_with_context(
+                message, state,
+                community_id=link_data["community_id"],
+                community_name=community_name,
+            )
+        else:
+            lang = detect_lang(message)
+            if community_name:
+                text = f"Welcome from <b>{community_name}</b>! Let's find your matches." if lang == "en" else f"Добро пожаловать из <b>{community_name}</b>! Найдем тебе мэтчи."
+            else:
+                text = "Welcome! Let's find your matches." if lang == "en" else "Добро пожаловать! Найдем тебе мэтчи."
+            await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+        return
+
+    # === REFERRAL (standalone) ===
+    if link_data["type"] == "referral":
         await start_command(message, state)
         return
 
-    # Check if deep link is for event (only when events are enabled)
+    # === EVENT ===
     from config.features import Features
-    if args and args.startswith("event_") and Features.EVENTS_ENABLED:
-        raw_code = args.replace("event_", "")
-
-        # Parse referral: event_SXN_ref_44420077 → event=SXN, referrer=44420077
-        referrer_tg_id = None
-        if "_ref_" in raw_code:
-            parts = raw_code.split("_ref_")
-            event_code = parts[0]
-            referrer_tg_id = parts[1] if len(parts) > 1 else None
-        else:
-            event_code = raw_code
-
-        # Track referral for new users
-        if referrer_tg_id and not user.onboarding_completed:
-            try:
-                await user_service.update_user(
-                    platform=MessagePlatform.TELEGRAM,
-                    platform_user_id=str(message.from_user.id),
-                    referred_by=referrer_tg_id
-                )
-                await _increment_referral_count(referrer_tg_id)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Referral tracking failed: {e}")
-        event = await event_service.get_event_by_code(event_code)
+    if link_data["type"] == "event" and Features.EVENTS_ENABLED:
+        event_code = link_data["event_code"]
+        event = await event_service.get_event_by_code(event_code) if event_code else None
 
         if event:
             lang = detect_lang(message)
             if not user.onboarding_completed:
-                # Start onboarding with event context
-                if ONBOARDING_VERSION == "agent":
-                    from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
-                    await start_agent_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                elif ONBOARDING_VERSION == "intent":
-                    from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
-                    await start_intent_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                elif ONBOARDING_VERSION == "audio":
-                    from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-                    await start_audio_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                elif ONBOARDING_VERSION == "v2":
-                    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-                    await start_conversational_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                else:
-                    # Legacy v1 flow
-                    await state.update_data(pending_event=event_code, language=lang)
-                    if lang == "ru":
-                        text = f"👋 Привет! Ты на <b>{event.name}</b>\n\nДавай познакомимся! Как тебя зовут?"
-                    else:
-                        text = f"👋 Hi! You're at <b>{event.name}</b>\n\nLet's get to know each other! What's your name?"
-                    await message.answer(text)
-                    await state.set_state(OnboardingStates.waiting_name)
+                await _start_onboarding_with_context(
+                    message, state,
+                    event_name=event.name,
+                    event_code=event_code,
+                    community_id=link_data.get("community_id"),
+                )
             else:
-                if lang == "ru":
-                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nПрисоединяйся!"
-                else:
-                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nJoin the event!"
+                text = (f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\n"
+                        + ("Join the event!" if lang == "en" else "Присоединяйся!"))
                 await message.answer(text, reply_markup=get_join_event_keyboard(event_code))
         else:
             lang = detect_lang(message)
-            await message.answer("Event not found 😕" if lang == "en" else "Ивент не найден 😕")
-    else:
-        await start_command(message, state)
+            await message.answer("Event not found" if lang == "en" else "Ивент не найден")
+        return
+
+    # === FALLBACK (organic or unknown) ===
+    await start_command(message, state)
 
 
 @router.message(CommandStart())
