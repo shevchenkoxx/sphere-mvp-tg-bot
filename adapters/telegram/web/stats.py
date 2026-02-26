@@ -203,6 +203,26 @@ document.addEventListener('htmx:beforeSwap', function() {{
     try {{ Chart.instances[k].destroy(); }} catch(e) {{}}
   }});
 }});
+// Initialize Chart.js from data attributes after HTMX settles new content
+document.addEventListener('htmx:afterSettle', function(evt) {{
+  (evt.detail.elt || document).querySelectorAll('canvas[data-chart-labels]').forEach(function(c) {{
+    if (c._chartDone) return;
+    c._chartDone = true;
+    new Chart(c, {{
+      type: 'bar',
+      data: {{
+        labels: JSON.parse(c.getAttribute('data-chart-labels')),
+        datasets: [{{ data: JSON.parse(c.getAttribute('data-chart-values')),
+                      backgroundColor: '#1f6feb', borderRadius: 3 }}]
+      }},
+      options: {{ responsive: true, maintainAspectRatio: false,
+        plugins: {{ legend: {{ display: false }} }},
+        scales: {{ y: {{ beginAtZero: true, ticks: {{ color: '#8b949e', stepSize: 1 }} }},
+                   x: {{ ticks: {{ color: '#8b949e', maxRotation: 45 }} }} }}
+      }}
+    }});
+  }});
+}});
 </script>
 </head><body>
 <div class="shell">
@@ -2250,6 +2270,11 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             return web.Response(text="Unauthorized", status=401)
 
         cid = request.match_info["id"]
+        # Validate UUID format to prevent injection
+        import re as _re
+        if not _re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', cid, _re.IGNORECASE):
+            return web.Response(text='<div class="detail muted">Invalid community ID</div>',
+                                content_type="text/html")
         try:
             from infrastructure.database.supabase_client import supabase, run_sync
 
@@ -2267,7 +2292,7 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             @run_sync
             def _get_matches():
                 resp = supabase.table("matches").select("id, compatibility_score, created_at, user_a_id, user_b_id")\
-                    .eq("community_id", cid).order("created_at", desc=True).execute()
+                    .eq("community_id", cid).order("created_at", desc=True).limit(500).execute()
                 return resp.data or []
 
             @run_sync
@@ -2332,11 +2357,9 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             )
 
         # ---- Onboarding funnel ----
-        matched_user_ids = set()
-        for m in matches:
-            matched_user_ids.add(m.get("user_a_id"))
-            matched_user_ids.add(m.get("user_b_id"))
-        member_user_ids = {m.get("user_id") for m in members}
+        matched_user_ids = {m.get("user_a_id") for m in matches if m.get("user_a_id")} | \
+                           {m.get("user_b_id") for m in matches if m.get("user_b_id")}
+        member_user_ids = {m.get("user_id") for m in members if m.get("user_id")}
         matched_in_community = len(matched_user_ids & member_user_ids)
 
         funnel_steps = [
@@ -2441,8 +2464,11 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             )
 
         # Settings display
-        games = settings.get("games_enabled", [])
-        games_str = ", ".join(games) if games else "all (default)"
+        games = settings.get("games_enabled") or []
+        if isinstance(games, list):
+            games_str = ", ".join(_esc(str(g)) for g in games) if games else "all (default)"
+        else:
+            games_str = _esc(str(games))
 
         html = f"""
 <div class="detail">
@@ -2461,29 +2487,10 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     <div class="card">
       <h3>Member Growth (14 days)</h3>
       <div class="chart-container" style="height:160px">
-        <canvas id="{chart_id}"></canvas>
+        <canvas id="{chart_id}"
+          data-chart-labels='{growth_labels}'
+          data-chart-values='{growth_data}'></canvas>
       </div>
-      <script>
-        (function() {{
-          var ctx = document.getElementById('{chart_id}');
-          if (ctx) new Chart(ctx, {{
-            type: 'bar',
-            data: {{
-              labels: {growth_labels},
-              datasets: [{{ data: {growth_data}, backgroundColor: '#1f6feb', borderRadius: 3 }}]
-            }},
-            options: {{
-              responsive: true, maintainAspectRatio: false,
-              plugins: {{ legend: {{ display: false }} }},
-              scales: {{
-                x: {{ ticks: {{ color: '#8b949e', font: {{ size: 10 }} }}, grid: {{ display: false }} }},
-                y: {{ ticks: {{ color: '#8b949e', stepSize: 1 }}, grid: {{ color: '#21262d' }},
-                     beginAtZero: true }}
-              }}
-            }}
-          }});
-        }})();
-      </script>
     </div>
     <div class="card">
       <h3>Onboarding Funnel</h3>
@@ -2515,10 +2522,10 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
   <div class="card" style="margin-bottom:14px">
     <h3>Settings</h3>
     <div class="detail-grid">
-      <div class="field"><div class="field-label">Group ID</div><div class="field-value"><code>{community.get("telegram_group_id")}</code></div></div>
+      <div class="field"><div class="field-label">Group ID</div><div class="field-value"><code>{_esc(str(community.get("telegram_group_id") or ""))}</code></div></div>
       <div class="field"><div class="field-label">Status</div><div class="field-value">{"Active" if community.get("is_active") else "Inactive"}</div></div>
       <div class="field"><div class="field-label">Reminders</div><div class="field-value">{"Enabled" if settings.get("reminder_enabled", True) else "Disabled"} (every {settings.get("reminder_hours", 48)}h)</div></div>
-      <div class="field"><div class="field-label">Games</div><div class="field-value">{_esc(games_str)}</div></div>
+      <div class="field"><div class="field-label">Games</div><div class="field-value">{games_str}</div></div>
       <div class="field"><div class="field-label">Cross-community</div><div class="field-value">{"Yes" if settings.get("cross_community_matching", True) else "No"} (max {settings.get("max_free_cross_matches", 1)} free)</div></div>
       <div class="field"><div class="field-label">Created</div><div class="field-value">{_fmt_dt(community.get("created_at"))}</div></div>
     </div>
