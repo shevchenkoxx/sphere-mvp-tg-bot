@@ -116,6 +116,8 @@ class User(UserBase):
     meeting_preference: str = "both"  # 'online', 'offline', or 'both'
     # Tier / monetization
     tier: str = "free"  # 'free' or 'pro'
+    # Community observations summary
+    community_profile_summary: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -166,6 +168,10 @@ class UserUpdate(BaseModel):
     # Matching scope (global matching)
     matching_scope: Optional[str] = None  # 'city' or 'global'
     meeting_preference: Optional[str] = None  # 'online', 'offline', or 'both'
+    # Tier / monetization
+    tier: Optional[str] = None  # 'free' or 'pro'
+    # Community observations summary
+    community_profile_summary: Optional[str] = None
 
 
 # === EVENT ===

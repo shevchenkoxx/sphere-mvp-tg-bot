@@ -85,22 +85,22 @@ class SupabaseGameRepository:
         return [self._to_session(d) for d in data]
 
     @run_sync
-    def _update_session_sync(self, session_id: UUID, updates: dict) -> dict:
+    def _update_session_sync(self, session_id: UUID, updates: dict) -> Optional[dict]:
         response = supabase.table("game_sessions").update(updates).eq("id", str(session_id)).execute()
-        return response.data[0]
+        return response.data[0] if response.data else None
 
-    async def update_session(self, session_id: UUID, **kwargs) -> GameSession:
+    async def update_session(self, session_id: UUID, **kwargs) -> Optional[GameSession]:
         data = await self._update_session_sync(session_id, kwargs)
-        return self._to_session(data)
+        return self._to_session(data) if data else None
 
     @run_sync
-    def _end_session_sync(self, session_id: UUID) -> dict:
+    def _end_session_sync(self, session_id: UUID) -> Optional[dict]:
         response = supabase.table("game_sessions").update({"status": "ended"}).eq("id", str(session_id)).execute()
-        return response.data[0]
+        return response.data[0] if response.data else None
 
-    async def end_session(self, session_id: UUID) -> GameSession:
+    async def end_session(self, session_id: UUID) -> Optional[GameSession]:
         data = await self._end_session_sync(session_id)
-        return self._to_session(data)
+        return self._to_session(data) if data else None
 
     @run_sync
     def _get_recent_sessions_sync(self, community_id: UUID, game_type: str, limit: int) -> List[dict]:
@@ -128,7 +128,7 @@ class SupabaseGameRepository:
         }
         if is_correct is not None:
             data["is_correct"] = is_correct
-        result = supabase.table("game_responses").upsert(data).execute()
+        result = supabase.table("game_responses").upsert(data, on_conflict="game_session_id,user_id").execute()
         return result.data[0]
 
     async def submit_response(self, game_session_id: UUID, user_id: UUID, response: dict,

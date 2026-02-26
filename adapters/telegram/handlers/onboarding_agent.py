@@ -787,7 +787,6 @@ async def _do_complete_onboarding(
             "✓ Profile saved!" if lang == "en" else "✓ Профиль сохранён!",
             reply_markup=get_main_menu_keyboard(lang),
         )
-    finally:
         await state.clear()
 
 

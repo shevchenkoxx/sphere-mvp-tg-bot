@@ -68,6 +68,10 @@ class SchedulerService:
                 logger.error(f"[SCHEDULER] Observation processing failed: {e}", exc_info=True)
 
         for community in communities:
+            # Skip virtual communities (Sphere Global sentinel)
+            if community.telegram_group_id == -1:
+                continue
+
             settings = community.settings or {}
 
             # --- Games: check if a game is due ---
@@ -80,6 +84,10 @@ class SchedulerService:
 
             # --- Reminders ---
             if not settings.get("reminder_enabled", True):
+                continue
+
+            # Skip communities with very few members (check early)
+            if community.member_count < 2:
                 continue
 
             reminder_hours = settings.get("reminder_hours", 48)
@@ -101,10 +109,6 @@ class SchedulerService:
                 hours_since = (now - last_reminder).total_seconds() / 3600
                 if hours_since < reminder_hours:
                     continue
-
-            # Skip communities with very few members
-            if community.member_count < 2:
-                continue
 
             # Send reminder
             await self._send_reminder(community)
@@ -160,6 +164,16 @@ class SchedulerService:
                     return
             except (ValueError, TypeError):
                 pass
+        else:
+            # First run — treat community creation as "last game" to avoid immediate launch
+            # Initialize the timestamp so we wait the full game_hours interval
+            updated = dict(settings)
+            updated["last_game_at"] = now.isoformat()
+            try:
+                await self.community_repo.update_settings(community.id, updated)
+            except Exception:
+                pass
+            return
 
         # Need at least 3 members for games
         if community.member_count < 3:
@@ -192,6 +206,15 @@ class SchedulerService:
                     return
             except (ValueError, TypeError):
                 pass
+        else:
+            # First run — initialize timestamp to avoid immediate pulse
+            updated = dict(settings)
+            updated["last_pulse_at"] = now.isoformat()
+            try:
+                await self.community_repo.update_settings(community.id, updated)
+            except Exception:
+                pass
+            return
 
         if community.member_count < 3:
             return

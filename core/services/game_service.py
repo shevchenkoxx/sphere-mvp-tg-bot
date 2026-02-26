@@ -155,16 +155,25 @@ class GameService:
         # Pick the mystery person
         mystery_person = random.choice(candidates)
 
-        # Pick 3 decoy names (other members)
+        # Pick 3 decoy names (other members), avoiding name collisions
+        correct_name = mystery_person.display_name or mystery_person.first_name or "Mystery Person"
         decoys = [c for c in candidates if c.id != mystery_person.id]
         random.shuffle(decoys)
-        decoy_names = [d.display_name or d.first_name or "Someone" for d in decoys[:3]]
+        decoy_names = []
+        for d in decoys:
+            name = d.display_name or d.first_name or "Someone"
+            if name != correct_name and name not in decoy_names:
+                decoy_names.append(name)
+            if len(decoy_names) >= 3:
+                break
+
+        if not decoy_names:
+            return None  # Can't build a quiz with no distinct decoys
 
         # Generate clues via LLM
         clues = await self._generate_mystery_clues(mystery_person)
 
         # Build answer options (shuffled)
-        correct_name = mystery_person.display_name or mystery_person.first_name or "Mystery Person"
         options = decoy_names + [correct_name]
         random.shuffle(options)
         correct_index = options.index(correct_name)
@@ -322,7 +331,7 @@ Skills: {', '.join(getattr(user, 'skills', None) or [])}
             "overlaps": best_overlap,
         }
 
-        session = await self.create_game(community_id, "common_ground", game_data, duration_minutes=0)
+        session = await self.create_game(community_id, "common_ground", game_data, duration_minutes=1440)
         return {"session": session, "game_data": game_data}
 
     def _find_overlap(self, u1, u2) -> List[str]:

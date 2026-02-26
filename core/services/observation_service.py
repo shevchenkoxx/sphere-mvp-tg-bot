@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from openai import AsyncOpenAI
 from config.settings import settings
+from core.domain.models import MessagePlatform, UserUpdate
 from infrastructure.database.supabase_client import supabase, run_sync
 
 logger = logging.getLogger(__name__)
@@ -79,8 +80,8 @@ class ObservationService:
             try:
                 results = await self._extract_topics_batch(batch)
                 for msg, result in zip(batch, results):
-                    await self._store_observation(community_id, msg, result)
-                    stored += 1
+                    if await self._store_observation(community_id, msg, result):
+                        stored += 1
             except Exception as e:
                 logger.error(f"[OBSERVE] Batch extraction failed: {e}")
 
@@ -152,9 +153,9 @@ class ObservationService:
 
     async def _store_observation(self, community_id: str, msg: dict, result: dict):
         """Store a single observation in the DB."""
-        user = await self.user_repo.get_by_platform_id("telegram", msg["user_tg_id"])
+        user = await self.user_repo.get_by_platform_id(MessagePlatform.TELEGRAM, str(msg["user_tg_id"]))
         if not user:
-            return
+            return False
 
         data = {
             "community_id": community_id,
@@ -164,7 +165,12 @@ class ObservationService:
             "snippet": msg["text"][:200],
             "message_type": "text",
         }
-        await self._store_observation_sync(data)
+        try:
+            await self._store_observation_sync(data)
+            return True
+        except Exception as e:
+            logger.error(f"[OBSERVE] Failed to store observation: {e}")
+            return False
 
     @run_sync
     def _count_user_observations_sync(self, community_id: str, user_id: str) -> int:
@@ -186,7 +192,7 @@ class ObservationService:
 
     async def _maybe_generate_summary(self, community_id: str, user_tg_id: str):
         """Generate community_profile_summary if user has enough observations."""
-        user = await self.user_repo.get_by_platform_id("telegram", user_tg_id)
+        user = await self.user_repo.get_by_platform_id(MessagePlatform.TELEGRAM, str(user_tg_id))
         if not user:
             return
 
@@ -224,13 +230,15 @@ class ObservationService:
         )
 
         # Save to user profile
-        from core.domain.models import MessagePlatform
-        await self.user_repo.update_user(
-            MessagePlatform.TELEGRAM,
-            user_tg_id,
-            community_profile_summary=summary,
-        )
-        logger.info(f"[OBSERVE] Generated community summary for user {user.id}: {summary[:80]}...")
+        try:
+            await self.user_repo.update_by_platform_id(
+                MessagePlatform.TELEGRAM,
+                str(user_tg_id),
+                UserUpdate(community_profile_summary=summary),
+            )
+            logger.info(f"[OBSERVE] Generated community summary for user {user.id}: {summary[:80]}...")
+        except Exception as e:
+            logger.error(f"[OBSERVE] Failed to save summary for user {user.id}: {e}")
 
     # -----------------------------------------------------------------
     # Community-wide analytics (used by Pulse)

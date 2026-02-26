@@ -105,6 +105,9 @@ class CommunityService:
         associated = []
         communities = await self.community_repo.get_all_active()
         for community in communities:
+            # Skip virtual communities (Sphere Global sentinel)
+            if community.telegram_group_id == self.SPHERE_GLOBAL_TG_GROUP_ID:
+                continue
             # Skip if already a member
             existing = await self.community_repo.get_member(community.id, user_id)
             if existing:

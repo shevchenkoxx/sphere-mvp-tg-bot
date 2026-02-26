@@ -4,6 +4,7 @@ Handles: bot added/removed, passive message observation, welcome messages.
 """
 
 import logging
+from collections import deque
 from aiogram import Router, F
 from aiogram.types import ChatMemberUpdated, Message, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -11,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-# In-memory queue for batch observation processing
-_observation_queue: list = []
+# In-memory queue for batch observation processing (bounded, O(1) eviction)
+_observation_queue: deque = deque(maxlen=1000)
 
 
 @router.my_chat_member(F.new_chat_member.status.in_({"member", "administrator"}))
@@ -105,14 +106,12 @@ async def on_group_message(message: Message):
         "chat_id": message.chat.id,
     })
 
-    # Keep queue bounded
-    if len(_observation_queue) > 1000:
-        _observation_queue.pop(0)
+    # deque(maxlen=1000) auto-evicts oldest entries
 
 
 def drain_observation_queue() -> list:
     """Drain and return all queued observations. Called by scheduler."""
     global _observation_queue
     items = list(_observation_queue)
-    _observation_queue = []
+    _observation_queue.clear()
     return items

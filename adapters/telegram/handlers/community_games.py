@@ -359,6 +359,8 @@ async def _handle_vote(callback: CallbackQuery, session: GameSession,
 
 async def _handle_reveal(callback: CallbackQuery, session: GameSession, game_data: dict):
     """Handle the reveal button for Common Ground."""
+    from adapters.telegram.loader import game_repo
+
     user_a_name = game_data.get("user_a_name", "Someone")
     user_b_name = game_data.get("user_b_name", "Someone else")
     overlaps = game_data.get("overlaps", [])
@@ -372,7 +374,16 @@ async def _handle_reveal(callback: CallbackQuery, session: GameSession, game_dat
     )
 
     await callback.answer()
-    await callback.message.edit_text(text)
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=None)
+        except Exception:
+            pass  # Message already edited or deleted
+    # End the session after reveal
+    try:
+        await game_repo.end_session(session.id)
+    except Exception:
+        pass
 
 
 # -----------------------------------------------------------------

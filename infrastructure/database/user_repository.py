@@ -89,6 +89,7 @@ class SupabaseUserRepository(IUserRepository):
             matching_scope=data.get("matching_scope", "city"),
             meeting_preference=data.get("meeting_preference", "both"),
             tier=data.get("tier", "free"),
+            community_profile_summary=data.get("community_profile_summary"),
         )
 
     @run_sync
