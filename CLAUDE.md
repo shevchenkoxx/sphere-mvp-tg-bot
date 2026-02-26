@@ -3,7 +3,8 @@
 ## Branch: `community-v1` (@Matchd_bot)
 - **Branch:** `community-v1`
 - **Bot:** @Matchd_bot (not production!)
-- **Railway:** Not yet deployed (needs branch config on Railway)
+- **Railway:** Project `loving-possibility` → Environment `Community` → Service `Service (Community)`
+- **Dashboard:** `https://humorous-enchantment-staging.up.railway.app/stats?token=sphere-admin-2026`
 - **DO NOT** push to main from here!
 
 ## Overview
@@ -69,11 +70,20 @@ Telegram bot for meaningful connections within communities. Bot is added to TG g
 - Conversation logging
 - Admin dashboard (HTMX + Chart.js)
 
-### Known Issues
-1. **FSM in memory** — MemoryStorage() loses state on restart
-2. **Cross-community paywall counter** — counts all community matches, not just cross-community ones (logic issue in match_repository)
-3. **Sync Pillow rendering** — personality card + bingo card block event loop (should use run_in_executor)
-4. **`post_game_results` dead code** — game results posting is not wired into game-ending flow
+### Known Issues — Critical
+1. **Games never expire** — scheduler doesn't check `ends_at`, `post_game_results` never called → after first game, new games permanently blocked per community (`scheduler_service.py`, `community_games.py`)
+2. **Bingo is dead code** — service initialized in loader but not wired to scheduler, handlers, or keyboards (`loader.py`, `bingo_service.py`)
+3. **Cross-community paywall counter** — `count_cross_community_matches` counts ALL community matches, not just cross-community → paywall triggers after 1st match (`match_repository.py`)
+4. **Sync Pillow rendering** — personality card + bingo card block event loop, needs `run_in_executor` (`personality_card.py`, `bingo_service.py`)
+5. **N+1 DB queries** — sequential `get_by_id` in loops in `bingo_service._generate_traits`, `game_service.create_mystery_profile`, `game_service.detect_common_ground`, `matching_service.find_community_matches`
+
+### Known Issues — Important
+6. Community context lost for non-agent onboarding paths (audio, v2, intent)
+7. Observation summary never refreshes after first generation (permanent suppression in `observation_service.py`)
+8. `auto_associate_user` is dead code — organic group users never get community-associated
+9. Scheduler has no overlap protection; unbounded queries on communities, matches, observations
+10. `run_sync` default thread pool (6 threads) — exhaustion risk under concurrent load
+11. FSM in memory — `MemoryStorage()` loses state on Railway restart
 
 ---
 
@@ -255,8 +265,17 @@ ref_{tg_id}                         → referral only
 5. `5deea9e` — Cross-community paywall + event-in-community + Sphere Global
 6. `0935048` — 11 bug fixes from code review
 7. `be660bd` — Full analytics dashboard
+8. `e0fe182` — CLAUDE.md + .memory/ update
+9. `a0ddb18` — Dashboard review fixes (XSS, Chart.js HTMX, query limits)
 
 ---
+
+## Railway Structure
+| Project | Environment | Service | Bot | Branch |
+|---------|-------------|---------|-----|--------|
+| `loving-possibility` | Main | `sphere-production` | @Spheresocial_bot | `main` |
+| `loving-possibility` | Community | `Service (Community)` | @Matchd_bot | `community-v1` |
+| `Sphere Marketing` | production | marketing agent | — | — |
 
 ## Worktree Layout
 | Location | Branch | Purpose |

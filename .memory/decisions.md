@@ -79,3 +79,13 @@
 **Context:** 26 issues found by 3 parallel review agents across Phase 2+3 code. 11 were critical runtime crashes.
 **Decision:** Run code review agents after each phase completion, before merging.
 **Rationale:** Catches bugs that compile-checks miss: wrong enum types, missing model fields, broken method calls, race conditions.
+
+## 2026-02-26 — Railway Environment Naming
+**Context:** Railway project had auto-generated names (loving-possibility, humorous-enchantment). Hard to tell what's what.
+**Decision:** Renamed environments: production → Main, Staging → Community. Renamed services: sphere-mvp-tg-bot → sphere-production, humorous-enchantment → Service (Community). Project name kept as `loving-possibility`.
+**Rationale:** Clear naming maps to product lines. Community env deploys `community-v1` branch for @Matchd_bot.
+
+## 2026-02-26 — Deploy community-v1 as Separate Railway Environment
+**Context:** Could merge into global-mode-v1 or deploy separately.
+**Decision:** Deploy `community-v1` as its own Railway environment (Community) alongside Main (production). Same project, different env.
+**Rationale:** Allows independent testing without affecting production @Spheresocial_bot. Merge decision deferred until after E2E testing.
