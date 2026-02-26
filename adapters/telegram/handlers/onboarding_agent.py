@@ -751,13 +751,18 @@ async def _do_complete_onboarding(
                 )
                 await message.answer(done_text)
 
+                # Generate personality card in background
+                asyncio.create_task(_send_personality_card(message.chat.id, user))
+
                 # Show first match card directly
                 await state.clear()
                 await show_matches_view(message, user.id, lang=lang, edit=False, match_scope="global")
                 return
 
             else:
-                # No matches — store state for expansion flow
+                # No matches — generate personality card, then expansion
+                asyncio.create_task(_send_personality_card(message.chat.id, user))
+
                 await state.clear()
                 await _start_expansion_flow(message, state, user, lang)
                 return
@@ -1069,3 +1074,35 @@ async def _finish_expansion(message: Message, user_id: str, platform_user_id: st
             else "Профиль обновлён! Заходи позже за матчами.",
             reply_markup=get_main_menu_keyboard(lang),
         )
+
+
+# ------------------------------------------------------------------
+# Personality Card — sent after onboarding as a shareable image
+# ------------------------------------------------------------------
+
+async def _send_personality_card(chat_id: int, user):
+    """Generate and send a personality card image to the user in DM."""
+    try:
+        from core.utils.personality_card import generate_personality_summary, render_personality_card
+        from aiogram.types import BufferedInputFile
+
+        personality = await generate_personality_summary(user)
+        bot_info = await bot.get_me()
+        qr_url = f"https://t.me/{bot_info.username}"
+
+        png_bytes = render_personality_card(
+            name=user.display_name or user.first_name or "You",
+            personality=personality,
+            interests=user.interests,
+            qr_url=qr_url,
+        )
+
+        caption = (
+            f"✨ Your Sphere Card: <b>{personality.get('type', 'Explorer')}</b>\n\n"
+            f"Share this in your group to help others find you!"
+        )
+
+        photo = BufferedInputFile(png_bytes, filename="sphere_card.png")
+        await bot.send_photo(chat_id, photo=photo, caption=caption)
+    except Exception as e:
+        logger.warning(f"[CARD] Failed to send personality card: {e}")
