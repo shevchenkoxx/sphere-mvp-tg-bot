@@ -173,6 +173,7 @@ def _shell_html(token: str, active_tab: str = "overview") -> str:
         ("overview", "Overview"),
         ("users", "Users"),
         ("onboarding", "Onboarding"),
+        ("communities", "Communities"),
         ("events", "Events"),
         ("matches", "Matches"),
         ("conversations", "Conversations"),
@@ -2159,6 +2160,177 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
             headers={"Content-Disposition": "attachment; filename=sphere_users.csv"},
         )
 
+    # === COMMUNITIES TAB ===
+    async def handle_communities(request: web.Request) -> web.Response:
+        if not _check_token(request):
+            return web.Response(text="Unauthorized", status=401)
+
+        try:
+            from infrastructure.database.supabase_client import supabase, run_sync
+
+            @run_sync
+            def _get_communities():
+                resp = supabase.table("communities").select("*").order("created_at", desc=True).execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_member_counts():
+                resp = supabase.table("community_members").select("community_id").execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_match_counts():
+                resp = supabase.table("matches").select("id, community_id").not_.is_("community_id", "null").execute()
+                return resp.data or []
+
+            communities = await _get_communities()
+            members_raw = await _get_member_counts()
+            matches_raw = await _get_match_counts()
+        except Exception as e:
+            logger.error(f"Communities query failed: {e}")
+            return web.Response(text=f'<div class="card">DB error: {_esc(str(e))}</div>',
+                                content_type="text/html")
+
+        # Count members per community
+        member_counts: dict[str, int] = {}
+        for m in members_raw:
+            cid = m.get("community_id")
+            member_counts[cid] = member_counts.get(cid, 0) + 1
+
+        match_counts: dict[str, int] = {}
+        for m in matches_raw:
+            cid = m.get("community_id")
+            if cid:
+                match_counts[cid] = match_counts.get(cid, 0) + 1
+
+        rows = ""
+        for c in communities:
+            cid = c.get("id", "")
+            active_badge = ('<span class="badge badge-green">Active</span>'
+                            if c.get("is_active", True)
+                            else '<span class="badge badge-red">Inactive</span>')
+            m_count = member_counts.get(cid, 0)
+            mtch_count = match_counts.get(cid, 0)
+            settings = c.get("settings") or {}
+            reminder = "On" if settings.get("reminder_enabled", True) else "Off"
+            rows += (
+                f'<tr class="clickable" hx-get="/stats/community/{cid}?token={stats_token}" '
+                f'hx-target="#comm-detail-{cid}" hx-swap="innerHTML">'
+                f'<td>{_esc(c.get("name") or "—")}</td>'
+                f'<td><code>{_esc(str(c.get("telegram_group_id") or ""))}</code></td>'
+                f'<td>{m_count}</td>'
+                f'<td>{mtch_count}</td>'
+                f'<td>{reminder}</td>'
+                f'<td>{active_badge}</td>'
+                f'<td class="muted">{_fmt_dt(c.get("created_at"))}</td>'
+                f'</tr>'
+                f'<tr class="expand-row"><td colspan="7" id="comm-detail-{cid}"></td></tr>'
+            )
+
+        total = len(communities)
+        active = sum(1 for c in communities if c.get("is_active", True))
+        total_members = sum(member_counts.values())
+
+        html = f"""
+<div class="grid">
+  <div class="card"><h3>Communities</h3><div class="big">{total}</div><span class="muted">{active} active</span></div>
+  <div class="card"><h3>Total Members</h3><div class="big">{total_members}</div></div>
+  <div class="card"><h3>Community Matches</h3><div class="big">{sum(match_counts.values())}</div></div>
+</div>
+<div class="card" style="overflow-x:auto">
+<table>
+<tr><th>Name</th><th>Group ID</th><th>Members</th><th>Matches</th><th>Reminders</th><th>Status</th><th>Created</th></tr>
+{rows if rows else '<tr><td colspan="7" class="muted">No communities yet</td></tr>'}
+</table>
+</div>"""
+        return web.Response(text=html, content_type="text/html")
+
+    async def handle_community_detail(request: web.Request) -> web.Response:
+        if not _check_token(request):
+            return web.Response(text="Unauthorized", status=401)
+
+        cid = request.match_info["id"]
+        try:
+            from infrastructure.database.supabase_client import supabase, run_sync
+
+            @run_sync
+            def _get_community():
+                resp = supabase.table("communities").select("*").eq("id", cid).execute()
+                return resp.data[0] if resp.data else None
+
+            @run_sync
+            def _get_members():
+                resp = supabase.table("community_members").select("*, users(id, display_name, username, onboarding_completed, created_at)")\
+                    .eq("community_id", cid).order("joined_at", desc=True).execute()
+                return resp.data or []
+
+            @run_sync
+            def _get_matches():
+                resp = supabase.table("matches").select("id, compatibility_score, created_at")\
+                    .eq("community_id", cid).order("created_at", desc=True).limit(20).execute()
+                return resp.data or []
+
+            community = await _get_community()
+            members = await _get_members()
+            matches = await _get_matches()
+        except Exception as e:
+            logger.error(f"Community detail query failed: {e}")
+            return web.Response(text=f'<div class="detail">DB error: {_esc(str(e))}</div>',
+                                content_type="text/html")
+
+        if not community:
+            return web.Response(text='<div class="detail muted">Community not found</div>',
+                                content_type="text/html")
+
+        settings = community.get("settings") or {}
+        total_members = len(members)
+        onboarded = sum(1 for m in members if m.get("is_onboarded"))
+        admins = sum(1 for m in members if m.get("role") == "admin")
+
+        # Member rows
+        member_rows = ""
+        for m in members[:50]:
+            user = m.get("users") or {}
+            role_badge = '<span class="badge badge-blue">Admin</span>' if m.get("role") == "admin" else ""
+            onboard_badge = ('<span class="badge badge-green">Onboarded</span>'
+                             if m.get("is_onboarded") else
+                             '<span class="badge badge-yellow">Pending</span>')
+            member_rows += (
+                f'<tr>'
+                f'<td>{_esc(user.get("display_name") or user.get("username") or "—")}</td>'
+                f'<td>{role_badge}</td>'
+                f'<td>{onboard_badge}</td>'
+                f'<td class="muted">{_esc(m.get("joined_via") or "—")}</td>'
+                f'<td class="muted">{_fmt_dt(m.get("joined_at"))}</td>'
+                f'</tr>'
+            )
+
+        # Settings display
+        games = settings.get("games_enabled", [])
+        games_str = ", ".join(games) if games else "none"
+
+        html = f"""
+<div class="detail">
+  <h3 style="margin-bottom:12px;font-size:1.1em;color:#e6edf3">{_esc(community.get("name") or "Community")}</h3>
+  <div class="detail-grid">
+    <div class="field"><div class="field-label">Group ID</div><div class="field-value"><code>{community.get("telegram_group_id")}</code></div></div>
+    <div class="field"><div class="field-label">Status</div><div class="field-value">{"Active" if community.get("is_active") else "Inactive"}</div></div>
+    <div class="field"><div class="field-label">Members</div><div class="field-value">{total_members} ({onboarded} onboarded, {admins} admins)</div></div>
+    <div class="field"><div class="field-label">Matches</div><div class="field-value">{len(matches)}</div></div>
+    <div class="field"><div class="field-label">Reminders</div><div class="field-value">{"Enabled" if settings.get("reminder_enabled", True) else "Disabled"} (every {settings.get("reminder_hours", 48)}h)</div></div>
+    <div class="field"><div class="field-label">Games</div><div class="field-value">{_esc(games_str)}</div></div>
+    <div class="field"><div class="field-label">Cross-community</div><div class="field-value">{"Yes" if settings.get("cross_community_matching", True) else "No"} (max {settings.get("max_free_cross_matches", 1)} free)</div></div>
+    <div class="field"><div class="field-label">Created</div><div class="field-value">{_fmt_dt(community.get("created_at"))}</div></div>
+  </div>
+
+  <h3 style="margin:16px 0 8px;color:#e6edf3">Members</h3>
+  <table>
+  <tr><th>Name</th><th>Role</th><th>Status</th><th>Joined via</th><th>Joined</th></tr>
+  {member_rows if member_rows else '<tr><td colspan="5" class="muted">No members</td></tr>'}
+  </table>
+</div>"""
+        return web.Response(text=html, content_type="text/html")
+
     # === ROUTES ===
     app = web.Application()
     app.router.add_get("/stats", handle_shell)
@@ -2179,4 +2351,6 @@ def create_stats_app(user_repo, stats_token: str, bot=None, user_service=None,
     app.router.add_get("/stats/broadcast", handle_broadcast_form)
     app.router.add_post("/stats/broadcast", handle_broadcast_send)
     app.router.add_get("/stats/export/users", handle_export_users)
+    app.router.add_get("/stats/communities", handle_communities)
+    app.router.add_get("/stats/community/{id}", handle_community_detail)
     return app
