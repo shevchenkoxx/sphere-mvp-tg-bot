@@ -158,14 +158,19 @@ async def _handle_referral(user, message, referrer_tg_id: str):
             logger.warning(f"Referral tracking failed: {e}")
 
 
-async def _start_onboarding_with_context(message, state, event_name=None, event_code=None, community_id=None, community_name=None):
-    """Start onboarding with optional event/community context. Dispatches to correct onboarding version."""
+async def _start_onboarding_with_context(message, state, event_name=None, event_code=None,
+                                          community_id=None, community_name=None,
+                                          skip_story=False):
+    """Start onboarding with optional event/community context.
+    Shows story first (unless skip_story=True), then dispatches to onboarding."""
     lang = detect_lang(message)
 
-    # Store context in FSM state for onboarding to pick up
+    # Store context in FSM state
     state_data = {}
     if event_code:
         state_data["pending_event"] = event_code
+    if event_name:
+        state_data["event_name"] = event_name
     if community_id:
         state_data["community_id"] = community_id
     if community_name:
@@ -173,41 +178,66 @@ async def _start_onboarding_with_context(message, state, event_name=None, event_
     if state_data:
         await state.update_data(**state_data)
 
-    if ONBOARDING_VERSION == "agent":
-        from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
-        await start_agent_onboarding(
-            message, state,
-            event_name=event_name,
-            event_code=event_code,
+    # Check if we should skip story (called from story CTA callback)
+    if skip_story:
+        await _dispatch_onboarding(message, state, lang, event_name, event_code)
+        return
+
+    # Route through story onboarding
+    from adapters.telegram.handlers.story_onboarding import start_story
+
+    if event_code:
+        # Events story
+        await start_story(
+            message, state, mode="event",
+            context_id=event_code or "default", lang=lang,
+            event_name=event_name, event_code=event_code,
+            community_id=community_id,
         )
-    elif ONBOARDING_VERSION == "intent":
-        from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
-        await start_intent_onboarding(
-            message, state,
-            event_name=event_name,
-            event_code=event_code,
-        )
-    elif ONBOARDING_VERSION == "audio":
-        from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-        await start_audio_onboarding(
-            message, state,
-            event_name=event_name,
-            event_code=event_code,
-        )
-    elif ONBOARDING_VERSION == "v2":
-        from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-        await start_conversational_onboarding(
-            message, state,
-            event_name=event_name,
-            event_code=event_code,
+    elif community_id:
+        # Community story
+        try:
+            from adapters.telegram.loader import community_repo
+            from uuid import UUID
+            community = await community_repo.get_by_id(UUID(community_id)) if community_id else None
+        except Exception:
+            community = None
+
+        await start_story(
+            message, state, mode="community",
+            context_id=community_id, lang=lang,
+            community_name=community_name,
+            member_count=community.member_count if community else None,
+            topics=[],
+            community_id=community_id,
         )
     else:
-        await state.update_data(pending_event=event_code, language=lang)
-        if lang == "ru":
-            text = f"👋 Привет!\n\nДавай познакомимся! Как тебя зовут?"
-        else:
-            text = f"👋 Hi!\n\nLet's get to know each other! What's your name?"
+        # Global story
+        await start_story(
+            message, state, mode="global",
+            context_id="default", lang=lang,
+        )
+
+
+async def _dispatch_onboarding(message, state, lang, event_name=None, event_code=None):
+    """Dispatch to the configured onboarding version (called after story completes)."""
+    if ONBOARDING_VERSION == "agent":
+        from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
+        await start_agent_onboarding(message, state, event_name=event_name, event_code=event_code)
+    elif ONBOARDING_VERSION == "intent":
+        from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
+        await start_intent_onboarding(message, state, event_name=event_name, event_code=event_code)
+    elif ONBOARDING_VERSION == "audio":
+        from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
+        await start_audio_onboarding(message, state, event_name=event_name, event_code=event_code)
+    elif ONBOARDING_VERSION == "v2":
+        from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
+        await start_conversational_onboarding(message, state, event_name=event_name, event_code=event_code)
+    else:
+        await state.update_data(language=lang)
+        text = "👋 Привет!\n\nДавай познакомимся! Как тебя зовут?" if lang == "ru" else "👋 Hi!\n\nLet's get to know each other! What's your name?"
         await message.answer(text)
+        from adapters.telegram.states.onboarding import OnboardingStates
         await state.set_state(OnboardingStates.waiting_name)
 
 
@@ -355,28 +385,8 @@ async def start_command(message: Message, state: FSMContext):
         text = f"👋 {name}!\n\n" + ("What would you like to do?" if lang == "en" else "Что делаем?")
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
-        # Start onboarding
-        if ONBOARDING_VERSION == "agent":
-            from adapters.telegram.handlers.onboarding_agent import start_agent_onboarding
-            await start_agent_onboarding(message, state)
-        elif ONBOARDING_VERSION == "intent":
-            from adapters.telegram.handlers.onboarding_intent import start_intent_onboarding
-            await start_intent_onboarding(message, state)
-        elif ONBOARDING_VERSION == "audio":
-            from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-            await start_audio_onboarding(message, state)
-        elif ONBOARDING_VERSION == "v2":
-            from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-            await start_conversational_onboarding(message, state)
-        else:
-            # Legacy v1 flow
-            await state.update_data(language=lang)
-            if lang == "ru":
-                text = "👋 Привет! Я помогу найти интересных людей.\n\nКак тебя зовут?"
-            else:
-                text = "👋 Hi! I help you find interesting people to meet.\n\nWhat's your name?"
-            await message.answer(text)
-            await state.set_state(OnboardingStates.waiting_name)
+        # New user — start story onboarding
+        await _start_onboarding_with_context(message, state)
 
 
 @router.message(Command("stats_url"))
