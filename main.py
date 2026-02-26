@@ -12,7 +12,7 @@ import secrets
 import sys
 from aiohttp import web
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo, conv_log_repo
+from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo, conv_log_repo, community_repo
 from adapters.telegram.handlers import routers
 from adapters.telegram.middleware import ThrottlingMiddleware, ConversationLoggingMiddleware, ContentTypeMiddleware
 from adapters.telegram.outgoing_logger import install_outgoing_logger
@@ -93,6 +93,12 @@ async def main():
         logger.error("Invalid bot token! Check TELEGRAM_BOT_TOKEN env var.")
         sys.exit(1)
 
+    # Start community reminder scheduler
+    from core.services.scheduler_service import SchedulerService
+    scheduler = SchedulerService(community_repo=community_repo, bot=bot)
+    scheduler_task = asyncio.create_task(scheduler.run())
+    logger.info("Community scheduler started (reminders + games)")
+
     logger.info("Sphere Bot started!")
 
     retries = 0
@@ -137,6 +143,8 @@ async def main():
                 else:
                     raise
     finally:
+        await scheduler.stop()
+        scheduler_task.cancel()
         await bot.session.close()
         logger.info("Bot session closed.")
 
