@@ -35,6 +35,7 @@ class SupabaseEventRepository(IEventRepository):
             image_url=data.get("image_url"),
             is_active=data.get("is_active", True),
             settings=data.get("settings") or {},
+            community_id=data.get("community_id"),
             created_at=data.get("created_at"),
         )
 
@@ -66,7 +67,8 @@ class SupabaseEventRepository(IEventRepository):
         return self._to_model(data) if data else None
 
     @run_sync
-    def _create_sync(self, event_data: EventCreate, organizer_id: Optional[UUID], code_override: Optional[str] = None) -> dict:
+    def _create_sync(self, event_data: EventCreate, organizer_id: Optional[UUID],
+                     code_override: Optional[str] = None, community_id: Optional[UUID] = None) -> dict:
         code = code_override or self._generate_code()
         data = {
             "code": code,
@@ -77,10 +79,13 @@ class SupabaseEventRepository(IEventRepository):
             "organizer_id": str(organizer_id) if organizer_id else None,
             "settings": event_data.settings,
         }
+        if community_id:
+            data["community_id"] = str(community_id)
         response = supabase.table("events").insert(data).execute()
         return response.data[0]
 
-    async def create(self, event_data: EventCreate, code_override: Optional[str] = None) -> Event:
+    async def create(self, event_data: EventCreate, code_override: Optional[str] = None,
+                     community_id: Optional[UUID] = None) -> Event:
         # Get organizer user ID
         organizer = await self._user_repo.get_by_platform_id(
             event_data.organizer_platform,
@@ -88,8 +93,23 @@ class SupabaseEventRepository(IEventRepository):
         )
         organizer_id = organizer.id if organizer else None
 
-        data = await self._create_sync(event_data, organizer_id, code_override=code_override)
+        data = await self._create_sync(event_data, organizer_id, code_override=code_override,
+                                       community_id=community_id)
         return self._to_model(data)
+
+    @run_sync
+    def _get_by_community_sync(self, community_id: UUID) -> List[dict]:
+        response = supabase.table("events").select("*")\
+            .eq("community_id", str(community_id))\
+            .eq("is_active", True)\
+            .order("created_at", desc=True)\
+            .execute()
+        return response.data or []
+
+    async def get_by_community(self, community_id: UUID) -> List[Event]:
+        """Get all active events linked to a community."""
+        data = await self._get_by_community_sync(community_id)
+        return [self._to_model(d) for d in data]
 
     @run_sync
     def _get_participants_sync(self, event_id: UUID) -> List[dict]:

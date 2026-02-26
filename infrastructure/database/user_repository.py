@@ -88,6 +88,7 @@ class SupabaseUserRepository(IUserRepository):
             # Matching scope (global matching)
             matching_scope=data.get("matching_scope", "city"),
             meeting_preference=data.get("meeting_preference", "both"),
+            tier=data.get("tier", "free"),
         )
 
     @run_sync

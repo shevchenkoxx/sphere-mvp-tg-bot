@@ -757,11 +757,19 @@ async def _do_complete_onboarding(
                 # Show first match card directly
                 await state.clear()
                 await show_matches_view(message, user.id, lang=lang, edit=False, match_scope="global")
+
+                # Offer Sphere Global for DM users not from a community
+                if not community_id_str:
+                    asyncio.create_task(_offer_sphere_global(message.chat.id, user, lang))
                 return
 
             else:
                 # No matches — generate personality card, then expansion
                 asyncio.create_task(_send_personality_card(message.chat.id, user))
+
+                # Offer Sphere Global for DM users not from a community
+                if not community_id_str:
+                    asyncio.create_task(_offer_sphere_global(message.chat.id, user, lang))
 
                 await state.clear()
                 await _start_expansion_flow(message, state, user, lang)
@@ -1074,6 +1082,47 @@ async def _finish_expansion(message: Message, user_id: str, platform_user_id: st
             else "Профиль обновлён! Заходи позже за матчами.",
             reply_markup=get_main_menu_keyboard(lang),
         )
+
+
+# ------------------------------------------------------------------
+# Sphere Global offer — sent after onboarding for non-community users
+# ------------------------------------------------------------------
+
+async def _offer_sphere_global(chat_id: int, user, lang: str):
+    """Offer to join Sphere Global community after DM onboarding."""
+    try:
+        from adapters.telegram.loader import community_service, community_repo
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        # Skip if user already in a community
+        communities = await community_repo.get_user_communities(user.id)
+        if communities:
+            return
+
+        if lang == "ru":
+            text = (
+                "🌍 <b>Sphere Global</b>\n\n"
+                "Присоединяйся к глобальному сообществу!\n"
+                "Найди интересных людей за пределами своей группы."
+            )
+            btn_join = "🌍 Присоединиться"
+            btn_skip = "⏩ Пропустить"
+        else:
+            text = (
+                "🌍 <b>Sphere Global</b>\n\n"
+                "Join the global community!\n"
+                "Meet interesting people beyond your group."
+            )
+            btn_join = "🌍 Join Sphere Global"
+            btn_skip = "⏩ Skip"
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=btn_join, callback_data="join_sphere_global")],
+            [InlineKeyboardButton(text=btn_skip, callback_data="skip_sphere_global")],
+        ])
+        await bot.send_message(chat_id, text, reply_markup=keyboard)
+    except Exception as e:
+        logger.warning(f"[GLOBAL] Failed to offer Sphere Global: {e}")
 
 
 # ------------------------------------------------------------------

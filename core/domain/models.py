@@ -114,6 +114,8 @@ class User(UserBase):
     # Matching scope (global matching)
     matching_scope: str = "city"  # 'city' or 'global'
     meeting_preference: str = "both"  # 'online', 'offline', or 'both'
+    # Tier / monetization
+    tier: str = "free"  # 'free' or 'pro'
 
     class Config:
         from_attributes = True
@@ -194,6 +196,7 @@ class Event(BaseModel):
     image_url: Optional[str] = None
     is_active: bool = True
     settings: Dict[str, Any] = Field(default_factory=dict)
+    community_id: Optional[UUID] = None  # For events linked to a community
     created_at: Optional[datetime] = None
 
     class Config:

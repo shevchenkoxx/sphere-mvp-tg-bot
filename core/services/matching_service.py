@@ -730,6 +730,8 @@ class MatchingService:
         matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
         return matches[:limit]
 
+    FREE_TIER_CROSS_COMMUNITY_LIMIT = 1
+
     async def find_cross_community_match(
         self,
         user: User,
@@ -737,19 +739,35 @@ class MatchingService:
     ) -> Optional[Tuple[User, MatchResultWithId]]:
         """
         Find 1 free cross-community match (from global pool excluding current community).
-        Returns None if user already used their free match.
+        Returns None if user already used their free match and is on free tier.
         """
-        # Check if user already has cross-community matches
         cross_count = await self.match_repo.count_cross_community_matches(user.id)
-        if cross_count >= 1:
-            logger.info(f"User {user.id} already used free cross-community match")
+        user_tier = getattr(user, "tier", "free") or "free"
+
+        if user_tier == "free" and cross_count >= self.FREE_TIER_CROSS_COMMUNITY_LIMIT:
+            logger.info(f"User {user.id} hit free tier cross-community limit ({cross_count})")
             return None
 
-        # Run global matching with limit=1
         global_matches = await self.find_global_matches(user, limit=1)
         if global_matches:
             return global_matches[0]
         return None
+
+    async def check_cross_community_paywall(self, user: User) -> dict:
+        """Check if user has hit the cross-community matching paywall."""
+        cross_count = await self.match_repo.count_cross_community_matches(user.id)
+        user_tier = getattr(user, "tier", "free") or "free"
+
+        if user_tier != "free":
+            return {"hit_paywall": False, "used": cross_count, "limit": 999, "remaining_locked": 0}
+
+        hit = cross_count >= self.FREE_TIER_CROSS_COMMUNITY_LIMIT
+        return {
+            "hit_paywall": hit,
+            "used": cross_count,
+            "limit": self.FREE_TIER_CROSS_COMMUNITY_LIMIT,
+            "remaining_locked": 3 if hit else 0,
+        }
 
     # === GLOBAL MATCHING ===
 

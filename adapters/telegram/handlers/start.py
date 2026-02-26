@@ -837,6 +837,49 @@ async def show_invitations(callback: CallbackQuery):
             logging.getLogger(__name__).error(f"Failed to send invitation card {inv.short_id}: {e}")
 
 
+@router.callback_query(F.data == "join_sphere_global")
+async def join_sphere_global(callback: CallbackQuery):
+    """User accepted the Sphere Global community offer."""
+    from adapters.telegram.loader import community_service
+    lang = detect_lang_callback(callback)
+    await callback.answer()
+
+    user = await user_service.get_user_by_platform(
+        MessagePlatform.TELEGRAM, str(callback.from_user.id)
+    )
+    if not user:
+        return
+
+    try:
+        member = await community_service.add_to_global_community(user.id)
+        if member:
+            text = (
+                "🌍 <b>Welcome to Sphere Global!</b>\n\nYou can now find people beyond your group."
+                if lang == "en" else
+                "🌍 <b>Добро пожаловать в Sphere Global!</b>\n\nТеперь ты можешь находить людей за пределами группы."
+            )
+        else:
+            text = "Something went wrong." if lang == "en" else "Что-то пошло не так."
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to join global: {e}")
+        text = "Something went wrong." if lang == "en" else "Что-то пошло не так."
+
+    try:
+        await callback.message.edit_text(text, reply_markup=get_main_menu_keyboard(lang))
+    except Exception:
+        await callback.message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+
+
+@router.callback_query(F.data == "skip_sphere_global")
+async def skip_sphere_global(callback: CallbackQuery):
+    """User skipped the Sphere Global offer."""
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""

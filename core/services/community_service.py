@@ -130,3 +130,40 @@ class CommunityService:
     def generate_referral_deep_link(self, community_id: UUID, referrer_tg_id: int, bot_username: str) -> str:
         """Generate deep link with referral tracking."""
         return f"https://t.me/{bot_username}?start=community_{community_id}_ref_{referrer_tg_id}"
+
+    # === SPHERE GLOBAL COMMUNITY ===
+
+    SPHERE_GLOBAL_TG_GROUP_ID = -1  # Sentinel — not a real TG group
+
+    async def get_or_create_global_community(self) -> Community:
+        """Get or create the virtual 'Sphere Global' community."""
+        existing = await self.community_repo.get_by_telegram_group_id(self.SPHERE_GLOBAL_TG_GROUP_ID)
+        if existing:
+            return existing
+
+        community = await self.community_repo.create(
+            telegram_group_id=self.SPHERE_GLOBAL_TG_GROUP_ID,
+            name="Sphere Global",
+            owner_user_id=None,
+        )
+        logger.info(f"[COMMUNITY] Created Sphere Global community: {community.id}")
+        return community
+
+    async def add_to_global_community(self, user_id: UUID) -> Optional[CommunityMember]:
+        """Add a user to the Sphere Global community."""
+        try:
+            global_community = await self.get_or_create_global_community()
+            existing = await self.community_repo.get_member(global_community.id, user_id)
+            if existing:
+                return existing
+
+            member = await self.community_repo.add_member(
+                global_community.id, user_id,
+                role="member", joined_via="post_onboarding",
+            )
+            await self.community_repo.update_member_count(global_community.id)
+            logger.info(f"[COMMUNITY] Added user {user_id} to Sphere Global")
+            return member
+        except Exception as e:
+            logger.error(f"[COMMUNITY] Failed to add user {user_id} to global: {e}")
+            return None
