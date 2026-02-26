@@ -13,6 +13,7 @@ Flow:
 
 import asyncio
 import json
+from typing import Optional
 import re
 import logging
 from aiogram import Router, F
@@ -345,7 +346,7 @@ async def switch_to_text(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-async def _transcribe_voice_qt(message: Message) -> str | None:
+async def _transcribe_voice_qt(message: Message) -> Optional[str]:
     """Quick transcription helper for text onboarding voice fallback."""
     try:
         await bot.send_chat_action(message.chat.id, "typing")

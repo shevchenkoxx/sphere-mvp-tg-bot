@@ -169,7 +169,7 @@ class ConversationLogRepository:
         return await self._get_fsm_state_logs_sync(limit)
 
     @run_sync
-    def _get_message_stats_sync(self, cutoff_iso: str | None, limit: int):
+    def _get_message_stats_sync(self, cutoff_iso: Optional[str], limit: int):
         q = (
             supabase.table("conversation_logs")
             .select("telegram_user_id, direction, message_type, created_at")
