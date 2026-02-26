@@ -83,7 +83,10 @@ async def start_story(message: Message, state: FSMContext, mode: str = "global",
                        topics: list = None, event_name: str = None,
                        event_code: str = None, community_id: str = None):
     """Entry point: show intent selection."""
-    fsm_data = {"story_lang": lang, "story_mode": mode, "story_msg_ids": []}
+    fsm_data = {
+        "story_lang": lang, "story_mode": mode, "story_msg_ids": [],
+        "user_first_name": message.from_user.first_name,
+    }
     if community_id:
         fsm_data["community_id"] = community_id
     if community_name:

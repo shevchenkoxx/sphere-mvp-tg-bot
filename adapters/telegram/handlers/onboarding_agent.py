@@ -139,10 +139,12 @@ async def start_agent_onboarding(
     if lang is None:
         lang = detect_lang(message)
 
-    first_name = message.from_user.first_name or ""
-
-    # Pick up community context from FSM state (set by deep link handler)
+    # Pick up context from FSM state (set by deep link handler or story)
     fsm_data = await state.get_data()
+
+    # When called from story CTA callback, message.from_user is the bot.
+    # Use user_first_name saved during story start instead.
+    first_name = fsm_data.get("user_first_name") or message.from_user.first_name or ""
     community_id = fsm_data.get("community_id")
     community_name = fsm_data.get("community_name")
 
