@@ -23,9 +23,10 @@ REMINDER_TEMPLATES = [
 class SchedulerService:
     """Manages periodic community reminders and game scheduling."""
 
-    def __init__(self, community_repo, bot):
+    def __init__(self, community_repo, bot, game_service=None):
         self.community_repo = community_repo
         self.bot = bot
+        self.game_service = game_service
         self._running = False
 
     async def run(self):
@@ -46,12 +47,18 @@ class SchedulerService:
         self._running = False
 
     async def _tick(self):
-        """One scheduler cycle: check all communities for due reminders."""
+        """One scheduler cycle: check all communities for due reminders and games."""
         communities = await self.community_repo.get_all_active()
         now = datetime.now(timezone.utc)
 
         for community in communities:
             settings = community.settings or {}
+
+            # --- Games: check if a game is due ---
+            if self.game_service and settings.get("games_enabled", True):
+                await self._maybe_launch_game(community, settings, now)
+
+            # --- Reminders ---
             if not settings.get("reminder_enabled", True):
                 continue
 
@@ -117,3 +124,35 @@ class SchedulerService:
             logger.info(f"[SCHEDULER] Sent reminder to {community.name} ({community.telegram_group_id})")
         except Exception as e:
             logger.warning(f"[SCHEDULER] Failed to send reminder to {community.telegram_group_id}: {e}")
+
+    async def _maybe_launch_game(self, community, settings: dict, now: datetime):
+        """Check if it's time to launch a game in this community."""
+        game_hours = settings.get("game_hours", 24)  # Default: 1 game per day
+        last_game_str = settings.get("last_game_at")
+
+        if last_game_str:
+            try:
+                last_game = datetime.fromisoformat(last_game_str)
+                if last_game.tzinfo is None:
+                    last_game = last_game.replace(tzinfo=timezone.utc)
+                hours_since = (now - last_game).total_seconds() / 3600
+                if hours_since < game_hours:
+                    return
+            except (ValueError, TypeError):
+                pass
+
+        # Need at least 3 members for games
+        if community.member_count < 3:
+            return
+
+        try:
+            game_type = await self.game_service.schedule_next_game(
+                community.id, self.bot, community.telegram_group_id,
+            )
+            if game_type:
+                logger.info(f"[SCHEDULER] Launched {game_type} game in {community.name}")
+                updated = dict(settings)
+                updated["last_game_at"] = now.isoformat()
+                await self.community_repo.update_settings(community.id, updated)
+        except Exception as e:
+            logger.warning(f"[SCHEDULER] Failed to launch game for {community.id}: {e}")

@@ -24,10 +24,12 @@ from infrastructure.database.meetup_repository import MeetupRepository
 from infrastructure.database.conversation_log_repository import ConversationLogRepository
 from infrastructure.database.community_repository import SupabaseCommunityRepository
 from infrastructure.database.user_source_repository import SupabaseUserSourceRepository
+from infrastructure.database.game_repository import SupabaseGameRepository
 
 # Core services
 from core.services import UserService, EventService, MatchingService
 from core.services.community_service import CommunityService
+from core.services.game_service import GameService
 
 
 # === BOT INITIALIZATION ===
@@ -58,6 +60,7 @@ meetup_repo = MeetupRepository()
 conv_log_repo = ConversationLogRepository()
 community_repo = SupabaseCommunityRepository()
 user_source_repo = SupabaseUserSourceRepository()
+game_repo = SupabaseGameRepository()
 
 
 # === BUSINESS SERVICES ===
@@ -72,4 +75,9 @@ community_service = CommunityService(
     community_repo=community_repo,
     user_repo=user_repo,
     bot=bot,
+)
+game_service = GameService(
+    game_repo=game_repo,
+    community_repo=community_repo,
+    user_repo=user_repo,
 )

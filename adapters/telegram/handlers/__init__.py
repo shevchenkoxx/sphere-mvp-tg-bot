@@ -1,5 +1,5 @@
 from adapters.telegram.config import ONBOARDING_VERSION
-from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check, agent_chat, community_group
+from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check, agent_chat, community_group, community_games
 from config.features import Features
 
 # Build list of onboarding routers based on config
@@ -31,6 +31,7 @@ else:  # v2 (default)
 # because start.py has fallback handlers that would catch callbacks/messages
 routers = [
     community_group.router,  # Group handlers: my_chat_member + group messages (must be early)
+    community_games.router,  # Game callbacks: game_{id}_{action} (must be before start.py)
     *onboarding_routers,  # Must be first to handle state-specific callbacks
     *personalization_routers,  # Post-onboarding personalization - before start.py
     profile_edit.router,  # Profile editing - before start.py

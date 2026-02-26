@@ -12,7 +12,7 @@ import secrets
 import sys
 from aiohttp import web
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo, conv_log_repo, community_repo
+from adapters.telegram.loader import bot, dp, user_repo, user_service, match_repo, event_repo, conv_log_repo, community_repo, game_service
 from adapters.telegram.handlers import routers
 from adapters.telegram.middleware import ThrottlingMiddleware, ConversationLoggingMiddleware, ContentTypeMiddleware
 from adapters.telegram.outgoing_logger import install_outgoing_logger
@@ -95,7 +95,7 @@ async def main():
 
     # Start community reminder scheduler
     from core.services.scheduler_service import SchedulerService
-    scheduler = SchedulerService(community_repo=community_repo, bot=bot)
+    scheduler = SchedulerService(community_repo=community_repo, bot=bot, game_service=game_service)
     scheduler_task = asyncio.create_task(scheduler.run())
     logger.info("Community scheduler started (reminders + games)")
 
