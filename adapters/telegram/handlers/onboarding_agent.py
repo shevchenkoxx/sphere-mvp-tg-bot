@@ -141,10 +141,17 @@ async def start_agent_onboarding(
 
     first_name = message.from_user.first_name or ""
 
+    # Pick up community context from FSM state (set by deep link handler)
+    fsm_data = await state.get_data()
+    community_id = fsm_data.get("community_id")
+    community_name = fsm_data.get("community_name")
+
     # Initialise agent state
     agent_state = OnboardingAgentState(
         event_code=event_code,
         event_name=event_name,
+        community_id=community_id,
+        community_name=community_name,
         lang=lang,
         first_name=first_name,
     )
@@ -158,6 +165,8 @@ async def start_agent_onboarding(
     await state.update_data(
         **agent_state.to_dict(),
         pending_event=event_code,
+        community_id=community_id,
+        community_name=community_name,
         language=lang,
         user_first_name=first_name,
     )
@@ -660,13 +669,35 @@ async def _do_complete_onboarding(
                             user_id,
                         )
 
-                    # Run global matching
+                    # Mark community member as onboarded
+                    community_id_str = agent_state.community_id
+                    if community_id_str:
+                        try:
+                            from adapters.telegram.loader import community_repo
+                            from uuid import UUID as _UUID
+                            await community_repo.set_member_onboarded(
+                                _UUID(community_id_str), user.id
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to mark community member onboarded: {e}")
+
+                    # Run matching (community-scoped if from community, otherwise global)
                     updated_user = await user_repo.get_by_id(user.id)
                     if updated_user:
-                        matches_found = await matching_service.find_global_matches(
-                            user=updated_user,
-                            limit=5,
-                        ) or []
+                        if community_id_str:
+                            # Community-scoped matching first
+                            from uuid import UUID as _UUID
+                            matches_found = await matching_service.find_community_matches(
+                                user=updated_user,
+                                community_id=_UUID(community_id_str),
+                                limit=5,
+                            ) or []
+                        else:
+                            # Global matching
+                            matches_found = await matching_service.find_global_matches(
+                                user=updated_user,
+                                limit=5,
+                            ) or []
 
                         # Also match event if present
                         if event_code and updated_user.current_event_id:

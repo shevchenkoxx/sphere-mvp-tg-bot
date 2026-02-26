@@ -213,13 +213,19 @@ def build_checklist_state(checklist_dict: dict) -> str:
 def build_system_prompt(
     checklist_dict: dict,
     event_name: str = None,
+    community_name: str = None,
     lang: str = "en",
     turn_count: int = 0,
     first_name: str = None,
 ) -> str:
     """Build the full system prompt with current state injected."""
+    context_parts = []
     if event_name:
-        event_context = f"\n**Context:** User joined via event '{event_name}'. You can mention the event but don't limit the conversation to it."
+        context_parts.append(f"User joined via event '{event_name}'. You can mention the event but don't limit the conversation to it.")
+    if community_name:
+        context_parts.append(f"User is from the '{community_name}' community. Mention their community naturally — they'll get matched with other community members first.")
+    if context_parts:
+        event_context = "\n**Context:** " + " ".join(context_parts)
     else:
         event_context = ""
     language = "Russian" if lang == "ru" else "English"

@@ -177,6 +177,8 @@ class OnboardingAgentState:
     phase: str = "collecting"  # collecting | confirming | complete
     event_code: Optional[str] = None
     event_name: Optional[str] = None
+    community_id: Optional[str] = None
+    community_name: Optional[str] = None
     lang: str = "en"
     first_name: Optional[str] = None
 
@@ -194,6 +196,8 @@ class OnboardingAgentState:
             "agent_phase": self.phase,
             "agent_event_code": self.event_code,
             "agent_event_name": self.event_name,
+            "agent_community_id": self.community_id,
+            "agent_community_name": self.community_name,
             "agent_lang": self.lang,
             "agent_first_name": self.first_name,
         }
@@ -207,6 +211,8 @@ class OnboardingAgentState:
             phase=data.get("agent_phase", "collecting"),
             event_code=data.get("agent_event_code"),
             event_name=data.get("agent_event_name"),
+            community_id=data.get("agent_community_id"),
+            community_name=data.get("agent_community_name"),
             lang=data.get("agent_lang", "en"),
             first_name=data.get("agent_first_name"),
         )

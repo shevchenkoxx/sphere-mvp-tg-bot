@@ -82,6 +82,7 @@ class OrchestratorService:
         system_prompt = build_system_prompt(
             checklist_dict=checklist.to_dict(),
             event_name=agent_state.event_name,
+            community_name=agent_state.community_name,
             lang=agent_state.lang,
             turn_count=agent_state.turn_count,
             first_name=agent_state.first_name,
