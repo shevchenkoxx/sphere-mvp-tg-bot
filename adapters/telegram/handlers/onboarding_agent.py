@@ -161,6 +161,19 @@ async def start_agent_onboarding(
     # Set display_name from Telegram
     cl = agent_state.get_checklist()
     cl.display_name = first_name
+
+    # Pre-fill looking_for from story intent (so agent doesn't re-ask)
+    story_intent = fsm_data.get("story_intent")
+    intent_to_looking_for = {
+        "friends": "Find new friends, build genuine connections",
+        "dating": "Meet someone special, find a meaningful relationship",
+        "activities": "Find activity partners who share my interests",
+        "networking": "Connect with professionals, find collaborators",
+        "open": "Open to all kinds of connections",
+    }
+    if story_intent and story_intent in intent_to_looking_for:
+        cl.looking_for = intent_to_looking_for[story_intent]
+
     agent_state.set_checklist(cl)
 
     # Store in FSM
@@ -173,8 +186,14 @@ async def start_agent_onboarding(
         user_first_name=first_name,
     )
 
-    # Opening message — just tell the agent who the user is
-    greeting_prompt = f"Hi, I'm {first_name}. I just opened the bot."
+    # Opening message — tell the agent who the user is + their intent
+    if story_intent and story_intent in intent_to_looking_for:
+        greeting_prompt = (
+            f"Hi, I'm {first_name}. I'm looking to {intent_to_looking_for[story_intent].lower()}. "
+            f"Ask me about myself — don't ask what I'm looking for, I already told you."
+        )
+    else:
+        greeting_prompt = f"Hi, I'm {first_name}. I just opened the bot."
     response = await orchestrator_service.process_turn(
         agent_state,
         user_message=greeting_prompt,

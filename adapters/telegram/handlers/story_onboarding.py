@@ -1,7 +1,11 @@
 """
 Story onboarding handler — intent-first flow.
 
-Flow: Intent → Hook → Character → How it works → Game → Match card → CTA → Onboarding
+Flow (9 messages, 4 interactive moments):
+  Phase 1: Intent → Hook → Character → How it works + [See what Sphere found →]
+  Phase 2: [delete all] → Mechanism → Match card → Game
+  Phase 3: [delete all] → Result → CTA → Onboarding
+
 Messages accumulate during auto-play. Deleted only when user taps a button.
 """
 
@@ -140,27 +144,52 @@ async def handle_custom_intent_text(message: Message, state: FSMContext):
     await _play_story(message.chat.id, state, intent)
 
 
-# ── Story playback ─────────────────────────────────────────────────────────
+# ── Phase 1: Story playback ──────────────────────────────────────────────
 
 async def _play_story(chat_id: int, state: FSMContext, intent: str):
-    """Play the story. Messages accumulate — no deletion during auto-play."""
+    """Phase 1: Hook → Character → How it works + reveal button."""
     story = get_story(intent)
     await state.update_data(story_data=story)
     await state.set_state(StoryOnboarding.playing)
 
-    # Step 1: Hook
+    # Hook
     await _send(chat_id, story["hook"], state)
     await asyncio.sleep(STEP_DELAY)
 
-    # Step 2: Character
+    # Character
     await _send(chat_id, story["character"], state)
     await asyncio.sleep(STEP_DELAY)
 
-    # Step 3: How it works
-    await _send(chat_id, story["how_it_works"], state)
+    # How it works + interactive button
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👀 See what Sphere found →", callback_data="story_reveal")]
+    ])
+    await _send(chat_id, story["how_it_works"], state, reply_markup=kb)
+    await state.set_state(StoryOnboarding.waiting_reveal_tap)
+
+
+# ── Phase 2: Reveal → Match card → Game ──────────────────────────────────
+
+@router.callback_query(F.data == "story_reveal", StoryOnboarding.waiting_reveal_tap)
+async def handle_reveal_tap(callback: CallbackQuery, state: FSMContext):
+    """User tapped 'See what Sphere found'. Delete Phase 1, show mechanism + card + game."""
+    await callback.answer()
+    chat_id = callback.message.chat.id
+    data = await state.get_data()
+    story = data.get("story_data", {})
+
+    # Delete all Phase 1 messages (hook, character, how it works)
+    await _delete_all_story_msgs(chat_id, state)
+
+    # Mechanism reveal
+    await _send(chat_id, story.get("mechanism", ""), state)
     await asyncio.sleep(STEP_DELAY)
 
-    # Step 4: Game — interactive (messages stay until user taps)
+    # Match card
+    await _send(chat_id, story.get("match_card", ""), state)
+    await asyncio.sleep(STEP_DELAY)
+
+    # Game — interactive
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text=story["game_options"][0], callback_data="story_game_0"),
@@ -171,11 +200,11 @@ async def _play_story(chat_id: int, state: FSMContext, intent: str):
     await state.set_state(StoryOnboarding.waiting_game_tap)
 
 
-# ── Callback handlers ──────────────────────────────────────────────────────
+# ── Phase 3: Game result → CTA ───────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("story_game_"), StoryOnboarding.waiting_game_tap)
 async def handle_game_tap(callback: CallbackQuery, state: FSMContext):
-    """User tapped a game option. Delete all previous messages, show result + match."""
+    """User tapped a game option. Delete Phase 2, show result + CTA."""
     await callback.answer()
 
     choice_idx = int(callback.data.split("_")[-1])
@@ -195,17 +224,12 @@ async def handle_game_tap(callback: CallbackQuery, state: FSMContext):
 
     chat_id = callback.message.chat.id
 
-    # Delete all story messages so far (hook, character, how it works, game)
+    # Delete all Phase 2 messages (mechanism, match card, game)
     await _delete_all_story_msgs(chat_id, state)
 
-    # Show game result
+    # Game result
     await _send(chat_id, after_text, state)
     await asyncio.sleep(SHORT_DELAY)
-
-    # Show match card directly (full card with outcome)
-    match_card = story.get("match_card", "")
-    await _send(chat_id, match_card, state)
-    await asyncio.sleep(STEP_DELAY)
 
     # CTA
     lang = data.get("story_lang", "en")
@@ -216,6 +240,8 @@ async def handle_game_tap(callback: CallbackQuery, state: FSMContext):
     await _send(chat_id, story.get("cta", "Your turn ✨"), state, reply_markup=kb)
     await state.set_state(StoryOnboarding.waiting_next_tap)
 
+
+# ── Transition to onboarding ─────────────────────────────────────────────
 
 @router.callback_query(F.data == "story_start_onboarding")
 async def handle_start_onboarding(callback: CallbackQuery, state: FSMContext):
@@ -231,10 +257,10 @@ async def handle_start_onboarding(callback: CallbackQuery, state: FSMContext):
     # Delete all story messages
     await _delete_all_story_msgs(callback.message.chat.id, state)
 
-    # Clear story FSM data
+    # Clear story FSM data BUT keep story_intent for agent onboarding
     await state.update_data(
         story_data=None, story_msg_ids=None,
-        story_mode=None, story_lang=None, story_intent=None,
+        story_mode=None, story_lang=None,
     )
 
     # Dispatch to onboarding
@@ -252,6 +278,7 @@ async def handle_start_onboarding(callback: CallbackQuery, state: FSMContext):
 # ── Ignore text during story ──────────────────────────────────────────────
 
 @router.message(StoryOnboarding.playing)
+@router.message(StoryOnboarding.waiting_reveal_tap)
 @router.message(StoryOnboarding.waiting_game_tap)
 @router.message(StoryOnboarding.waiting_next_tap)
 @router.message(StoryOnboarding.waiting_intent)

@@ -111,8 +111,9 @@ class StoryOnboarding(StatesGroup):
     waiting_intent = State()        # Step 0: waiting for intent button tap
     waiting_custom_intent = State() # Step 0b: user chose "something specific", typing
     playing = State()               # Story is auto-playing with delays
+    waiting_reveal_tap = State()    # Interactive: "See what Sphere found →"
     waiting_game_tap = State()      # Interactive: mini-game choice
-    waiting_next_tap = State()      # Interactive: "see what happened"
+    waiting_next_tap = State()      # Interactive: CTA "Let's go"
 
 
 class AgentOnboarding(StatesGroup):
