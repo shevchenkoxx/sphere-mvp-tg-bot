@@ -27,6 +27,7 @@ class SupabaseMatchRepository(IMatchRepository):
             user_a_notified=data.get("user_a_notified", False),
             user_b_notified=data.get("user_b_notified", False),
             city=data.get("city"),
+            community_id=data.get("community_id"),
             created_at=data.get("created_at"),
         )
 
@@ -50,6 +51,7 @@ class SupabaseMatchRepository(IMatchRepository):
             "ai_explanation": match_data.ai_explanation,
             "icebreaker": match_data.icebreaker,
             "city": match_data.city,  # For Sphere City matches
+            "community_id": str(match_data.community_id) if match_data.community_id else None,
         }
         response = supabase.table("matches").upsert(data).execute()
         return response.data[0]
@@ -183,3 +185,33 @@ class SupabaseMatchRepository(IMatchRepository):
     async def exists_any(self, user_a_id: UUID, user_b_id: UUID) -> bool:
         """Check if any match exists between two users"""
         return await self._exists_any_sync(user_a_id, user_b_id)
+
+    # === COMMUNITY MATCHING ===
+
+    @run_sync
+    def _get_community_matches_sync(self, user_id: UUID, community_id: UUID) -> List[dict]:
+        """Get matches scoped to a specific community."""
+        response = supabase.table("matches").select("*")\
+            .eq("community_id", str(community_id))\
+            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")\
+            .order("compatibility_score", desc=True)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_community_matches(self, user_id: UUID, community_id: UUID) -> List[Match]:
+        """Get community-scoped matches for a user."""
+        data = await self._get_community_matches_sync(user_id, community_id)
+        return [self._to_model(d) for d in data]
+
+    @run_sync
+    def _count_cross_community_matches_sync(self, user_id: UUID) -> int:
+        """Count cross-community matches (community_id IS NOT NULL and different from user's communities)."""
+        # Count all matches with a community_id set
+        response = supabase.table("matches").select("id", count="exact")\
+            .not_.is_("community_id", "null")\
+            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")\
+            .execute()
+        return response.count if response.count is not None else 0
+
+    async def count_cross_community_matches(self, user_id: UUID) -> int:
+        return await self._count_cross_community_matches_sync(user_id)

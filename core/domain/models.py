@@ -225,6 +225,7 @@ class MatchCreate(BaseModel):
     ai_explanation: str
     icebreaker: str
     city: Optional[str] = None  # For Sphere City matches
+    community_id: Optional[UUID] = None  # For community-scoped matches
 
 
 class Match(BaseModel):
@@ -241,6 +242,7 @@ class Match(BaseModel):
     user_a_notified: bool = False
     user_b_notified: bool = False
     city: Optional[str] = None  # For Sphere City matches
+    community_id: Optional[UUID] = None  # For community-scoped matches
     created_at: Optional[datetime] = None
 
     class Config:
