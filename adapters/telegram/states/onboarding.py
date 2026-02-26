@@ -108,9 +108,11 @@ class DailyQuestionStates(StatesGroup):
 
 class StoryOnboarding(StatesGroup):
     """FSM states for branded story onboarding"""
-    playing = State()           # Story is auto-playing with delays
-    waiting_game_tap = State()  # Interactive #1: mini-game choice
-    waiting_next_tap = State()  # Interactive #2: "see what happened"
+    waiting_intent = State()        # Step 0: waiting for intent button tap
+    waiting_custom_intent = State() # Step 0b: user chose "something specific", typing
+    playing = State()               # Story is auto-playing with delays
+    waiting_game_tap = State()      # Interactive: mini-game choice
+    waiting_next_tap = State()      # Interactive: "see what happened"
 
 
 class AgentOnboarding(StatesGroup):

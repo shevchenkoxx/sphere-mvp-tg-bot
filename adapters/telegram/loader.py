@@ -33,7 +33,7 @@ from core.services.game_service import GameService
 from core.services.observation_service import ObservationService
 from core.services.community_pulse_service import CommunityPulseService
 from core.services.bingo_service import BingoService
-from core.services.story_service import StoryService
+# story_service is now pure functions, no class to instantiate
 
 
 # === BOT INITIALIZATION ===
@@ -96,4 +96,4 @@ bingo_service = BingoService(
     community_repo=community_repo,
     user_repo=user_repo,
 )
-story_service = StoryService()
+# story_service: pure functions in core/services/story_service.py (no instance needed)

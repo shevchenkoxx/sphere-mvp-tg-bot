@@ -1,5 +1,8 @@
 """
-Story onboarding handler — plays branded cinematic story with interactive moments.
+Story onboarding handler — intent-first flow with message deletion.
+
+Flow: Intent question → Hook → How it works → Game → Match preview → CTA → Onboarding
+Each message deletes the previous for a clean chat experience.
 """
 
 import asyncio
@@ -10,269 +13,214 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 
 from adapters.telegram.states.onboarding import StoryOnboarding
+from core.services.story_service import (
+    INTENT_QUESTION, get_story, classify_intent, GAME_OPTIONS,
+)
 
 logger = logging.getLogger(__name__)
 router = Router(name="story_onboarding")
 
-# Delay between auto-play steps (seconds)
+# Delays (seconds)
 STEP_DELAY = 2.5
-SHORT_DELAY = 2.0
-LONG_DELAY = 3.0
+SHORT_DELAY = 1.8
 
 
-async def start_story(message: Message, state: FSMContext, mode: str,
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+async def _delete_msg(chat_id: int, msg_id: int):
+    """Safely delete a message."""
+    try:
+        from adapters.telegram.loader import bot
+        await bot.delete_message(chat_id, msg_id)
+    except Exception:
+        pass
+
+
+async def _send_and_track(chat_id: int, text: str, state: FSMContext,
+                           reply_markup=None, delete_previous=True) -> int:
+    """Send a message, optionally delete the previous one, track msg_id in FSM."""
+    from adapters.telegram.loader import bot
+
+    if delete_previous:
+        data = await state.get_data()
+        prev_id = data.get("story_last_msg_id")
+        if prev_id:
+            await _delete_msg(chat_id, prev_id)
+
+    sent = await bot.send_message(chat_id, text, reply_markup=reply_markup, parse_mode="HTML")
+    await state.update_data(story_last_msg_id=sent.message_id)
+    return sent.message_id
+
+
+# ── Entry point ────────────────────────────────────────────────────────────
+
+INTENT_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [
+        InlineKeyboardButton(text="🤝 Find friends", callback_data="story_intent_friends"),
+        InlineKeyboardButton(text="💕 Meet someone", callback_data="story_intent_dating"),
+    ],
+    [
+        InlineKeyboardButton(text="⚡ Activity partners", callback_data="story_intent_activities"),
+        InlineKeyboardButton(text="💼 Networking", callback_data="story_intent_networking"),
+    ],
+    [
+        InlineKeyboardButton(text="🌟 Open to anything", callback_data="story_intent_open"),
+        InlineKeyboardButton(text="✍️ Something specific", callback_data="story_intent_custom"),
+    ],
+])
+
+
+async def start_story(message: Message, state: FSMContext, mode: str = "global",
                        context_id: str = "default", lang: str = "en",
                        community_name: str = None, member_count: int = None,
                        topics: list = None, event_name: str = None,
                        event_code: str = None, community_id: str = None):
-    """Entry point: generate story and start playing it."""
-    from adapters.telegram.loader import story_service
-
+    """Entry point: show intent selection."""
     # Preserve context for onboarding later
-    fsm_data = {}
+    fsm_data = {"story_lang": lang, "story_mode": mode}
     if community_id:
         fsm_data["community_id"] = community_id
     if community_name:
         fsm_data["community_name"] = community_name
     if event_code:
         fsm_data["pending_event"] = event_code
-    fsm_data["story_lang"] = lang
-    fsm_data["story_mode"] = mode
+    if event_name:
+        fsm_data["event_name"] = event_name
     await state.update_data(**fsm_data)
 
-    # Get story
-    story = await story_service.get_story(
-        mode=mode,
-        context_id=context_id,
-        lang=lang,
-        community_name=community_name,
-        member_count=member_count,
-        topics=topics,
-        event_name=event_name,
+    # Send intent question
+    from adapters.telegram.loader import bot
+    sent = await bot.send_message(
+        message.chat.id, INTENT_QUESTION,
+        reply_markup=INTENT_KEYBOARD, parse_mode="HTML",
     )
+    await state.update_data(story_last_msg_id=sent.message_id)
+    await state.set_state(StoryOnboarding.waiting_intent)
 
-    steps = story.get("steps", [])
-    game_options = story.get("game_options", ["Option A", "Option B"])
 
-    await state.update_data(story_steps=steps, story_game_options=game_options)
+# ── Intent handlers ────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("story_intent_"), StoryOnboarding.waiting_intent)
+async def handle_intent_tap(callback: CallbackQuery, state: FSMContext):
+    """User picked an intent (or 'custom')."""
+    await callback.answer()
+    intent = callback.data.replace("story_intent_", "")
+
+    if intent == "custom":
+        # Ask user to type
+        await _send_and_track(
+            callback.message.chat.id,
+            "What are you looking for? Just type it 👇",
+            state, delete_previous=True,
+        )
+        await state.set_state(StoryOnboarding.waiting_custom_intent)
+        return
+
+    # Got a concrete intent — start the story
+    await state.update_data(story_intent=intent)
+    await _play_story(callback.message.chat.id, state, intent)
+
+
+@router.message(StoryOnboarding.waiting_custom_intent)
+async def handle_custom_intent_text(message: Message, state: FSMContext):
+    """User typed their specific intent."""
+    intent = classify_intent(message.text or "")
+    await state.update_data(story_intent=intent)
+
+    # Delete user's message for clean chat
+    await _delete_msg(message.chat.id, message.message_id)
+
+    await _play_story(message.chat.id, state, intent)
+
+
+# ── Story playback ─────────────────────────────────────────────────────────
+
+async def _play_story(chat_id: int, state: FSMContext, intent: str):
+    """Play the 5-step story for the given intent."""
+    story = get_story(intent)
+    await state.update_data(story_data=story)
     await state.set_state(StoryOnboarding.playing)
 
-    if mode == "event":
-        await _play_event_story(message, state, steps)
-    else:
-        await _play_community_story(message, state, steps, game_options)
-
-
-async def _play_community_story(message: Message, state: FSMContext,
-                                 steps: list, game_options: list):
-    """Play the 10-step community/global story."""
-    chat_id = message.chat.id
-
-    from adapters.telegram.loader import bot
-
     # Step 1: Hook
-    await bot.send_message(chat_id, steps[0], parse_mode="HTML")
+    await _send_and_track(chat_id, story["hook"], state, delete_previous=True)
     await asyncio.sleep(STEP_DELAY)
 
-    # Step 2: Character 1
-    await bot.send_message(chat_id, steps[1], parse_mode="HTML")
+    # Step 2: How it works
+    await _send_and_track(chat_id, story["how_it_works"], state, delete_previous=True)
     await asyncio.sleep(STEP_DELAY)
 
-    # Step 3: Observation
-    await bot.send_message(chat_id, steps[2], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 4: Game — INTERACTIVE #1
+    # Step 3: Game — interactive
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=game_options[0], callback_data="story_game_0"),
-            InlineKeyboardButton(text=game_options[1], callback_data="story_game_1"),
+            InlineKeyboardButton(text=story["game_options"][0], callback_data="story_game_0"),
+            InlineKeyboardButton(text=story["game_options"][1], callback_data="story_game_1"),
         ]
     ])
-    await bot.send_message(chat_id, steps[3], reply_markup=kb, parse_mode="HTML")
+    await _send_and_track(chat_id, story["game_question"], state, reply_markup=kb, delete_previous=True)
     await state.set_state(StoryOnboarding.waiting_game_tap)
-    # Flow continues in handle_game_tap callback
 
 
-async def _continue_after_game(callback: CallbackQuery, state: FSMContext):
-    """Continue community story after game interaction."""
-    data = await state.get_data()
-    steps = data.get("story_steps", [])
-    chat_id = callback.message.chat.id
-
-    from adapters.telegram.loader import bot
-
-    # Step 5: Character 2
-    await bot.send_message(chat_id, steps[5], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 6: AI Matching
-    await bot.send_message(chat_id, steps[6], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 7: Match Preview — INTERACTIVE #2
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👀 See what happened next", callback_data="story_next")]
-    ])
-    await bot.send_message(chat_id, steps[7], reply_markup=kb, parse_mode="HTML")
-    await state.set_state(StoryOnboarding.waiting_next_tap)
-    # Flow continues in handle_next_tap callback
-
-
-async def _continue_after_match(callback: CallbackQuery, state: FSMContext):
-    """Continue community story after match preview interaction."""
-    data = await state.get_data()
-    steps = data.get("story_steps", [])
-    chat_id = callback.message.chat.id
-    lang = data.get("story_lang", "en")
-
-    from adapters.telegram.loader import bot
-
-    # Step 8: Resolution
-    await bot.send_message(chat_id, steps[8], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 9: Bonus use cases
-    await bot.send_message(chat_id, steps[9], parse_mode="HTML")
-    await asyncio.sleep(SHORT_DELAY)
-
-    # Step 10: CTA
-    cta_text = "🚀 Let's go" if lang == "en" else "🚀 Поехали"
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=cta_text, callback_data="story_start_onboarding")]
-    ])
-    cta_content = steps[10] if len(steps) > 10 else "Your turn.\n\nTell me about yourself and I'll find\npeople you should know."
-    await bot.send_message(chat_id, cta_content, reply_markup=kb, parse_mode="HTML")
-    # Wait for CTA tap — handled by callback
-
-
-async def _play_event_story(message: Message, state: FSMContext, steps: list):
-    """Play the 7-step events story."""
-    chat_id = message.chat.id
-    data = await state.get_data()
-    lang = data.get("story_lang", "en")
-
-    from adapters.telegram.loader import bot
-
-    # Step 1: Hook
-    await bot.send_message(chat_id, steps[0], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 2: Create
-    await bot.send_message(chat_id, steps[1], parse_mode="HTML")
-    await asyncio.sleep(SHORT_DELAY)
-
-    # Step 3: Share & Fill
-    await bot.send_message(chat_id, steps[2], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 4: Match Preview — INTERACTIVE
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="⚡ See what happened" if lang == "en" else "⚡ Что произошло",
-            callback_data="story_next"
-        )]
-    ])
-    await bot.send_message(chat_id, steps[3], reply_markup=kb, parse_mode="HTML")
-    await state.set_state(StoryOnboarding.waiting_next_tap)
-
-
-async def _continue_event_after_match(callback: CallbackQuery, state: FSMContext):
-    """Continue events story after match preview interaction."""
-    data = await state.get_data()
-    steps = data.get("story_steps", [])
-    chat_id = callback.message.chat.id
-    lang = data.get("story_lang", "en")
-
-    from adapters.telegram.loader import bot
-
-    # Step 5: Resolution
-    await bot.send_message(chat_id, steps[4], parse_mode="HTML")
-    await asyncio.sleep(SHORT_DELAY)
-
-    # Step 6: Bonus examples
-    await bot.send_message(chat_id, steps[5], parse_mode="HTML")
-    await asyncio.sleep(STEP_DELAY)
-
-    # Step 7a: Value message
-    await bot.send_message(chat_id, steps[6], parse_mode="HTML")
-    await asyncio.sleep(SHORT_DELAY)
-
-    # Step 7b: CTA
-    cta_text_create = "🚀 Create an event" if lang == "en" else "🚀 Создать ивент"
-    cta_text_join = "🎫 Join one" if lang == "en" else "🎫 Присоединиться"
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=cta_text_create, callback_data="story_create_event"),
-            InlineKeyboardButton(text=cta_text_join, callback_data="story_start_onboarding"),
-        ]
-    ])
-    await bot.send_message(chat_id, steps[7], reply_markup=kb, parse_mode="HTML")
-
-
-@router.message(StoryOnboarding.playing)
-@router.message(StoryOnboarding.waiting_game_tap)
-@router.message(StoryOnboarding.waiting_next_tap)
-async def ignore_text_during_story(message: Message, state: FSMContext):
-    """Ignore text messages while story is playing. User should tap buttons."""
-    pass  # Silently ignore — story auto-plays or waits for button tap
-
-
-# ── Callback handlers ───────────────────────────────────────────────────────
+# ── Callback handlers ──────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("story_game_"), StoryOnboarding.waiting_game_tap)
 async def handle_game_tap(callback: CallbackQuery, state: FSMContext):
-    """Interactive #1: user tapped a game option."""
+    """User tapped a game option."""
     await callback.answer()
 
     choice_idx = int(callback.data.split("_")[-1])
     data = await state.get_data()
-    steps = data.get("story_steps", [])
-    game_options = data.get("story_game_options", ["Option A", "Option B"])
+    story = data.get("story_data", {})
+    game_options = story.get("game_options", GAME_OPTIONS)
 
     chosen = game_options[choice_idx] if choice_idx < len(game_options) else "that"
     pct = random.randint(58, 78)
-    feedbacks = ["Nice", "Great choice", "Interesting", "Good pick"]
+    feedbacks = ["Nice one", "Great pick", "Interesting", "Good choice"]
     feedback = random.choice(feedbacks)
 
-    # Format step 4b with placeholders
-    after_text = steps[4] if len(steps) > 4 else "Nice! Most people agree."
+    after_text = story.get("game_after", "{feedback}! {pct}% picked the same 🎯")
     after_text = after_text.replace("{feedback}", feedback)
     after_text = after_text.replace("{pct}", str(pct))
     after_text = after_text.replace("{choice}", chosen)
 
-    # Remove the keyboard from the game message
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    chat_id = callback.message.chat.id
 
-    from adapters.telegram.loader import bot
-    await bot.send_message(callback.message.chat.id, after_text, parse_mode="HTML")
+    # Delete game message, show response
+    await _send_and_track(chat_id, after_text, state, delete_previous=True)
     await asyncio.sleep(SHORT_DELAY)
 
-    # Continue story
-    await _continue_after_game(callback, state)
+    # Step 4: Match preview — interactive
+    match_card = story.get("match_card", "")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👀 See what happened", callback_data="story_next")]
+    ])
+    await _send_and_track(chat_id, match_card, state, reply_markup=kb, delete_previous=True)
+    await state.set_state(StoryOnboarding.waiting_next_tap)
 
 
 @router.callback_query(F.data == "story_next", StoryOnboarding.waiting_next_tap)
 async def handle_next_tap(callback: CallbackQuery, state: FSMContext):
-    """Interactive #2: user tapped 'see what happened next'."""
+    """User tapped 'See what happened'."""
     await callback.answer()
 
-    # Remove keyboard
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
     data = await state.get_data()
-    mode = data.get("story_mode", "global")
+    story = data.get("story_data", {})
+    lang = data.get("story_lang", "en")
+    chat_id = callback.message.chat.id
 
-    if mode == "event":
-        await _continue_event_after_match(callback, state)
-    else:
-        await _continue_after_match(callback, state)
+    # Show match card + outcome together
+    match_card = story.get("match_card", "")
+    match_outcome = story.get("match_outcome", "")
+    full_text = f"{match_card}\n\n{match_outcome}"
+
+    await _send_and_track(chat_id, full_text, state, delete_previous=True)
+    await asyncio.sleep(STEP_DELAY)
+
+    # Step 5: CTA
+    cta_text = "🚀 Let's go" if lang == "en" else "🚀 Поехали"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=cta_text, callback_data="story_start_onboarding")]
+    ])
+    await _send_and_track(chat_id, story.get("cta", "Your turn ✨"), state, reply_markup=kb, delete_previous=True)
 
 
 @router.callback_query(F.data == "story_start_onboarding")
@@ -280,22 +228,22 @@ async def handle_start_onboarding(callback: CallbackQuery, state: FSMContext):
     """CTA: user tapped 'Let's go' — transition to real onboarding."""
     await callback.answer()
 
-    # Remove keyboard
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
-
     data = await state.get_data()
     event_code = data.get("pending_event")
     event_name = data.get("event_name")
     community_id = data.get("community_id")
     community_name = data.get("community_name")
 
-    # Clear story-specific FSM data but keep context
-    await state.update_data(story_steps=None, story_game_options=None, story_mode=None, story_lang=None)
+    # Delete CTA message
+    await _delete_msg(callback.message.chat.id, callback.message.message_id)
 
-    # Dispatch to the configured onboarding version
+    # Clear story-specific FSM data but keep context
+    await state.update_data(
+        story_data=None, story_last_msg_id=None,
+        story_mode=None, story_lang=None, story_intent=None,
+    )
+
+    # Dispatch to onboarding
     from adapters.telegram.handlers.start import _start_onboarding_with_context
     await _start_onboarding_with_context(
         callback.message, state,
@@ -307,37 +255,12 @@ async def handle_start_onboarding(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "story_create_event")
-async def handle_create_event(callback: CallbackQuery, state: FSMContext):
-    """Events CTA: user wants to create an event."""
-    await callback.answer()
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+# ── Ignore text during story ──────────────────────────────────────────────
 
-    data = await state.get_data()
-
-    # If user is not onboarded, onboard first
-    from adapters.telegram.loader import user_service
-    from core.domain.models import MessagePlatform
-    user = await user_service.get_or_create_user(
-        platform=MessagePlatform.TELEGRAM,
-        platform_user_id=str(callback.from_user.id),
-        username=callback.from_user.username,
-        first_name=callback.from_user.first_name,
-    )
-
-    if not user.onboarding_completed:
-        await state.update_data(post_onboarding_action="create_event")
-        from adapters.telegram.handlers.start import _start_onboarding_with_context
-        await _start_onboarding_with_context(callback.message, state, skip_story=True)
-    else:
-        # Go directly to event creation
-        lang = data.get("story_lang", "en")
-        await callback.message.answer(
-            "Let's create your event! Send me the event name:" if lang == "en"
-            else "Создаем ивент! Отправь мне название:",
-        )
-        from adapters.telegram.states.onboarding import EventStates
-        await state.set_state(EventStates.waiting_name)
+@router.message(StoryOnboarding.playing)
+@router.message(StoryOnboarding.waiting_game_tap)
+@router.message(StoryOnboarding.waiting_next_tap)
+@router.message(StoryOnboarding.waiting_intent)
+async def ignore_text_during_story(message: Message, state: FSMContext):
+    """Ignore text messages during story (except custom intent which has its own handler)."""
+    pass
