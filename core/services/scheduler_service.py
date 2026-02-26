@@ -32,6 +32,7 @@ class SchedulerService:
         self.pulse_service = pulse_service
         self._running = False
         self._tick_count = 0
+        self._tick_lock = asyncio.Lock()
 
     async def run(self):
         """Main scheduler loop. Check communities every hour."""
@@ -39,10 +40,14 @@ class SchedulerService:
         logger.info("[SCHEDULER] Started — checking communities every hour")
 
         while self._running:
-            try:
-                await self._tick()
-            except Exception as e:
-                logger.error(f"[SCHEDULER] Tick failed: {e}", exc_info=True)
+            if self._tick_lock.locked():
+                logger.warning("[SCHEDULER] Previous tick still running, skipping")
+            else:
+                try:
+                    async with self._tick_lock:
+                        await self._tick()
+                except Exception as e:
+                    logger.error(f"[SCHEDULER] Tick failed: {e}", exc_info=True)
 
             # Sleep 1 hour between checks
             await asyncio.sleep(3600)
@@ -74,8 +79,9 @@ class SchedulerService:
 
             settings = community.settings or {}
 
-            # --- Games: check if a game is due ---
+            # --- Games: end expired sessions, then check if a new game is due ---
             if self.game_service and settings.get("games_enabled", True):
+                await self._end_expired_games(community)
                 await self._maybe_launch_game(community, settings, now)
 
             # --- Weekly pulse (every 168 ticks ≈ 7 days, or check last_pulse_at) ---
@@ -148,6 +154,35 @@ class SchedulerService:
             logger.info(f"[SCHEDULER] Sent reminder to {community.name} ({community.telegram_group_id})")
         except Exception as e:
             logger.warning(f"[SCHEDULER] Failed to send reminder to {community.telegram_group_id}: {e}")
+
+    async def _end_expired_games(self, community):
+        """Find active game sessions past their ends_at and transition them to 'ended'."""
+        try:
+            expired = await self.game_service.game_repo.get_expired_active_sessions(str(community.id))
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Failed to query expired games for {community.id}: {e}")
+            return
+
+        for session_data in expired:
+            session_id = session_data.get("id")
+            game_type = session_data.get("game_type", "unknown")
+            try:
+                ended_session = await self.game_service.end_game(session_id)
+                logger.info(f"[SCHEDULER] Ended expired {game_type} game {session_id} in {community.name}")
+
+                # Post results to the group
+                responses = await self.game_service.game_repo.get_responses(session_id)
+                game_data = session_data.get("game_data") or {}
+
+                # Late import to avoid circular dependency
+                from adapters.telegram.handlers.community_games import post_game_results
+
+                await post_game_results(
+                    self.bot, community.telegram_group_id,
+                    ended_session, game_data, responses,
+                )
+            except Exception as e:
+                logger.error(f"[SCHEDULER] Failed to end expired game {session_id}: {e}")
 
     async def _maybe_launch_game(self, community, settings: dict, now: datetime):
         """Check if it's time to launch a game in this community."""

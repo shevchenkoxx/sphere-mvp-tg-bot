@@ -6,6 +6,7 @@ Members claim squares by tagging each other or through inline buttons.
 Completing a row triggers a DM CTA.
 """
 
+import asyncio
 import io
 import logging
 import random
@@ -97,8 +98,9 @@ class BingoService:
             game_data=game_data,
         )
 
-        # Render card image
-        card_bytes = self._render_bingo_card(selected, {})
+        # Render card image (sync Pillow code — run in executor to avoid blocking event loop)
+        loop = asyncio.get_running_loop()
+        card_bytes = await loop.run_in_executor(None, self._render_bingo_card, selected, {})
 
         return {
             "session": session,
@@ -110,11 +112,11 @@ class BingoService:
         """Generate bingo traits from member profiles + generic pool."""
         traits = set()
 
-        for member in members:
-            user = await self.user_repo.get_by_id(member.user_id)
-            if not user:
-                continue
+        # Batch fetch all member profiles in a single query
+        member_ids = [member.user_id for member in members]
+        users = await self.user_repo.get_users_by_ids(member_ids)
 
+        for user in users:
             # Extract traits from profile
             if user.interests:
                 for interest in user.interests[:2]:

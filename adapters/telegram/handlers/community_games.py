@@ -72,7 +72,7 @@ async def _post_mystery_profile(bot: Bot, chat_id: int, session_id: str,
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     try:
-        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
         return msg.message_id
     except Exception as e:
         logger.error(f"[GAME] Failed to post mystery_profile: {e}")
@@ -98,7 +98,7 @@ async def _post_this_or_that(bot: Bot, chat_id: int, session_id: str,
     ])
 
     try:
-        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
         return msg.message_id
     except Exception as e:
         logger.error(f"[GAME] Failed to post this_or_that: {e}")
@@ -125,7 +125,7 @@ async def _post_vibe_check(bot: Bot, chat_id: int, session_id: str,
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     try:
-        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
         return msg.message_id
     except Exception as e:
         logger.error(f"[GAME] Failed to post vibe_check: {e}")
@@ -150,7 +150,7 @@ async def _post_hot_take(bot: Bot, chat_id: int, session_id: str,
     ])
 
     try:
-        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
         return msg.message_id
     except Exception as e:
         logger.error(f"[GAME] Failed to post hot_take: {e}")
@@ -180,7 +180,7 @@ async def _post_common_ground(bot: Bot, chat_id: int, session_id: str,
     ])
 
     try:
-        msg = await bot.send_message(chat_id, text, reply_markup=keyboard)
+        msg = await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
         return msg.message_id
     except Exception as e:
         logger.error(f"[GAME] Failed to post common_ground: {e}")
@@ -376,7 +376,7 @@ async def _handle_reveal(callback: CallbackQuery, session: GameSession, game_dat
     await callback.answer()
     if callback.message:
         try:
-            await callback.message.edit_text(text, reply_markup=None)
+            await callback.message.edit_text(text, reply_markup=None, parse_mode="HTML")
         except Exception:
             pass  # Message already edited or deleted
     # End the session after reveal
@@ -455,6 +455,6 @@ async def post_game_results(bot: Bot, chat_id: int, session: GameSession,
     ])
 
     try:
-        await bot.send_message(chat_id, text, reply_markup=keyboard)
+        await bot.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
     except Exception as e:
         logger.error(f"[GAME] Failed to post results: {e}")

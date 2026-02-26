@@ -204,14 +204,18 @@ class SupabaseMatchRepository(IMatchRepository):
         return [self._to_model(d) for d in data]
 
     @run_sync
-    def _count_cross_community_matches_sync(self, user_id: UUID) -> int:
-        """Count cross-community matches (community_id IS NOT NULL and different from user's communities)."""
-        # Count all matches with a community_id set
-        response = supabase.table("matches").select("id", count="exact")\
+    def _count_cross_community_matches_sync(self, user_id: UUID, user_community_ids: List[str]) -> int:
+        """Count cross-community matches (community_id IS NOT NULL and NOT in user's own communities)."""
+        query = supabase.table("matches").select("id", count="exact")\
             .not_.is_("community_id", "null")\
-            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")\
-            .execute()
+            .or_(f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}")
+
+        if user_community_ids:
+            for cid in user_community_ids:
+                query = query.neq("community_id", cid)
+
+        response = query.execute()
         return response.count if response.count is not None else 0
 
-    async def count_cross_community_matches(self, user_id: UUID) -> int:
-        return await self._count_cross_community_matches_sync(user_id)
+    async def count_cross_community_matches(self, user_id: UUID, user_community_ids: List[str] = None) -> int:
+        return await self._count_cross_community_matches_sync(user_id, user_community_ids or [])

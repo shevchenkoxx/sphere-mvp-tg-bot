@@ -197,11 +197,11 @@ class ObservationService:
             return
 
         count = await self._count_user_observations_sync(community_id, str(user.id))
-        if count < SUMMARY_THRESHOLD:
-            return
 
-        # Check if already has a summary
-        if getattr(user, 'community_profile_summary', None):
+        has_summary = getattr(user, 'community_profile_summary', None)
+        if has_summary and count % 20 != 0:
+            return  # Refresh summary every 20 observations (at 20, 40, 60, ...)
+        if not has_summary and count < SUMMARY_THRESHOLD:
             return
 
         observations = await self._get_user_topics_sync(community_id, str(user.id))

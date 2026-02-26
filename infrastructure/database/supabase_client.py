@@ -5,6 +5,7 @@ Single point of database connection.
 
 from supabase import create_client, Client
 import asyncio
+import concurrent.futures
 import sys
 import os
 from functools import wraps
@@ -35,13 +36,22 @@ else:
     supabase: Client = create_client(_supabase_url, _supabase_key)
 
 
+# Dedicated bounded thread pool for DB operations — prevents exhausting the
+# default executor when many Supabase calls run concurrently.
+_db_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=10,
+    thread_name_prefix="supabase-db",
+)
+
+
 def run_sync(func):
     """
     Decorator to run synchronous Supabase operations in async context.
     Supabase Python SDK is synchronous, so we need this wrapper.
+    Uses a dedicated bounded thread pool instead of the default executor.
     """
     @wraps(func)
     async def wrapper(*args, **kwargs):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+        return await loop.run_in_executor(_db_executor, lambda: func(*args, **kwargs))
     return wrapper

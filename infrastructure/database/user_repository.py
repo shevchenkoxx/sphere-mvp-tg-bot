@@ -310,3 +310,20 @@ class SupabaseUserRepository(IUserRepository):
     async def get_all_platform_ids(self) -> List[str]:
         """Return all Telegram user IDs for broadcasting."""
         return await self._get_all_platform_ids_sync()
+
+    # === BATCH FETCH ===
+
+    @run_sync
+    def _get_users_by_ids_sync(self, user_ids: List[UUID]) -> List[dict]:
+        """Get multiple users by their IDs in a single query."""
+        response = supabase.table("users").select("*")\
+            .in_("id", [str(i) for i in user_ids])\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_users_by_ids(self, user_ids: List[UUID]) -> List[User]:
+        """Get multiple users by IDs in a single batch query."""
+        if not user_ids:
+            return []
+        data = await self._get_users_by_ids_sync(user_ids)
+        return [self._to_model(d) for d in data]

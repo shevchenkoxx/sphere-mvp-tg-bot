@@ -4,6 +4,7 @@ Manages game sessions and responses for community games.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 
@@ -115,6 +116,20 @@ class SupabaseGameRepository:
     async def get_recent_sessions(self, community_id: UUID, game_type: str, limit: int = 5) -> List[GameSession]:
         data = await self._get_recent_sessions_sync(community_id, game_type, limit)
         return [self._to_session(d) for d in data]
+
+    @run_sync
+    def _get_expired_active_sessions_sync(self, community_id: str) -> List[dict]:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        response = supabase.table("game_sessions").select("*")\
+            .eq("community_id", community_id)\
+            .eq("status", "active")\
+            .lt("ends_at", now_iso)\
+            .execute()
+        return response.data or []
+
+    async def get_expired_active_sessions(self, community_id: str) -> List[dict]:
+        """Return all active sessions whose ends_at is in the past."""
+        return await self._get_expired_active_sessions_sync(community_id)
 
     # --- Game Responses ---
 

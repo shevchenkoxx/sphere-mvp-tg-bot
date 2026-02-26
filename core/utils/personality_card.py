@@ -6,6 +6,7 @@ a branded card image with: type label, traits, interests, vibe, QR code.
 Users share in groups to drive onboarding.
 """
 
+import asyncio
 import io
 import logging
 from typing import Optional, List
@@ -14,9 +15,19 @@ from PIL import Image, ImageDraw, ImageFont
 import qrcode
 
 from openai import AsyncOpenAI
-from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Lazy singleton OpenAI client — avoids creating a new client on every call
+_openai_client: Optional[AsyncOpenAI] = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        from config.settings import settings
+        _openai_client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=20.0)
+    return _openai_client
 
 # Card dimensions (Telegram-friendly aspect ratio)
 CARD_WIDTH = 800
@@ -61,7 +72,7 @@ def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
 
 async def generate_personality_summary(user) -> dict:
     """Generate a personality type + traits via LLM."""
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=20.0)
+    client = _get_openai_client()
 
     profile_text = f"""
 Name: {user.display_name or user.first_name or 'Unknown'}
@@ -222,6 +233,19 @@ def render_personality_card(
 def _draw_rounded_rect(draw: ImageDraw.ImageDraw, x1, y1, x2, y2, radius, fill):
     """Draw a rounded rectangle."""
     draw.rounded_rectangle([(x1, y1), (x2, y2)], radius=radius, fill=fill)
+
+
+async def render_personality_card_async(
+    name: str,
+    personality: dict,
+    interests: Optional[List[str]] = None,
+    qr_url: Optional[str] = None,
+) -> bytes:
+    """Async wrapper for render_personality_card — runs Pillow rendering in a thread pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, render_personality_card, name, personality, interests, qr_url
+    )
 
 
 def _draw_wrapped_text(draw: ImageDraw.ImageDraw, x, y, text: str, font, fill, max_width):

@@ -140,14 +140,10 @@ class GameService:
         if len(members) < 3:
             return None
 
-        # Get full user profiles for onboarded members
-        candidates = []
-        for member in members:
-            if not member.is_onboarded:
-                continue
-            user = await self.user_repo.get_by_id(member.user_id)
-            if user and user.bio and len(user.bio) > 20:
-                candidates.append(user)
+        # Batch fetch all onboarded member profiles in a single query
+        onboarded_ids = [member.user_id for member in members if member.is_onboarded]
+        all_users = await self.user_repo.get_users_by_ids(onboarded_ids)
+        candidates = [u for u in all_users if u.bio and len(u.bio) > 20]
 
         if len(candidates) < 3:
             return None
@@ -298,12 +294,9 @@ Skills: {', '.join(getattr(user, 'skills', None) or [])}
         if len(onboarded) < 2:
             return None
 
-        # Get profiles
-        profiles = []
-        for member in onboarded:
-            user = await self.user_repo.get_by_id(member.user_id)
-            if user:
-                profiles.append(user)
+        # Batch fetch all onboarded member profiles in a single query
+        onboarded_ids = [m.user_id for m in onboarded]
+        profiles = await self.user_repo.get_users_by_ids(onboarded_ids)
 
         if len(profiles) < 2:
             return None

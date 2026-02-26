@@ -676,14 +676,10 @@ class MatchingService:
             logger.info(f"No community members found for community {community_id}")
             return []
 
-        # Filter to onboarded members with profiles (exclude self)
-        candidates = []
-        for mid in member_ids:
-            if str(mid) == str(user.id):
-                continue
-            candidate = await user_repo.get_by_id(UUID(mid))
-            if candidate and candidate.onboarding_completed:
-                candidates.append(candidate)
+        # Batch fetch all members (exclude self) in a single query
+        other_ids = [UUID(mid) for mid in member_ids if str(mid) != str(user.id)]
+        candidates_raw = await user_repo.get_users_by_ids(other_ids)
+        candidates = [c for c in candidates_raw if c.onboarding_completed]
 
         if not candidates:
             logger.info(f"No onboarded candidates in community {community_id}")
@@ -732,6 +728,13 @@ class MatchingService:
 
     FREE_TIER_CROSS_COMMUNITY_LIMIT = 1
 
+    async def _get_user_community_ids(self, user_id: UUID) -> List[str]:
+        """Get list of community IDs a user belongs to."""
+        from infrastructure.database.community_repository import SupabaseCommunityRepository
+        community_repo = SupabaseCommunityRepository()
+        communities = await community_repo.get_user_communities(user_id)
+        return [str(c.id) for c in communities]
+
     async def find_cross_community_match(
         self,
         user: User,
@@ -741,7 +744,8 @@ class MatchingService:
         Find 1 free cross-community match (from global pool excluding current community).
         Returns None if user already used their free match and is on free tier.
         """
-        cross_count = await self.match_repo.count_cross_community_matches(user.id)
+        user_community_ids = await self._get_user_community_ids(user.id)
+        cross_count = await self.match_repo.count_cross_community_matches(user.id, user_community_ids)
         user_tier = getattr(user, "tier", "free") or "free"
 
         if user_tier == "free" and cross_count >= self.FREE_TIER_CROSS_COMMUNITY_LIMIT:
@@ -755,7 +759,8 @@ class MatchingService:
 
     async def check_cross_community_paywall(self, user: User) -> dict:
         """Check if user has hit the cross-community matching paywall."""
-        cross_count = await self.match_repo.count_cross_community_matches(user.id)
+        user_community_ids = await self._get_user_community_ids(user.id)
+        cross_count = await self.match_repo.count_cross_community_matches(user.id, user_community_ids)
         user_tier = getattr(user, "tier", "free") or "free"
 
         if user_tier != "free":
