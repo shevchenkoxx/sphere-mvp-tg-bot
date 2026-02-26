@@ -23,11 +23,15 @@ REMINDER_TEMPLATES = [
 class SchedulerService:
     """Manages periodic community reminders and game scheduling."""
 
-    def __init__(self, community_repo, bot, game_service=None):
+    def __init__(self, community_repo, bot, game_service=None,
+                 observation_service=None, pulse_service=None):
         self.community_repo = community_repo
         self.bot = bot
         self.game_service = game_service
+        self.observation_service = observation_service
+        self.pulse_service = pulse_service
         self._running = False
+        self._tick_count = 0
 
     async def run(self):
         """Main scheduler loop. Check communities every hour."""
@@ -48,8 +52,20 @@ class SchedulerService:
 
     async def _tick(self):
         """One scheduler cycle: check all communities for due reminders and games."""
+        self._tick_count += 1
         communities = await self.community_repo.get_all_active()
         now = datetime.now(timezone.utc)
+
+        # --- Process observation queue (every tick = every hour) ---
+        if self.observation_service:
+            try:
+                from adapters.telegram.handlers.community_group import drain_observation_queue
+                queue = drain_observation_queue()
+                if queue:
+                    stored = await self.observation_service.process_queue(queue)
+                    logger.info(f"[SCHEDULER] Processed {stored} observations from {len(queue)} queued messages")
+            except Exception as e:
+                logger.error(f"[SCHEDULER] Observation processing failed: {e}", exc_info=True)
 
         for community in communities:
             settings = community.settings or {}
@@ -57,6 +73,10 @@ class SchedulerService:
             # --- Games: check if a game is due ---
             if self.game_service and settings.get("games_enabled", True):
                 await self._maybe_launch_game(community, settings, now)
+
+            # --- Weekly pulse (every 168 ticks ≈ 7 days, or check last_pulse_at) ---
+            if self.pulse_service:
+                await self._maybe_send_pulse(community, settings, now)
 
             # --- Reminders ---
             if not settings.get("reminder_enabled", True):
@@ -156,3 +176,34 @@ class SchedulerService:
                 await self.community_repo.update_settings(community.id, updated)
         except Exception as e:
             logger.warning(f"[SCHEDULER] Failed to launch game for {community.id}: {e}")
+
+    async def _maybe_send_pulse(self, community, settings: dict, now: datetime):
+        """Check if it's time to send a weekly pulse digest."""
+        pulse_days = settings.get("pulse_days", 7)
+        last_pulse_str = settings.get("last_pulse_at")
+
+        if last_pulse_str:
+            try:
+                last_pulse = datetime.fromisoformat(last_pulse_str)
+                if last_pulse.tzinfo is None:
+                    last_pulse = last_pulse.replace(tzinfo=timezone.utc)
+                days_since = (now - last_pulse).total_seconds() / 86400
+                if days_since < pulse_days:
+                    return
+            except (ValueError, TypeError):
+                pass
+
+        if community.member_count < 3:
+            return
+
+        try:
+            posted = await self.pulse_service.generate_and_post(
+                community.id, self.bot, community.telegram_group_id,
+            )
+            if posted:
+                logger.info(f"[SCHEDULER] Posted weekly pulse to {community.name}")
+                updated = dict(settings)
+                updated["last_pulse_at"] = now.isoformat()
+                await self.community_repo.update_settings(community.id, updated)
+        except Exception as e:
+            logger.warning(f"[SCHEDULER] Failed to send pulse for {community.id}: {e}")

@@ -30,6 +30,9 @@ from infrastructure.database.game_repository import SupabaseGameRepository
 from core.services import UserService, EventService, MatchingService
 from core.services.community_service import CommunityService
 from core.services.game_service import GameService
+from core.services.observation_service import ObservationService
+from core.services.community_pulse_service import CommunityPulseService
+from core.services.bingo_service import BingoService
 
 
 # === BOT INITIALIZATION ===
@@ -77,6 +80,17 @@ community_service = CommunityService(
     bot=bot,
 )
 game_service = GameService(
+    game_repo=game_repo,
+    community_repo=community_repo,
+    user_repo=user_repo,
+)
+observation_service = ObservationService(user_repo=user_repo)
+pulse_service = CommunityPulseService(
+    observation_service=observation_service,
+    community_repo=community_repo,
+    user_repo=user_repo,
+)
+bingo_service = BingoService(
     game_repo=game_repo,
     community_repo=community_repo,
     user_repo=user_repo,
