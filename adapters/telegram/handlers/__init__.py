@@ -1,5 +1,5 @@
 from adapters.telegram.config import ONBOARDING_VERSION
-from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check, agent_chat, community_group, community_games
+from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check, agent_chat, community_group, community_games, story_onboarding
 from config.features import Features
 
 # Build list of onboarding routers based on config
@@ -40,6 +40,7 @@ routers = [
     vibe_check.router,    # Vibe Check - has FSM states (VibeCheckStates), must be before start.py
     meetup.router,        # Meetup proposals - has FSM states, must be before start.py
     matches.router,       # Matches - has FSM states (MatchFeedbackStates), must be before start.py
+    story_onboarding.router,  # Story onboarding - story_game_* callbacks, must be before start.py
 ]
 
 # Only include events router when events are enabled
