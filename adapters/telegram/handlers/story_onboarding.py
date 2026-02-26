@@ -209,6 +209,14 @@ async def _continue_event_after_match(callback: CallbackQuery, state: FSMContext
     await bot.send_message(chat_id, steps[7], reply_markup=kb, parse_mode="HTML")
 
 
+@router.message(StoryOnboarding.playing)
+@router.message(StoryOnboarding.waiting_game_tap)
+@router.message(StoryOnboarding.waiting_next_tap)
+async def ignore_text_during_story(message: Message, state: FSMContext):
+    """Ignore text messages while story is playing. User should tap buttons."""
+    pass  # Silently ignore — story auto-plays or waits for button tap
+
+
 # ── Callback handlers ───────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("story_game_"), StoryOnboarding.waiting_game_tap)
