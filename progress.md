@@ -25,12 +25,32 @@
    - "First match" framing: "What would you like your first match to be like?"
    - Removed ban on direct questions ("What's your profession?" is fine)
 
+4. **Two-Step Profile Architecture**
+   - Orchestrator collects raw data via conversation
+   - PROFILE_SYNTHESIS_PROMPT takes full conversation + raw checklist → polished JSON profile
+   - Filters placeholder values ("not mentioned", "N/A", etc.)
+
+5. **Server-Side Turn Guard**
+   - Counts real user messages (not including greeting)
+   - Blocks show_profile_preview if < 3 real user messages
+   - Multiple iterations to get counting right (greeting counted as user msg → subtracted)
+
+6. **Mandatory Connection Mode (before orchestrator)**
+   - Multi-select buttons: Looking for help / Can help others / Experience exchange / Just exploring
+   - Toggle ✓ marks, "Done (N) →" button
+   - Saved to checklist as comma-separated connection_mode
+   - Injected into orchestrator prompt as context
+   - Mapping to looking_for combined from all selected modes
+
 **Commits (this session):**
 - Previous: `0c73f4d`, `de617c9`, `afa1606`, `ffaa4f8` (story V4 + prompt rewrites)
-- Pending: prompt V3 fixes + min 3 turns guard
+- `1463519` — Two-step profile synthesis, prompt fixes
+- `588f4a9` — Count user messages not turns, filter "not mentioned"
+- `82ac9bc` — Require 3 real user messages + How It Works rewrite
+- `e10a99f` — Mandatory connection mode before orchestrator
+- Pending: multi-select connection mode + rename Experience Exchange
 
 **TODO:**
-- [ ] Full production prompt rewrite (~1200 tokens, few-shot examples, canonical structure)
 - [ ] Test end-to-end on @Matchd_bot
 - [ ] Push to community-v1 for deploy
 

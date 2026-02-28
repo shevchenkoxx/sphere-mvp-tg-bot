@@ -162,49 +162,36 @@ async def start_agent_onboarding(
         user_first_name=first_name,
     )
 
-    # --- Step 1: Mandatory Connection Mode selection ---
-    CONNECTION_MODE_KB = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🎯 Looking for help", callback_data="agent_conn_receive"),
-            InlineKeyboardButton(text="💪 Can help others", callback_data="agent_conn_give"),
-        ],
-        [
-            InlineKeyboardButton(text="🔄 Mutual exchange", callback_data="agent_conn_exchange"),
-            InlineKeyboardButton(text="👋 Just meeting people", callback_data="agent_conn_explore"),
-        ],
-    ])
-    CONNECTION_MODE_KB_RU = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🎯 Ищу помощь", callback_data="agent_conn_receive"),
-            InlineKeyboardButton(text="💪 Могу помочь", callback_data="agent_conn_give"),
-        ],
-        [
-            InlineKeyboardButton(text="🔄 Взаимовыгодно", callback_data="agent_conn_exchange"),
-            InlineKeyboardButton(text="👋 Просто знакомлюсь", callback_data="agent_conn_explore"),
-        ],
-    ])
-
+    # --- Step 1: Mandatory Connection Mode selection (multi-select) ---
+    await state.update_data(conn_modes_selected=[])
     text = (
-        f"Hey {first_name}! 👋\n\nBefore we start — how would you like to connect?"
+        f"Hey {first_name}! 👋\n\nBefore we start — how would you like to connect?\n<i>You can pick multiple</i>"
         if lang == "en"
-        else f"Привет, {first_name}! 👋\n\nПеред началом — как ты хочешь общаться?"
+        else f"Привет, {first_name}! 👋\n\nПеред началом — как ты хочешь общаться?\n<i>Можно выбрать несколько</i>"
     )
-    kb = CONNECTION_MODE_KB_RU if lang == "ru" else CONNECTION_MODE_KB
-    await message.answer(text, reply_markup=kb)
+    kb = _build_conn_mode_kb(selected=[], lang=lang)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
     await state.set_state(AgentOnboarding.choosing_connection_mode)
 
 
-# Connection mode → looking_for mapping
+# Connection mode definitions
+_CONN_MODES = [
+    ("receive", "🎯 Looking for help", "🎯 Ищу помощь"),
+    ("give", "🤝 Can help others", "🤝 Могу помочь"),
+    ("exchange", "🔄 Experience exchange", "🔄 Обмен опытом"),
+    ("explore", "🌐 Just exploring", "🌐 Просто знакомлюсь"),
+]
+
 _CONN_MODE_TO_LOOKING_FOR = {
     "receive": "Looking for help, advice, or mentorship",
     "give": "Want to help others with my expertise",
-    "exchange": "Mutual exchange of experience and connections",
+    "exchange": "Experience exchange — sharing knowledge and connections",
     "explore": None,  # vague — agent will ask
 }
 _CONN_MODE_TO_LOOKING_FOR_RU = {
     "receive": "Ищу помощь, совет или менторство",
     "give": "Хочу помочь другим своей экспертизой",
-    "exchange": "Взаимный обмен опытом и контактами",
+    "exchange": "Обмен опытом и контактами",
     "explore": None,
 }
 _CONN_MODE_LABELS = {
@@ -215,13 +202,56 @@ _CONN_MODE_LABELS = {
 }
 
 
-@router.callback_query(AgentOnboarding.choosing_connection_mode, F.data.startswith("agent_conn_"))
-async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
-    """User picked connection mode → init orchestrator and start conversation."""
+def _build_conn_mode_kb(selected: list, lang: str) -> InlineKeyboardMarkup:
+    """Build multi-select connection mode keyboard with toggle marks."""
+    rows = []
+    for key, label_en, label_ru in _CONN_MODES:
+        label = label_ru if lang == "ru" else label_en
+        if key in selected:
+            label = f"✓ {label}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"agent_conn_toggle_{key}")])
+
+    # Done button (only show if at least one selected)
+    if selected:
+        n = len(selected)
+        done_text = f"Done ({n}) →" if lang == "en" else f"Готово ({n}) →"
+        rows.append([InlineKeyboardButton(text=done_text, callback_data="agent_conn_done")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(AgentOnboarding.choosing_connection_mode, F.data.startswith("agent_conn_toggle_"))
+async def handle_connection_mode_toggle(callback: CallbackQuery, state: FSMContext):
+    """Toggle a connection mode option on/off."""
     await callback.answer()
-    mode = callback.data.replace("agent_conn_", "")  # receive/give/exchange/explore
+    mode = callback.data.replace("agent_conn_toggle_", "")
 
     data = await state.get_data()
+    lang = data.get("agent_lang") or data.get("language", "en")
+    selected = list(data.get("conn_modes_selected", []))
+
+    if mode in selected:
+        selected.remove(mode)
+    else:
+        selected.append(mode)
+
+    await state.update_data(conn_modes_selected=selected)
+
+    # Rebuild keyboard with updated selections
+    kb = _build_conn_mode_kb(selected=selected, lang=lang)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(AgentOnboarding.choosing_connection_mode, F.data == "agent_conn_done")
+async def handle_connection_mode_done(callback: CallbackQuery, state: FSMContext):
+    """User confirmed connection modes → init orchestrator and start conversation."""
+    await callback.answer()
+
+    data = await state.get_data()
+    selected = list(data.get("conn_modes_selected", []))
     lang = data.get("agent_lang") or data.get("language", "en")
     first_name = data.get("agent_first_name") or data.get("user_first_name", "")
     event_code = data.get("agent_event_code") or data.get("pending_event")
@@ -229,6 +259,9 @@ async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
     community_id = data.get("agent_community_id") or data.get("community_id")
     community_name = data.get("agent_community_name") or data.get("community_name")
     story_intent = data.get("story_intent")
+
+    if not selected:
+        selected = ["explore"]
 
     # Delete the connection mode message
     try:
@@ -248,7 +281,8 @@ async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
 
     cl = agent_state.get_checklist()
     cl.display_name = first_name
-    cl.connection_mode = _CONN_MODE_LABELS.get(mode, mode)
+    # Store all selected modes joined
+    cl.connection_mode = ",".join(_CONN_MODE_LABELS.get(m, m) for m in selected)
 
     # Pre-fill looking_for from story intent (specific intents only)
     intent_to_looking_for = {
@@ -260,10 +294,11 @@ async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
     if story_intent and story_intent in intent_to_looking_for:
         cl.looking_for = intent_to_looking_for[story_intent]
     else:
-        # Use connection mode to seed looking_for (if not vague)
-        mode_lf = (_CONN_MODE_TO_LOOKING_FOR_RU if lang == "ru" else _CONN_MODE_TO_LOOKING_FOR).get(mode)
-        if mode_lf:
-            cl.looking_for = mode_lf
+        # Combine looking_for from all selected modes (skip None)
+        lf_map = _CONN_MODE_TO_LOOKING_FOR_RU if lang == "ru" else _CONN_MODE_TO_LOOKING_FOR
+        lf_parts = [lf_map[m] for m in selected if lf_map.get(m)]
+        if lf_parts:
+            cl.looking_for = "; ".join(lf_parts)
 
     agent_state.set_checklist(cl)
     await state.update_data(**agent_state.to_dict())
@@ -272,10 +307,11 @@ async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
     mode_labels = {
         "receive": "looking for help and advice",
         "give": "wanting to help others with my expertise",
-        "exchange": "looking for mutual exchange of experience",
+        "exchange": "looking for experience exchange",
         "explore": "open to all kinds of connections",
     }
-    mode_desc = mode_labels.get(mode, "exploring")
+    mode_descs = [mode_labels.get(m, "exploring") for m in selected]
+    mode_desc = " and ".join(mode_descs) if len(mode_descs) <= 2 else ", ".join(mode_descs[:-1]) + f", and {mode_descs[-1]}"
 
     if story_intent and story_intent in intent_to_looking_for:
         greeting_prompt = (
@@ -319,8 +355,8 @@ async def ignore_text_during_connection_mode(message: Message, state: FSMContext
     data = await state.get_data()
     lang = data.get("agent_lang") or data.get("language", "en")
     await message.answer(
-        "👆 Please tap one of the buttons above" if lang == "en"
-        else "👆 Нажми одну из кнопок выше"
+        "👆 Tap the buttons above to select, then press Done →" if lang == "en"
+        else "👆 Выбери кнопки выше, затем нажми Готово →"
     )
 
 

@@ -296,15 +296,18 @@ def build_system_prompt(
     checklist_state = build_checklist_state(checklist_dict)
 
     # Connection mode context — tells the agent HOW user wants to connect
-    conn_mode = checklist_dict.get("connection_mode")
+    # Can be comma-separated for multi-select (e.g. "receive_help,exchange")
+    conn_mode = checklist_dict.get("connection_mode") or ""
     conn_mode_descriptions = {
-        "receive_help": "User is LOOKING FOR HELP — focus on what they need, then ask what they do so we can match them with experts.",
-        "give_help": "User WANTS TO HELP OTHERS — focus on their expertise and skills. Ask what kind of people they want to mentor/help.",
-        "exchange": "User wants MUTUAL EXCHANGE — balance questions about what they offer and what they need.",
-        "explore": "User is EXPLORING — they're open. Help them figure out what they want from their first match.",
+        "receive_help": "LOOKING FOR HELP — focus on what they need, then ask what they do so we can match them with experts.",
+        "give_help": "WANTS TO HELP OTHERS — focus on their expertise and skills. Ask what kind of people they want to mentor/help.",
+        "exchange": "Wants EXPERIENCE EXCHANGE — balance questions about what they offer and what they need.",
+        "explore": "EXPLORING — they're open. Help them figure out what they want from their first match.",
     }
-    if conn_mode and conn_mode in conn_mode_descriptions:
-        connection_mode_context = f"\n**Connection mode:** {conn_mode_descriptions[conn_mode]}"
+    modes = [m.strip() for m in conn_mode.split(",") if m.strip()]
+    mode_texts = [conn_mode_descriptions[m] for m in modes if m in conn_mode_descriptions]
+    if mode_texts:
+        connection_mode_context = "\n**Connection mode(s):** " + " | ".join(mode_texts)
     else:
         connection_mode_context = ""
 
