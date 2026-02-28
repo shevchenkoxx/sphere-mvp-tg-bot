@@ -440,11 +440,21 @@ async def _show_profile_preview(
         synthesized = await orchestrator_service.synthesize_profile(agent_state)
 
         # Merge synthesized data back into checklist
+        # Filter out placeholder values the LLM might return for unknown fields
+        _skip_values = {
+            "", "null", "None", "N/A", "n/a", "not mentioned", "not specified",
+            "unknown", "не указано", "не упомянуто", "нет данных",
+        }
         cl = agent_state.get_checklist()
         for key, val in synthesized.items():
-            if val and val not in ("", "null", "None", None):
-                if hasattr(cl, key):
-                    cl.set_field(key, val)
+            if val is None:
+                continue
+            if isinstance(val, str) and val.strip().lower() in {v.lower() for v in _skip_values}:
+                continue
+            if isinstance(val, list) and not val:
+                continue
+            if val and hasattr(cl, key):
+                cl.set_field(key, val)
         agent_state.set_checklist(cl)
         await state.update_data(**agent_state.to_dict())
     except Exception as e:

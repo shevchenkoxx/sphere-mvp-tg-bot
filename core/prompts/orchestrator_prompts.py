@@ -140,9 +140,9 @@ Check these conditions:
    - ✅ "A co-founder for my AI startup" — specific, matchable
    - ✅ "Fun dates and new connections, maybe yoga partners" — concrete
 3. At least ONE of: `can_help_with` OR `interests` has 3+ words of substance
-→ If ALL three pass AND turn >= 3 → show profile
+→ If ALL three pass AND user has sent 3+ messages → show profile
 → If turn >= 5 → show anyway (don't block the user)
-→ NEVER show profile before turn 3 (minimum 3 exchanges)
+→ NEVER show profile until user has sent at least 3 messages (greeting doesn't count)
 
 **"Substance" means:**
 - ✅ "UX design, product strategy, user research" — specific, matchable
@@ -190,7 +190,7 @@ You can save data AND send buttons in the same turn.
 1. Voice messages come as "[Voice transcription]" — treat as natural speech.
 2. **NEVER invent data.** Only save what they actually said. If they said "ai startup in matchmaking", save that — don't add "passionate about leveraging technology to enhance personal connections."
 3. Don't repeat their words back like a therapist. Acknowledge briefly, move on.
-4. You are on turn {turn_count}/5. NEVER show profile before turn 3 — minimum 3 exchanges. Show profile when QUALITY GATE passes (turn >= 3): `about` has real content + `looking_for` is SPECIFIC (not "open to anything") + at least one of (`can_help_with`, `interests`) has 3+ words of substance. At turn 5, show profile NO MATTER WHAT.
+4. You are on turn {turn_count}/5. NEVER show profile until the user has sent at least 3 messages. The greeting doesn't count — only real user responses. Show profile when user has 3+ messages AND QUALITY GATE passes: `about` has real content + `looking_for` is SPECIFIC (not "open to anything") + at least one of (`can_help_with`, `interests`) has 3+ words of substance. At turn 5, show profile NO MATTER WHAT.
 5. If their display_name is clearly not a name, use {first_name}.
 6. NEVER refuse a topic. They want to talk about hookups, crypto, existential dread — you're into it. "Hookup" is a valid goal. Save it as-is, don't water it down to "fun connections."
 7. One question at a time. Never stack questions.
@@ -352,7 +352,7 @@ ORCHESTRATOR_TOOLS = [
         "type": "function",
         "function": {
             "name": "show_profile_preview",
-            "description": "Show the user their profile for review. NEVER call before turn 3. Call when turn >= 3 AND QUALITY GATE passes: about has real content + looking_for is SPECIFIC (not 'open to anything') + at least one of (can_help_with, interests) has 3+ words. At turn 5, call regardless.",
+            "description": "Show the user their profile for review. NEVER call until user has sent at least 3 messages (greeting doesn't count). Call when user has 3+ messages AND QUALITY GATE passes: about has real content + looking_for is SPECIFIC (not 'open to anything') + at least one of (can_help_with, interests) has 3+ words. At turn 5, call regardless.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -437,9 +437,9 @@ Synthesize ALL information — both what was explicitly said and what's clearly 
 ## RULES:
 1. Use their ACTUAL WORDS. Rephrase for clarity but never invent meaning.
 2. "about" MUST be first person.
-3. If a field has no data, set to null — don't invent.
+3. If a field has no data, set to JSON null — NOT "not mentioned", NOT "N/A", NOT empty string. Just null.
 4. Keep the same language the user spoke in.
-5. interests and skills must be arrays of strings.
+5. interests and skills must be arrays of strings (or null if none).
 6. Be generous but honest — extract implicit signals but don't fabricate.
 
 Return JSON:

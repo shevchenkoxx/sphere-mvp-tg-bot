@@ -248,12 +248,13 @@ class OrchestratorService:
             return result
 
         elif tool_name == "show_profile_preview":
-            # Hard guard: never show profile before turn 3
-            if agent_state.turn_count < 3:
-                logger.info(f"Blocked early show_profile at turn {agent_state.turn_count}")
+            # Hard guard: count actual USER messages (not system/greeting turns)
+            user_msg_count = sum(1 for m in agent_state.messages if m.get("role") == "user")
+            if user_msg_count < 3:
+                logger.info(f"Blocked early show_profile: only {user_msg_count} user messages (need 3+)")
                 return {
                     "action": "blocked",
-                    "reason": "Too early — need at least 3 turns of conversation before showing profile. Keep asking questions.",
+                    "reason": f"Too early — only {user_msg_count} user messages so far. Need at least 3 real exchanges before showing profile. Keep asking questions to learn more about them.",
                 }
             agent_state.phase = "confirming"
             agent_state.set_checklist(checklist)
