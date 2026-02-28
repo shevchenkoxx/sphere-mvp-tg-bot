@@ -251,11 +251,11 @@ class OrchestratorService:
             # Hard guard: count real user messages (first "user" msg is always the greeting prompt)
             user_msg_count = sum(1 for m in agent_state.messages if m.get("role") == "user")
             real_user_msgs = max(0, user_msg_count - 1)  # subtract greeting
-            if real_user_msgs < 3:
-                logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 3+)")
+            if real_user_msgs < 4:
+                logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 4+)")
                 return {
                     "action": "blocked",
-                    "reason": f"Too early — only {real_user_msgs} real user messages. Need at least 3 exchanges before showing profile. Ask more questions — dig deeper into what they do, what they can help with, their interests.",
+                    "reason": f"Too early — only {real_user_msgs} real user messages. Need at least 4 exchanges before showing profile. Ask more questions — especially about what kind of person they want to meet (looking_for) and what they can help others with.",
                 }
             agent_state.phase = "confirming"
             agent_state.set_checklist(checklist)
@@ -280,6 +280,22 @@ class OrchestratorService:
         else:
             return {"error": f"Unknown tool: {tool_name}"}
 
+    _PLACEHOLDER_VALUES = {
+        "", "null", "none", "n/a", "not mentioned", "not specified",
+        "unknown", "not provided", "unspecified", "no data",
+    }
+
+    def _is_placeholder(self, val: Any) -> bool:
+        """Check if a value is a placeholder that should be treated as empty."""
+        if val is None:
+            return True
+        if isinstance(val, str):
+            cleaned = val.strip().lower()
+            return cleaned in self._PLACEHOLDER_VALUES or cleaned.startswith("not ")
+        if isinstance(val, list) and not val:
+            return True
+        return False
+
     def _tool_save_field(
         self,
         args: Dict[str, Any],
@@ -292,6 +308,9 @@ class OrchestratorService:
 
         if not field_name or value is None:
             return {"error": "Missing field_name or value"}
+
+        if self._is_placeholder(value):
+            return {"error": f"Value is a placeholder — skip saving empty/unknown fields"}
 
         success = checklist.set_field(field_name, value)
         agent_state.set_checklist(checklist)
@@ -357,7 +376,7 @@ class OrchestratorService:
 
             for ext_key, cl_key in field_mapping.items():
                 val = extracted.get(ext_key)
-                if val and val not in ["", "N/A", "null", "None"]:
+                if val and not self._is_placeholder(val):
                     # Don't overwrite existing values with worse ones
                     existing = getattr(checklist, cl_key, None)
                     if not existing or (isinstance(val, str) and len(val) > len(str(existing or ""))):

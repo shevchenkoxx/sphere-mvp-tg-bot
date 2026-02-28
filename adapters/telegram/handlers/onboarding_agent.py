@@ -284,21 +284,8 @@ async def handle_connection_mode_done(callback: CallbackQuery, state: FSMContext
     # Store all selected modes joined
     cl.connection_mode = ",".join(_CONN_MODE_LABELS.get(m, m) for m in selected)
 
-    # Pre-fill looking_for from story intent (specific intents only)
-    intent_to_looking_for = {
-        "friends": "Find new friends, build genuine connections",
-        "dating": "Meet someone special, find a meaningful relationship",
-        "activities": "Find activity partners who share my interests",
-        "networking": "Connect with professionals, find collaborators",
-    }
-    if story_intent and story_intent in intent_to_looking_for:
-        cl.looking_for = intent_to_looking_for[story_intent]
-    else:
-        # Combine looking_for from all selected modes (skip None)
-        lf_map = _CONN_MODE_TO_LOOKING_FOR_RU if lang == "ru" else _CONN_MODE_TO_LOOKING_FOR
-        lf_parts = [lf_map[m] for m in selected if lf_map.get(m)]
-        if lf_parts:
-            cl.looking_for = "; ".join(lf_parts)
+    # DON'T pre-fill looking_for — always let the agent ASK the user directly.
+    # Connection mode + story intent give context, but looking_for must come from the user's own words.
 
     agent_state.set_checklist(cl)
     await state.update_data(**agent_state.to_dict())
@@ -313,10 +300,19 @@ async def handle_connection_mode_done(callback: CallbackQuery, state: FSMContext
     mode_descs = [mode_labels.get(m, "exploring") for m in selected]
     mode_desc = " and ".join(mode_descs) if len(mode_descs) <= 2 else ", ".join(mode_descs[:-1]) + f", and {mode_descs[-1]}"
 
-    if story_intent and story_intent in intent_to_looking_for:
+    # Story intent gives extra context but we still want the agent to ask looking_for
+    intent_hints = {
+        "friends": "interested in finding friends",
+        "dating": "interested in dating",
+        "activities": "interested in finding activity partners",
+        "networking": "interested in professional networking",
+    }
+    intent_hint = intent_hints.get(story_intent, "") if story_intent else ""
+
+    if intent_hint:
         greeting_prompt = (
-            f"Hi, I'm {first_name}. I'm {mode_desc}, specifically to {intent_to_looking_for[story_intent].lower()}. "
-            f"Ask me about myself — don't ask what I'm looking for, I already told you."
+            f"Hi, I'm {first_name}. I'm {mode_desc}, and I'm {intent_hint}. "
+            f"Ask me about myself."
         )
     else:
         greeting_prompt = (
@@ -579,19 +575,30 @@ async def _show_profile_preview(
         # Merge synthesized data back into checklist
         # Filter out placeholder values the LLM might return for unknown fields
         _skip_values = {
-            "", "null", "None", "N/A", "n/a", "not mentioned", "not specified",
+            "", "null", "none", "n/a", "not mentioned", "not specified",
             "unknown", "не указано", "не упомянуто", "нет данных",
+            "not provided", "unspecified", "no data", "no info",
         }
         cl = agent_state.get_checklist()
         for key, val in synthesized.items():
             if val is None:
                 continue
-            if isinstance(val, str) and val.strip().lower() in {v.lower() for v in _skip_values}:
-                continue
+            if isinstance(val, str):
+                cleaned = val.strip().lower()
+                if cleaned in _skip_values or cleaned.startswith("not "):
+                    continue
             if isinstance(val, list) and not val:
                 continue
             if val and hasattr(cl, key):
                 cl.set_field(key, val)
+
+        # Also clean up any existing checklist fields that are placeholder garbage
+        for field_name in ("profession", "company", "can_help_with", "about", "looking_for"):
+            cur = getattr(cl, field_name, None)
+            if isinstance(cur, str) and cur.strip().lower() in _skip_values:
+                setattr(cl, field_name, None)
+            elif isinstance(cur, str) and cur.strip().lower().startswith("not "):
+                setattr(cl, field_name, None)
         agent_state.set_checklist(cl)
         await state.update_data(**agent_state.to_dict())
     except Exception as e:
