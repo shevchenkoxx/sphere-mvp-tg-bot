@@ -251,12 +251,29 @@ class OrchestratorService:
             # Hard guard: count real user messages (first "user" msg is always the greeting prompt)
             user_msg_count = sum(1 for m in agent_state.messages if m.get("role") == "user")
             real_user_msgs = max(0, user_msg_count - 1)  # subtract greeting
-            if real_user_msgs < 4:
-                logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 4+)")
+            if real_user_msgs < 3:
+                logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 3+)")
                 return {
                     "action": "blocked",
-                    "reason": f"Too early — only {real_user_msgs} real user messages. Need at least 4 exchanges before showing profile. Ask more questions — especially about what kind of person they want to meet (looking_for) and what they can help others with.",
+                    "reason": f"Too early — only {real_user_msgs} real user messages (need 3). You MUST complete all 3 steps: Step 1 = about themselves, Step 2 = what they can help with, Step 3 = who they want to meet. Ask the next step question.",
                 }
+
+            # Check mandatory fields — all 3 steps must be done
+            missing_steps = []
+            if not checklist.about and not checklist.profession:
+                missing_steps.append("Step 1 (about themselves)")
+            if not checklist.can_help_with:
+                missing_steps.append("Step 2 (what they can help with)")
+            if not checklist.looking_for or self._is_placeholder(checklist.looking_for):
+                missing_steps.append("Step 3 (who they want to meet)")
+
+            if missing_steps and real_user_msgs < 5:
+                logger.info(f"Blocked show_profile: missing steps: {missing_steps}")
+                return {
+                    "action": "blocked",
+                    "reason": f"Profile incomplete — missing: {', '.join(missing_steps)}. Ask the user about these. Don't show profile until ALL 3 steps are done.",
+                }
+
             agent_state.phase = "confirming"
             agent_state.set_checklist(checklist)
             return {
