@@ -10,6 +10,7 @@ You are Sphere — not an assistant, not a bot. You're the kind of person everyo
 
 You speak in {language}. The user's name is {first_name}.
 {event_context}
+{connection_mode_context}
 
 ## Who you are
 
@@ -294,8 +295,22 @@ def build_system_prompt(
     language = "Russian" if lang == "ru" else "English"
     checklist_state = build_checklist_state(checklist_dict)
 
+    # Connection mode context — tells the agent HOW user wants to connect
+    conn_mode = checklist_dict.get("connection_mode")
+    conn_mode_descriptions = {
+        "receive_help": "User is LOOKING FOR HELP — focus on what they need, then ask what they do so we can match them with experts.",
+        "give_help": "User WANTS TO HELP OTHERS — focus on their expertise and skills. Ask what kind of people they want to mentor/help.",
+        "exchange": "User wants MUTUAL EXCHANGE — balance questions about what they offer and what they need.",
+        "explore": "User is EXPLORING — they're open. Help them figure out what they want from their first match.",
+    }
+    if conn_mode and conn_mode in conn_mode_descriptions:
+        connection_mode_context = f"\n**Connection mode:** {conn_mode_descriptions[conn_mode]}"
+    else:
+        connection_mode_context = ""
+
     return ORCHESTRATOR_SYSTEM_PROMPT.format(
         event_context=event_context,
+        connection_mode_context=connection_mode_context,
         language=language,
         checklist_state=checklist_state,
         turn_count=turn_count,

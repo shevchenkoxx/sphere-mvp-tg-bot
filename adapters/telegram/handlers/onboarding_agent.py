@@ -14,7 +14,7 @@ import asyncio
 import logging
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from adapters.telegram.keyboards import get_main_menu_keyboard, build_ai_keyboard
@@ -135,7 +135,7 @@ async def start_agent_onboarding(
     event_code: str = None,
     lang: str = None,
 ):
-    """Start the AI agent onboarding conversation."""
+    """Start the AI agent onboarding — first show connection mode, then orchestrator."""
     if lang is None:
         lang = detect_lang(message)
 
@@ -143,12 +143,100 @@ async def start_agent_onboarding(
     fsm_data = await state.get_data()
 
     # When called from story CTA callback, message.from_user is the bot.
-    # Use user_first_name saved during story start instead.
     first_name = fsm_data.get("user_first_name") or message.from_user.first_name or ""
     community_id = fsm_data.get("community_id")
     community_name = fsm_data.get("community_name")
 
-    # Initialise agent state
+    # Store initial context in FSM
+    await state.update_data(
+        pending_event=event_code,
+        agent_event_code=event_code,
+        agent_event_name=event_name,
+        agent_community_id=community_id,
+        agent_community_name=community_name,
+        agent_lang=lang,
+        agent_first_name=first_name,
+        community_id=community_id,
+        community_name=community_name,
+        language=lang,
+        user_first_name=first_name,
+    )
+
+    # --- Step 1: Mandatory Connection Mode selection ---
+    CONNECTION_MODE_KB = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎯 Looking for help", callback_data="agent_conn_receive"),
+            InlineKeyboardButton(text="💪 Can help others", callback_data="agent_conn_give"),
+        ],
+        [
+            InlineKeyboardButton(text="🔄 Mutual exchange", callback_data="agent_conn_exchange"),
+            InlineKeyboardButton(text="👋 Just meeting people", callback_data="agent_conn_explore"),
+        ],
+    ])
+    CONNECTION_MODE_KB_RU = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎯 Ищу помощь", callback_data="agent_conn_receive"),
+            InlineKeyboardButton(text="💪 Могу помочь", callback_data="agent_conn_give"),
+        ],
+        [
+            InlineKeyboardButton(text="🔄 Взаимовыгодно", callback_data="agent_conn_exchange"),
+            InlineKeyboardButton(text="👋 Просто знакомлюсь", callback_data="agent_conn_explore"),
+        ],
+    ])
+
+    text = (
+        f"Hey {first_name}! 👋\n\nBefore we start — how would you like to connect?"
+        if lang == "en"
+        else f"Привет, {first_name}! 👋\n\nПеред началом — как ты хочешь общаться?"
+    )
+    kb = CONNECTION_MODE_KB_RU if lang == "ru" else CONNECTION_MODE_KB
+    await message.answer(text, reply_markup=kb)
+    await state.set_state(AgentOnboarding.choosing_connection_mode)
+
+
+# Connection mode → looking_for mapping
+_CONN_MODE_TO_LOOKING_FOR = {
+    "receive": "Looking for help, advice, or mentorship",
+    "give": "Want to help others with my expertise",
+    "exchange": "Mutual exchange of experience and connections",
+    "explore": None,  # vague — agent will ask
+}
+_CONN_MODE_TO_LOOKING_FOR_RU = {
+    "receive": "Ищу помощь, совет или менторство",
+    "give": "Хочу помочь другим своей экспертизой",
+    "exchange": "Взаимный обмен опытом и контактами",
+    "explore": None,
+}
+_CONN_MODE_LABELS = {
+    "receive": "receive_help",
+    "give": "give_help",
+    "exchange": "exchange",
+    "explore": "explore",
+}
+
+
+@router.callback_query(AgentOnboarding.choosing_connection_mode, F.data.startswith("agent_conn_"))
+async def handle_connection_mode(callback: CallbackQuery, state: FSMContext):
+    """User picked connection mode → init orchestrator and start conversation."""
+    await callback.answer()
+    mode = callback.data.replace("agent_conn_", "")  # receive/give/exchange/explore
+
+    data = await state.get_data()
+    lang = data.get("agent_lang") or data.get("language", "en")
+    first_name = data.get("agent_first_name") or data.get("user_first_name", "")
+    event_code = data.get("agent_event_code") or data.get("pending_event")
+    event_name = data.get("agent_event_name")
+    community_id = data.get("agent_community_id") or data.get("community_id")
+    community_name = data.get("agent_community_name") or data.get("community_name")
+    story_intent = data.get("story_intent")
+
+    # Delete the connection mode message
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    # Init agent state
     agent_state = OnboardingAgentState(
         event_code=event_code,
         event_name=event_name,
@@ -158,13 +246,11 @@ async def start_agent_onboarding(
         first_name=first_name,
     )
 
-    # Set display_name from Telegram
     cl = agent_state.get_checklist()
     cl.display_name = first_name
+    cl.connection_mode = _CONN_MODE_LABELS.get(mode, mode)
 
-    # Pre-fill looking_for from story intent (so agent doesn't re-ask)
-    # NOTE: "open" intent is too vague — don't pre-fill it, let agent ask
-    story_intent = fsm_data.get("story_intent")
+    # Pre-fill looking_for from story intent (specific intents only)
     intent_to_looking_for = {
         "friends": "Find new friends, build genuine connections",
         "dating": "Meet someone special, find a meaningful relationship",
@@ -173,54 +259,69 @@ async def start_agent_onboarding(
     }
     if story_intent and story_intent in intent_to_looking_for:
         cl.looking_for = intent_to_looking_for[story_intent]
+    else:
+        # Use connection mode to seed looking_for (if not vague)
+        mode_lf = (_CONN_MODE_TO_LOOKING_FOR_RU if lang == "ru" else _CONN_MODE_TO_LOOKING_FOR).get(mode)
+        if mode_lf:
+            cl.looking_for = mode_lf
 
     agent_state.set_checklist(cl)
+    await state.update_data(**agent_state.to_dict())
 
-    # Store in FSM
-    await state.update_data(
-        **agent_state.to_dict(),
-        pending_event=event_code,
-        community_id=community_id,
-        community_name=community_name,
-        language=lang,
-        user_first_name=first_name,
-    )
+    # Build greeting prompt for orchestrator
+    mode_labels = {
+        "receive": "looking for help and advice",
+        "give": "wanting to help others with my expertise",
+        "exchange": "looking for mutual exchange of experience",
+        "explore": "open to all kinds of connections",
+    }
+    mode_desc = mode_labels.get(mode, "exploring")
 
-    # Opening message — tell the agent who the user is + their intent
     if story_intent and story_intent in intent_to_looking_for:
         greeting_prompt = (
-            f"Hi, I'm {first_name}. I'm looking to {intent_to_looking_for[story_intent].lower()}. "
+            f"Hi, I'm {first_name}. I'm {mode_desc}, specifically to {intent_to_looking_for[story_intent].lower()}. "
             f"Ask me about myself — don't ask what I'm looking for, I already told you."
         )
-    elif story_intent == "open":
-        greeting_prompt = (
-            f"Hi, I'm {first_name}. I'm open to all kinds of connections. "
-            f"Ask me about myself and help me figure out what I'm really looking for."
-        )
     else:
-        greeting_prompt = f"Hi, I'm {first_name}. I just opened the bot."
+        greeting_prompt = (
+            f"Hi, I'm {first_name}. I'm {mode_desc}. "
+            f"Ask me about myself."
+        )
+
     response = await orchestrator_service.process_turn(
         agent_state,
         user_message=greeting_prompt,
         message_type="text",
     )
 
-    # Save updated state
     await state.update_data(**agent_state.to_dict())
     await state.set_state(AgentOnboarding.in_conversation)
 
-    if response.show_profile:
-        await _show_profile_preview(message, state, agent_state)
-    elif response.text or (response.ui and response.ui.options):
-        await _send_orchestrator_response(message, state, response)
+    if response.text or (response.ui and response.ui.options):
+        await _send_orchestrator_response(callback.message, state, response)
     else:
-        # Fallback greeting if LLM returned nothing
         fallback = (
-            f"Hey {first_name}! 👋 Welcome! Tell me about yourself — what do you do and who are you looking to meet?"
-            if lang == "en"
-            else f"Привет, {first_name}! 👋 Расскажи о себе — чем занимаешься и кого хочешь найти?"
+            f"Great! Tell me about yourself — what do you do?" if lang == "en"
+            else f"Отлично! Расскажи о себе — чем занимаешься?"
         )
-        await message.answer(fallback)
+        await callback.message.answer(fallback)
+
+
+# ------------------------------------------------------------------
+# Ignore text during connection mode selection
+# ------------------------------------------------------------------
+
+@router.message(AgentOnboarding.choosing_connection_mode)
+async def ignore_text_during_connection_mode(message: Message, state: FSMContext):
+    """Ignore text during connection mode — user must tap a button."""
+    if await _handle_command_in_fsm(message, state):
+        return
+    data = await state.get_data()
+    lang = data.get("agent_lang") or data.get("language", "en")
+    await message.answer(
+        "👆 Please tap one of the buttons above" if lang == "en"
+        else "👆 Нажми одну из кнопок выше"
+    )
 
 
 # ------------------------------------------------------------------

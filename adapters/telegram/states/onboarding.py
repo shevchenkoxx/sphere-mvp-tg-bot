@@ -118,8 +118,9 @@ class StoryOnboarding(StatesGroup):
 
 class AgentOnboarding(StatesGroup):
     """FSM states for AI agent-driven onboarding"""
-    in_conversation = State()     # Main conversation loop
-    confirming_profile = State()  # User reviewing profile preview
+    choosing_connection_mode = State()  # Mandatory first step: how do you want to connect?
+    in_conversation = State()           # Main conversation loop
+    confirming_profile = State()        # User reviewing profile preview
 
 
 class ProfileExpansion(StatesGroup):
