@@ -163,13 +163,13 @@ async def start_agent_onboarding(
     cl.display_name = first_name
 
     # Pre-fill looking_for from story intent (so agent doesn't re-ask)
+    # NOTE: "open" intent is too vague — don't pre-fill it, let agent ask
     story_intent = fsm_data.get("story_intent")
     intent_to_looking_for = {
         "friends": "Find new friends, build genuine connections",
         "dating": "Meet someone special, find a meaningful relationship",
         "activities": "Find activity partners who share my interests",
         "networking": "Connect with professionals, find collaborators",
-        "open": "Open to all kinds of connections",
     }
     if story_intent and story_intent in intent_to_looking_for:
         cl.looking_for = intent_to_looking_for[story_intent]
@@ -191,6 +191,11 @@ async def start_agent_onboarding(
         greeting_prompt = (
             f"Hi, I'm {first_name}. I'm looking to {intent_to_looking_for[story_intent].lower()}. "
             f"Ask me about myself — don't ask what I'm looking for, I already told you."
+        )
+    elif story_intent == "open":
+        greeting_prompt = (
+            f"Hi, I'm {first_name}. I'm open to all kinds of connections. "
+            f"Ask me about myself and help me figure out what I'm really looking for."
         )
     else:
         greeting_prompt = f"Hi, I'm {first_name}. I just opened the bot."
@@ -421,9 +426,36 @@ async def _show_profile_preview(
     state: FSMContext,
     agent_state: OnboardingAgentState,
 ):
-    """Show the profile preview with confirm/edit buttons."""
-    cl = agent_state.get_checklist()
+    """Synthesize a polished profile from conversation, then show preview."""
     lang = agent_state.lang
+
+    # Show "building profile" status
+    status_msg = await message.answer(
+        "🧠 Building your profile..." if lang == "en" else "🧠 Собираю профиль..."
+    )
+
+    # --- Profile Synthesis Step ---
+    # Takes the full conversation + raw checklist → polished profile
+    try:
+        synthesized = await orchestrator_service.synthesize_profile(agent_state)
+
+        # Merge synthesized data back into checklist
+        cl = agent_state.get_checklist()
+        for key, val in synthesized.items():
+            if val and val not in ("", "null", "None", None):
+                if hasattr(cl, key):
+                    cl.set_field(key, val)
+        agent_state.set_checklist(cl)
+        await state.update_data(**agent_state.to_dict())
+    except Exception as e:
+        logger.error(f"Profile synthesis failed, using raw checklist: {e}")
+        cl = agent_state.get_checklist()
+
+    # Delete status message
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
 
     header = "✨ Here's your profile:\n\n" if lang == "en" else "✨ Вот твой профиль:\n\n"
     footer = (

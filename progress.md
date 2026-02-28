@@ -1,6 +1,40 @@
 # Sphere Bot — Progress Tracker
 
-## Branch: feature/agent-onboarding (@Matchd_bot)
+## Branch: community-v1 (@Matchd_bot)
+
+### Session: Feb 28, 2026
+
+**Completed:**
+
+1. **Story Onboarding V4** (from previous session context)
+   - 3-phase flow: Hook → Character → Mechanism → Match Card → Game → CTA
+   - Per-intent stories with bold outcomes
+   - Intent passthrough to agent onboarding
+   - Name bug fix (callback.message.from_user = bot → use FSM data)
+
+2. **Agent Prompt V2 — Matching-Aware**
+   - Field priorities restructured around matching weights (40% value exchange, 35% topic, 25% goals)
+   - Turn 2 targets can_help_with specifically
+   - Quality gate: about + specific looking_for + substance in can_help_with/interests
+
+3. **Agent Prompt V3 — Production Fixes (this session)**
+   - Removed ban on "How can you help others?" (user says it's fine)
+   - "open" intent no longer pre-fills looking_for with vague "Open to all kinds of connections"
+   - Minimum 3 turns enforced (prompt + server-side guard in orchestrator_service)
+   - Quality gate rejects vague looking_for ("open to anything", "connections")
+   - "First match" framing: "What would you like your first match to be like?"
+   - Removed ban on direct questions ("What's your profession?" is fine)
+
+**Commits (this session):**
+- Previous: `0c73f4d`, `de617c9`, `afa1606`, `ffaa4f8` (story V4 + prompt rewrites)
+- Pending: prompt V3 fixes + min 3 turns guard
+
+**TODO:**
+- [ ] Full production prompt rewrite (~1200 tokens, few-shot examples, canonical structure)
+- [ ] Test end-to-end on @Matchd_bot
+- [ ] Push to community-v1 for deploy
+
+---
 
 ### Session: Feb 21, 2026
 

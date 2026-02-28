@@ -20,6 +20,7 @@ from config.settings import settings
 from core.prompts.audio_onboarding import AUDIO_EXTRACTION_PROMPT
 from core.prompts.orchestrator_prompts import (
     ORCHESTRATOR_TOOLS,
+    PROFILE_SYNTHESIS_PROMPT,
     build_system_prompt,
 )
 from infrastructure.ai.orchestrator_models import (
@@ -247,6 +248,13 @@ class OrchestratorService:
             return result
 
         elif tool_name == "show_profile_preview":
+            # Hard guard: never show profile before turn 3
+            if agent_state.turn_count < 3:
+                logger.info(f"Blocked early show_profile at turn {agent_state.turn_count}")
+                return {
+                    "action": "blocked",
+                    "reason": "Too early — need at least 3 turns of conversation before showing profile. Keep asking questions.",
+                }
             agent_state.phase = "confirming"
             agent_state.set_checklist(checklist)
             return {
@@ -443,3 +451,60 @@ class OrchestratorService:
         agent_state.messages.append({"role": "assistant", "content": text})
 
         return OrchestratorResponse(text=text)
+
+    # ------------------------------------------------------------------
+    # Profile synthesis — separate step after conversation ends
+    # ------------------------------------------------------------------
+
+    async def synthesize_profile(
+        self,
+        agent_state: OnboardingAgentState,
+    ) -> Dict[str, Any]:
+        """
+        Take the full conversation + raw checklist and produce a polished profile.
+        Called ONCE when show_profile_preview is triggered.
+        Returns synthesized profile dict (or raw checklist on failure).
+        """
+        checklist = agent_state.get_checklist()
+
+        # Build conversation string from history
+        conversation_lines = []
+        for msg in agent_state.messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "user":
+                conversation_lines.append(f"User: {content}")
+            elif role == "assistant" and content:
+                conversation_lines.append(f"Sphere: {content}")
+            # Skip tool messages
+        conversation = "\n".join(conversation_lines)
+
+        # Raw data from checklist
+        raw_data = json.dumps(checklist.to_dict(), ensure_ascii=False, indent=2)
+
+        prompt = PROFILE_SYNTHESIS_PROMPT.format(
+            conversation=conversation,
+            raw_data=raw_data,
+        )
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,  # GPT-4o for quality
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+
+            raw = response.choices[0].message.content or ""
+            parsed = self._parse_extraction_json(raw)
+
+            if parsed:
+                logger.info(f"Profile synthesis successful: {list(parsed.keys())}")
+                return parsed
+            else:
+                logger.warning("Profile synthesis returned unparseable JSON, using raw checklist")
+                return checklist.to_dict()
+
+        except Exception as e:
+            logger.error(f"Profile synthesis failed: {e}", exc_info=True)
+            return checklist.to_dict()

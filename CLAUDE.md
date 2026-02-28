@@ -267,6 +267,28 @@ ref_{tg_id}                         → referral only
 7. `be660bd` — Full analytics dashboard
 8. `e0fe182` — CLAUDE.md + .memory/ update
 9. `a0ddb18` — Dashboard review fixes (XSS, Chart.js HTMX, query limits)
+10. Story Onboarding commits: `b396619`, `8f2dc47`, `5e74a8b`, `57d4b29`, `3d49104`, `609a4aa`, `6b14a2f`, `d45b137`, `e6efed5`
+11. `ffaa4f8` — Fix: use real user name in agent onboarding (not bot name)
+12. `afa1606` — Story V4: mechanism reveal, bold outcomes, intent passthrough
+13. `de617c9` — Agent prompt rewrite: 5 turns, quality over speed, intent-aware
+14. `0c73f4d` — Agent prompt: matching-aware field priorities
+
+## Recent Changes (Feb 28, 2026)
+
+### Story Onboarding V4
+- 3-phase flow: Hook → Character → "How it works" + [See what Sphere found →] button
+- Phase 2: Mechanism reveal (HOW Sphere matched) → Match card with bold outcomes → Game
+- Phase 3: Game result → CTA → Agent onboarding
+- Per-intent stories (friends, dating, activities, networking, open)
+- Intent passed to agent onboarding (pre-fills looking_for for specific intents)
+
+### Agent Prompt — Production Fixes
+- Minimum 3 turns enforced (prompt + server-side guard in orchestrator_service)
+- "open" intent no longer pre-fills looking_for with vague value
+- "First match" framing: asks "What would you like your first match to be like?"
+- Direct questions like "How can you help others?" are allowed (not banned)
+- Quality gate rejects vague looking_for
+- Key files: `core/prompts/orchestrator_prompts.py`, `infrastructure/ai/orchestrator_service.py`, `adapters/telegram/handlers/onboarding_agent.py`
 
 ---
 
