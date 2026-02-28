@@ -33,14 +33,14 @@ INTENT_QUESTION = "Hey 👋\n\nWhat brings you here?"
 
 HOW_IT_WORKS = (
     "Here's what happened next:\n\n"
-    "🎙  She shared a bit about herself\n"
-    "      voice message or a few texts\n\n"
-    "🧠  AI built a deep profile — not just\n"
-    "      interests, but intentions and values\n\n"
-    "💫  Found people she'd actually\n"
-    "      want to meet\n\n"
-    "No swiping. No algorithms.\n"
-    "Just real understanding."
+    "🎙  Sphere asked a few questions\n"
+    "      like a friend getting to know her\n\n"
+    "🧠  Picked up on what she really meant —\n"
+    "      not just words, but what's behind them\n\n"
+    "💫  Matched her with someone she'd never\n"
+    "      find on her own\n\n"
+    "No forms. No swiping.\n"
+    "A real conversation → a real match."
 )
 
 GAME_QUESTION = "Quick one ⚡\n\nFriday night. What's your vibe?"

@@ -248,13 +248,14 @@ class OrchestratorService:
             return result
 
         elif tool_name == "show_profile_preview":
-            # Hard guard: count actual USER messages (not system/greeting turns)
+            # Hard guard: count real user messages (first "user" msg is always the greeting prompt)
             user_msg_count = sum(1 for m in agent_state.messages if m.get("role") == "user")
-            if user_msg_count < 3:
-                logger.info(f"Blocked early show_profile: only {user_msg_count} user messages (need 3+)")
+            real_user_msgs = max(0, user_msg_count - 1)  # subtract greeting
+            if real_user_msgs < 3:
+                logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 3+)")
                 return {
                     "action": "blocked",
-                    "reason": f"Too early — only {user_msg_count} user messages so far. Need at least 3 real exchanges before showing profile. Keep asking questions to learn more about them.",
+                    "reason": f"Too early — only {real_user_msgs} real user messages. Need at least 3 exchanges before showing profile. Ask more questions — dig deeper into what they do, what they can help with, their interests.",
                 }
             agent_state.phase = "confirming"
             agent_state.set_checklist(checklist)
