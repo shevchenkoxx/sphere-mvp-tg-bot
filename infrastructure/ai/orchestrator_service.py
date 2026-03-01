@@ -113,13 +113,32 @@ class OrchestratorService:
             ui_instruction: Optional[UIInstruction] = None
 
             if assistant_msg.tool_calls:
+                # IMPORTANT: Only execute ONE category of tools per turn.
+                # If LLM calls extract_from_text + show_profile_preview together,
+                # we execute extraction but SKIP show_profile — force another turn.
+                did_extraction = False
+
                 for tool_call in assistant_msg.tool_calls:
+                    tool_name = tool_call.function.name
+
+                    # Block show_profile if extraction happened in the SAME turn
+                    if tool_name == "show_profile_preview" and did_extraction:
+                        logger.info("Blocked show_profile_preview — extraction was in same turn. Forcing next question.")
+                        tool_results.append({
+                            "action": "blocked",
+                            "reason": "You just extracted data. You MUST ask the next step question before showing profile. Do NOT call show_profile_preview in the same turn as extract_from_text.",
+                        })
+                        continue
+
                     result = await self._execute_tool(
-                        tool_call.function.name,
+                        tool_name,
                         tool_call.function.arguments,
                         agent_state,
                     )
                     tool_results.append(result)
+
+                    if tool_name in ("extract_from_text", "save_field"):
+                        did_extraction = True
 
                     if result.get("action") == "show_profile":
                         show_profile = True
@@ -161,7 +180,6 @@ class OrchestratorService:
                 if show_profile or is_complete or ui_instruction:
                     # For interact_with_user, prefer the tool's message_text
                     if ui_instruction:
-                        # Find the interact_with_user tool call args for its message_text
                         for tc in assistant_msg.tool_calls:
                             if tc.function.name == "interact_with_user":
                                 try:
@@ -177,7 +195,7 @@ class OrchestratorService:
                     if reply_text:
                         agent_state.messages.append({"role": "assistant", "content": reply_text})
                 else:
-                    # Get final response after tool execution
+                    # Get follow-up response after tool execution
                     messages_after = [{"role": "system", "content": system_prompt}] + agent_state.messages
                     follow_up = await self.client.chat.completions.create(
                         model=self.model,
@@ -188,20 +206,9 @@ class OrchestratorService:
                     )
                     reply_text = follow_up.choices[0].message.content or ""
 
-                    # Fallback if LLM returned empty text after tools
+                    # Fallback if LLM returned empty text — NEVER auto-show profile here
                     if not reply_text.strip():
-                        checklist = agent_state.get_checklist()
-                        missing = checklist.missing_required()
-                        if missing:
-                            reply_text = self._fallback_response(agent_state).text
-                        else:
-                            missing_imp = checklist.missing_important()
-                            if missing_imp:
-                                reply_text = self._fallback_response(agent_state).text
-                            else:
-                                reply_text = "Got it! Let me show you your profile." if agent_state.lang == "en" else "Отлично! Покажу твой профиль."
-                                show_profile = True
-                                keyboard_hint = "confirm"
+                        reply_text = self._fallback_next_question(agent_state)
 
                     agent_state.messages.append({"role": "assistant", "content": reply_text})
 
@@ -248,9 +255,18 @@ class OrchestratorService:
             return result
 
         elif tool_name == "show_profile_preview":
-            # Hard guard: count real user messages (first "user" msg is always the greeting prompt)
-            user_msg_count = sum(1 for m in agent_state.messages if m.get("role") == "user")
-            real_user_msgs = max(0, user_msg_count - 1)  # subtract greeting
+            # Hard guard: count REAL user messages — exclude greeting and button clicks
+            real_user_msgs = 0
+            for m in agent_state.messages:
+                if m.get("role") != "user":
+                    continue
+                content = m.get("content", "")
+                # Skip synthetic messages: greeting prompt + button callbacks
+                if content.startswith("Hi, I'm ") and "Ask me about myself" in content:
+                    continue
+                if content.startswith("User selected:"):
+                    continue
+                real_user_msgs += 1
             if real_user_msgs < 3:
                 logger.info(f"Blocked early show_profile: only {real_user_msgs} real user messages (need 3+)")
                 return {
@@ -267,8 +283,8 @@ class OrchestratorService:
             if not checklist.looking_for or self._is_placeholder(checklist.looking_for):
                 missing_steps.append("Step 3 (who they want to meet)")
 
-            if missing_steps and real_user_msgs < 5:
-                logger.info(f"Blocked show_profile: missing steps: {missing_steps}")
+            if missing_steps:
+                logger.info(f"Blocked show_profile: missing steps: {missing_steps} (real_user_msgs={real_user_msgs})")
                 return {
                     "action": "blocked",
                     "reason": f"Profile incomplete — missing: {', '.join(missing_steps)}. Ask the user about these. Don't show profile until ALL 3 steps are done.",
@@ -341,16 +357,35 @@ class OrchestratorService:
             }
         return {"error": f"Unknown field: {field_name}"}
 
+    # Fields extraction is allowed to fill from user text.
+    # IMPORTANT: looking_for and can_help_with should only be extracted
+    # if the user EXPLICITLY stated them. Short inputs can't produce these.
+    _SHORT_TEXT_SAFE_FIELDS = {
+        "display_name", "profession", "company", "location",
+        "experience_level", "matching_scope", "meeting_preference",
+    }
+    _LONG_TEXT_FIELDS = {
+        "about", "looking_for", "can_help_with", "interests",
+        "goals", "skills",
+    }
+
     async def _tool_extract_from_text(
         self,
         args: Dict[str, Any],
         checklist: ProfileChecklist,
         agent_state: OnboardingAgentState,
     ) -> Dict[str, Any]:
-        """Bulk extract fields from long text using the chain-of-thought extraction prompt."""
+        """Bulk extract fields from text using the extraction prompt.
+
+        IMPORTANT: For short inputs (<50 chars), only extract basic facts
+        (profession, company, location). Never fabricate looking_for, can_help_with,
+        or about from a 2-word answer.
+        """
         text = args.get("text", "")
         if not text:
             return {"error": "No text provided"}
+
+        is_short = len(text.strip()) < 50  # "AI startups" = 12 chars = short
 
         try:
             prompt = AUDIO_EXTRACTION_PROMPT.format(
@@ -360,7 +395,7 @@ class OrchestratorService:
             )
 
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",  # Use mini for extraction (cheaper)
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1200,
                 temperature=0.1,
@@ -368,40 +403,37 @@ class OrchestratorService:
 
             raw = response.choices[0].message.content or ""
 
-            # Parse JSON from chain-of-thought response
             extracted = self._parse_extraction_json(raw)
             if not extracted:
                 return {"error": "Could not parse extraction result", "raw": raw[:200]}
 
             # Merge extracted data into checklist
             fields_updated = []
-            field_mapping = {
-                "display_name": "display_name",
-                "about": "about",
-                "looking_for": "looking_for",
-                "can_help_with": "can_help_with",
-                "interests": "interests",
-                "goals": "goals",
-                "profession": "profession",
-                "company": "company",
-                "skills": "skills",
-                "location": "location",
-                "experience_level": "experience_level",
-                "matching_scope": "matching_scope",
-                "meeting_preference": "meeting_preference",
-            }
+            all_fields = self._SHORT_TEXT_SAFE_FIELDS | self._LONG_TEXT_FIELDS
 
-            for ext_key, cl_key in field_mapping.items():
+            for ext_key in all_fields:
                 val = extracted.get(ext_key)
-                if val and not self._is_placeholder(val):
-                    # Don't overwrite existing values with worse ones
-                    existing = getattr(checklist, cl_key, None)
-                    if not existing or (isinstance(val, str) and len(val) > len(str(existing or ""))):
-                        checklist.set_field(cl_key, val)
-                        fields_updated.append(cl_key)
-                    elif isinstance(val, list) and val:
-                        checklist.set_field(cl_key, val)
-                        fields_updated.append(cl_key)
+                if not val or self._is_placeholder(val):
+                    continue
+
+                # For SHORT inputs, skip fields that require rich user expression
+                # The LLM fabricates looking_for, can_help_with, about from 2 words
+                if is_short and ext_key in self._LONG_TEXT_FIELDS:
+                    # Exception: allow interests as list of keywords from short text
+                    if ext_key == "interests" and isinstance(val, list):
+                        pass  # allow
+                    else:
+                        logger.info(f"Skipping '{ext_key}' extraction from short text ({len(text)} chars)")
+                        continue
+
+                # Don't overwrite existing values with worse ones
+                existing = getattr(checklist, ext_key, None)
+                if not existing or (isinstance(val, str) and len(val) > len(str(existing or ""))):
+                    checklist.set_field(ext_key, val)
+                    fields_updated.append(ext_key)
+                elif isinstance(val, list) and val:
+                    checklist.set_field(ext_key, val)
+                    fields_updated.append(ext_key)
 
             agent_state.set_checklist(checklist)
 
@@ -409,15 +441,15 @@ class OrchestratorService:
                 "fields_updated": fields_updated,
                 "missing_required": checklist.missing_required(),
                 "completeness": checklist.completeness_score(),
+                "note": f"Short text ({len(text)} chars) — only extracted safe fields" if is_short else None,
             }
 
         except Exception as e:
             logger.error(f"extract_from_text failed: {e}", exc_info=True)
-            # Fallback: store as about
-            if not checklist.about:
+            if not checklist.about and len(text) > 30:
                 checklist.set_field("about", text[:500])
                 agent_state.set_checklist(checklist)
-            return {"error": str(e), "fallback": "Stored as about"}
+            return {"error": str(e), "fallback": "Stored as about" if len(text) > 30 else "Text too short"}
 
     def _parse_extraction_json(self, raw: str) -> Optional[Dict[str, Any]]:
         """Parse JSON from a chain-of-thought extraction response."""
@@ -444,50 +476,44 @@ class OrchestratorService:
             return None
 
     # ------------------------------------------------------------------
-    # Fallback when LLM fails
+    # Fallback when LLM fails — NEVER auto-shows profile
     # ------------------------------------------------------------------
 
-    def _fallback_response(self, agent_state: OnboardingAgentState) -> OrchestratorResponse:
-        """Static fallback question for the next missing required field."""
+    def _fallback_next_question(self, agent_state: OnboardingAgentState) -> str:
+        """Return the next step question based on what's missing. NEVER returns show_profile."""
         checklist = agent_state.get_checklist()
-        missing = checklist.missing_required()
         lang = agent_state.lang
 
-        if not missing:
-            missing = checklist.missing_important()
+        # Determine which step we're on based on what's filled
+        has_about = bool(checklist.about or checklist.profession)
+        has_help = bool(checklist.can_help_with)
+        has_looking = bool(checklist.looking_for) and not self._is_placeholder(checklist.looking_for)
 
-        if not missing:
-            # All fields collected — show profile
-            return OrchestratorResponse(
-                text="",
-                show_profile=True,
-                keyboard_hint="confirm",
+        if not has_about:
+            return (
+                "So what's your deal — what do you do?" if lang == "en"
+                else "Расскажи, чем занимаешься?"
+            )
+        elif not has_help:
+            return (
+                "What do people usually come to you for? What's your expertise?" if lang == "en"
+                else "За чем к тебе обычно обращаются? В чём твоя экспертиза?"
+            )
+        elif not has_looking:
+            return (
+                "Now the fun part — who would you like to meet first?" if lang == "en"
+                else "А теперь самое интересное — кого хочешь встретить первым?"
+            )
+        else:
+            # All 3 steps done — ask if ready to see profile (but don't auto-show)
+            return (
+                "I think I've got a good picture. Want to see your profile?" if lang == "en"
+                else "Думаю, у меня хорошая картина. Показать профиль?"
             )
 
-        next_field = missing[0]
-        questions = {
-            "en": {
-                "display_name": "What's your name? 👋",
-                "about": "Tell me a bit about yourself — what do you do? 🙋",
-                "looking_for": "What kind of people or connections are you looking for? 🔍",
-                "can_help_with": "How can you help others? What's your expertise? 💡",
-                "interests": "What are your main interests? (tech, business, art, etc.) 🏷",
-            },
-            "ru": {
-                "display_name": "Как тебя зовут? 👋",
-                "about": "Расскажи немного о себе — чем занимаешься? 🙋",
-                "looking_for": "Каких людей или знакомств ты ищешь? 🔍",
-                "can_help_with": "Чем ты можешь помочь другим? В чём твоя экспертиза? 💡",
-                "interests": "Какие у тебя основные интересы? (tech, бизнес, art, etc.) 🏷",
-            },
-        }
-
-        lang_questions = questions.get(lang, questions["en"])
-        text = lang_questions.get(next_field, lang_questions.get("about", "Tell me about yourself!"))
-
-        # Store in history so context is maintained
-        agent_state.messages.append({"role": "assistant", "content": text})
-
+    def _fallback_response(self, agent_state: OnboardingAgentState) -> OrchestratorResponse:
+        """Full fallback response for exception handler. NEVER auto-shows profile."""
+        text = self._fallback_next_question(agent_state)
         return OrchestratorResponse(text=text)
 
     # ------------------------------------------------------------------
