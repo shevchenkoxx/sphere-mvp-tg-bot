@@ -2,6 +2,32 @@
 
 ## Branch: community-v1 (@Matchd_bot)
 
+### Session: Mar 1, 2026
+
+**Completed:**
+
+7. **Critical Orchestrator Refactor — 5 Bug Fixes** (`98d71ae`)
+   Root cause: user says "AI startups" → bot fabricates entire profile, shows immediately.
+
+   - **Bug 1 — Fallback auto-show profile**: Follow-up LLM returns empty → fallback checked `missing_required()` → set `show_profile=True`. Bypassed all guards. **Fixed**: `_fallback_next_question()` NEVER auto-shows profile.
+   - **Bug 2 — Extraction fabricates from 2 words**: GPT-4o-mini invents looking_for, can_help_with, about from "AI startups". **Fixed**: Short text (<50 chars) only extracts safe fields (profession, interests). Skips about/looking_for/can_help_with.
+   - **Bug 3 — Multi-tool in same turn**: LLM calls `extract_from_text` + `show_profile_preview` in one API response. **Fixed**: `did_extraction` flag blocks `show_profile_preview` in same turn.
+   - **Bug 4 — Button clicks inflating count**: "User selected: X" counted as real user messages. **Fixed**: Guard skips synthetic messages (greeting + button callbacks).
+   - **Bug 5 — Escape hatch at 5+ messages**: Field-content guard bypassed at `real_user_msgs >= 5`. **Fixed**: Removed escape hatch, fields always checked.
+
+8. **Strict 3-Step Prompt** (`460a65d`)
+   - Rewrote conversation flow: freeform "2-5 turns" → rigid Step 1/2/3 sequence
+   - Step 1: about yourself, Step 2: can help with, Step 3: who to meet
+   - No hardcoded template questions — all generated naturally
+   - looking_for NEVER pre-filled, must come from user's own words
+
+9. **Multi-Select Connection Mode** (`8c8b78d`)
+   - Toggle ✓ buttons: Looking for help / Can help others / Experience exchange / Just exploring
+   - "Done (N) →" button, comma-separated storage
+   - Renamed "Mutual exchange" → "Experience exchange"
+
+---
+
 ### Session: Feb 28, 2026
 
 **Completed:**
