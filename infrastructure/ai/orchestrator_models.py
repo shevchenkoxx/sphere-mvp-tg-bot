@@ -114,10 +114,11 @@ class ProfileChecklist:
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in d.items() if k in valid_fields})
 
-    def profile_summary_text(self) -> str:
+    def profile_summary_text(self, lang: str = "en") -> str:
         """Human-readable summary for the confirmation message (HTML-safe)."""
         lines = []
         e = html_escape  # shorthand
+        ru = lang == "ru"
 
         if self.display_name:
             lines.append(f"👤 <b>{e(self.display_name)}</b>")
@@ -137,10 +138,12 @@ class ProfileChecklist:
             lines.append(f"\n📝 {e(self.about)}")
 
         if self.looking_for:
-            lines.append(f"\n🔍 <b>Looking for:</b> {e(self.looking_for)}")
+            label = "Ищу" if ru else "Looking for"
+            lines.append(f"\n🔍 <b>{label}:</b> {e(self.looking_for)}")
 
         if self.can_help_with:
-            lines.append(f"💪 <b>Can help with:</b> {e(self.can_help_with)}")
+            label = "Могу помочь" if ru else "Can help with"
+            lines.append(f"💪 <b>{label}:</b> {e(self.can_help_with)}")
 
         tags = []
         for i in (self.interests or [])[:5]:
@@ -153,7 +156,8 @@ class ProfileChecklist:
             lines.append(f"\n🏷 {' '.join(tags[:8])}")
 
         if self.passion_text:
-            lines.append(f"\n🔥 <b>Passion:</b> {e(self.passion_text)}")
+            label = "Сейчас увлекает" if ru else "Passion"
+            lines.append(f"\n🔥 <b>{label}:</b> {e(self.passion_text)}")
 
         # Matching preferences
         scope_labels = {"global": "🌍 Global", "city": "🏙️ My City"}
@@ -162,7 +166,8 @@ class ProfileChecklist:
         pref = pref_labels.get(self.meeting_preference or "", "")
         if scope or pref:
             parts = [p for p in [scope, pref] if p]
-            lines.append(f"\n🎯 <b>Matching:</b> {' · '.join(parts)}")
+            label = "Matching" if not ru else "Matching"
+            lines.append(f"\n🎯 <b>{label}:</b> {' · '.join(parts)}")
 
         return "\n".join(lines)
 

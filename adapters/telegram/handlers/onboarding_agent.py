@@ -165,9 +165,14 @@ async def start_agent_onboarding(
     # --- Step 1: Mandatory Connection Mode selection (multi-select) ---
     await state.update_data(conn_modes_selected=[])
     text = (
-        f"Hey {first_name}! 👋\n\nBefore we start — how would you like to connect?\n<i>You can pick multiple</i>"
+        f"Hey {first_name}! 👋\n\n"
+        f"Before we dive in — <b>how do you want to connect?</b>\n"
+        f"<i>Tap all that apply</i>"
         if lang == "en"
-        else f"Привет, {first_name}! 👋\n\nПеред началом — как ты хочешь общаться?\n<i>Можно выбрать несколько</i>"
+        else
+        f"Привет, {first_name}! 👋\n\n"
+        f"Перед стартом — <b>как хочешь общаться?</b>\n"
+        f"<i>Выбери всё, что подходит</i>"
     )
     kb = _build_conn_mode_kb(selected=[], lang=lang)
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -333,8 +338,8 @@ async def handle_connection_mode_done(callback: CallbackQuery, state: FSMContext
         await _send_orchestrator_response(callback.message, state, response)
     else:
         fallback = (
-            f"Great! Tell me about yourself — what do you do?" if lang == "en"
-            else f"Отлично! Расскажи о себе — чем занимаешься?"
+            "✨ Let's go! Tell me about yourself — what do you do?" if lang == "en"
+            else "✨ Поехали! Расскажи о себе — чем занимаешься?"
         )
         await callback.message.answer(fallback)
 
@@ -351,8 +356,9 @@ async def ignore_text_during_connection_mode(message: Message, state: FSMContext
     data = await state.get_data()
     lang = data.get("agent_lang") or data.get("language", "en")
     await message.answer(
-        "👆 Tap the buttons above to select, then press Done →" if lang == "en"
-        else "👆 Выбери кнопки выше, затем нажми Готово →"
+        "👆 Pick your options above, then hit <b>Done →</b>" if lang == "en"
+        else "👆 Выбери варианты выше, затем жми <b>Готово →</b>",
+        parse_mode="HTML",
     )
 
 
@@ -390,8 +396,8 @@ async def handle_text(message: Message, state: FSMContext):
     else:
         lang = agent_state.lang
         await message.answer(
-            "Got it! Tell me more about yourself." if lang == "en"
-            else "Понял! Расскажи ещё о себе."
+            "Got it! Tell me more 👇" if lang == "en"
+            else "Понял! Расскажи ещё 👇"
         )
 
 
@@ -404,11 +410,15 @@ async def handle_voice(message: Message, state: FSMContext):
 
     if message.voice.duration > Features.MAX_VOICE_DURATION:
         max_dur = Features.MAX_VOICE_DURATION
-        text = f"Voice too long (max {max_dur}s). Please try shorter!" if lang == "en" else f"Слишком длинное (макс {max_dur} сек). Покороче!"
-        await message.answer(text)
+        text = (
+            f"⏱ That's a bit too long! Keep it under <b>{max_dur}s</b> — or just type ✍️"
+            if lang == "en" else
+            f"⏱ Слишком длинное! Держи до <b>{max_dur} сек</b> — или напиши текстом ✍️"
+        )
+        await message.answer(text, parse_mode="HTML")
         return
 
-    status = await message.answer("🎤 Transcribing..." if lang == "en" else "🎤 Расшифровываю...")
+    status = await message.answer("🎙 Listening..." if lang == "en" else "🎙 Слушаю...")
 
     try:
         file = await bot.get_file(message.voice.file_id)
@@ -420,15 +430,15 @@ async def handle_voice(message: Message, state: FSMContext):
 
         if not transcription or len(transcription) < 10:
             await status.edit_text(
-                "Couldn't hear that clearly. Please try again or type." if lang == "en"
-                else "Не расслышал. Попробуй ещё раз или напиши текстом."
+                "🤔 Couldn't catch that — try again or type it out ✍️" if lang == "en"
+                else "🤔 Не расслышал — попробуй ещё раз или напиши ✍️"
             )
             return
 
         transcription = await _correct_transcription(transcription)
 
         try:
-            await status.edit_text("✨ Processing..." if lang == "en" else "✨ Обрабатываю...")
+            await status.edit_text("✨ Got it, thinking..." if lang == "en" else "✨ Понял, думаю...")
         except Exception:
             pass
 
@@ -457,16 +467,16 @@ async def handle_voice(message: Message, state: FSMContext):
             await _send_orchestrator_response(message, state, response)
         else:
             await message.answer(
-                "Got it! What else can you tell me?" if lang == "en"
-                else "Понял! Что ещё расскажешь?"
+                "Got it! Tell me more 👇" if lang == "en"
+                else "Понял! Расскажи ещё 👇"
             )
 
     except Exception as e:
         logger.error(f"Voice processing error in agent: {e}", exc_info=True)
         try:
             await status.edit_text(
-                "Something went wrong. Please try again or type." if lang == "en"
-                else "Что-то пошло не так. Попробуй ещё раз или напиши."
+                "😅 Something glitched — try again or type it out ✍️" if lang == "en"
+                else "😅 Что-то сбойнуло — попробуй снова или напиши ✍️"
             )
         except Exception:
             pass
@@ -492,7 +502,7 @@ async def handle_photo(message: Message, state: FSMContext):
         agent_state.set_checklist(cl)
         await state.update_data(**agent_state.to_dict())
 
-        text = "📸 Photo saved!" if lang == "en" else "📸 Фото сохранено!"
+        text = "📸 Nice! Photo saved" if lang == "en" else "📸 Отлично! Фото сохранено"
         await message.answer(text)
     except Exception as e:
         logger.error(f"Failed to save photo during agent onboarding: {e}")
@@ -546,7 +556,7 @@ async def handle_ai_choice(callback: CallbackQuery, state: FSMContext):
     else:
         lang = agent_state.lang
         await callback.message.answer(
-            "Got it! Tell me more." if lang == "en" else "Понял! Расскажи ещё."
+            "Got it! Tell me more 👇" if lang == "en" else "Понял! Расскажи ещё 👇"
         )
 
 
@@ -564,7 +574,7 @@ async def _show_profile_preview(
 
     # Show "building profile" status
     status_msg = await message.answer(
-        "🧠 Building your profile..." if lang == "en" else "🧠 Собираю профиль..."
+        "✨ Crafting your profile..." if lang == "en" else "✨ Создаю твой профиль..."
     )
 
     # --- Profile Synthesis Step ---
@@ -611,14 +621,14 @@ async def _show_profile_preview(
     except Exception:
         pass
 
-    header = "✨ Here's your profile:\n\n" if lang == "en" else "✨ Вот твой профиль:\n\n"
+    header = "✨ <b>Here's your profile:</b>\n\n" if lang == "en" else "✨ <b>Вот твой профиль:</b>\n\n"
     footer = (
-        "\n\nLooks good? Tap Confirm to save, or Edit to change something."
+        "\n\n<i>Looks good?</i> Tap <b>✅ Confirm</b> to save or <b>✏️ Edit</b> to tweak"
         if lang == "en"
-        else "\n\nВсё верно? Нажми Подтвердить или Изменить."
+        else "\n\n<i>Всё верно?</i> Жми <b>✅ Подтвердить</b> или <b>✏️ Изменить</b>"
     )
 
-    text = header + cl.profile_summary_text() + footer
+    text = header + cl.profile_summary_text(lang=lang) + footer
 
     sent = await message.answer(text, reply_markup=get_agent_confirm_keyboard(lang), parse_mode="HTML")
     await state.update_data(profile_msg_id=sent.message_id)
@@ -636,7 +646,7 @@ async def confirm_profile(callback: CallbackQuery, state: FSMContext):
 
     try:
         await callback.message.edit_text(
-            "✨ Saving profile..." if lang == "en" else "✨ Сохраняю профиль..."
+            "💫 Saving your profile..." if lang == "en" else "💫 Сохраняю профиль..."
         )
     except Exception:
         pass
@@ -655,8 +665,8 @@ async def edit_profile(callback: CallbackQuery, state: FSMContext):
     lang = agent_state.lang
 
     text = (
-        "Sure! Tell me what you'd like to change." if lang == "en"
-        else "Хорошо! Скажи, что хочешь изменить."
+        "✏️ Sure! What would you like to change?" if lang == "en"
+        else "✏️ Конечно! Что хочешь изменить?"
     )
 
     try:
@@ -713,7 +723,7 @@ async def handle_voice_in_confirmation(message: Message, state: FSMContext):
     agent_state = OnboardingAgentState.from_fsm_data(data)
     lang = agent_state.lang
 
-    status = await message.answer("🎤 Processing..." if lang == "en" else "🎤 Обрабатываю...")
+    status = await message.answer("🎙 Listening..." if lang == "en" else "🎙 Слушаю...")
 
     try:
         file = await bot.get_file(message.voice.file_id)
@@ -747,13 +757,13 @@ async def handle_voice_in_confirmation(message: Message, state: FSMContext):
                 await message.answer(response.text)
         else:
             await message.answer(
-                "Couldn't hear that. Please type." if lang == "en"
-                else "Не расслышал. Напиши текстом."
+                "🤔 Couldn't catch that — type it out ✍️" if lang == "en"
+                else "🤔 Не расслышал — напиши текстом ✍️"
             )
     except Exception as e:
         logger.error(f"Voice in confirmation error: {e}")
         try:
-            await status.edit_text("Please try again." if lang == "en" else "Попробуй ещё раз.")
+            await status.edit_text("😅 Try again or type ✍️" if lang == "en" else "😅 Попробуй ещё раз ✍️")
         except Exception:
             pass
 
@@ -850,7 +860,7 @@ async def _do_complete_onboarding(
             # AWAIT embeddings + matching (not background) — show results immediately
             chat_id = message.chat.id
             loading_msg = await message.answer(
-                "🔍 Finding your people..." if lang == "en" else "🔍 Ищу подходящих людей..."
+                "🔍 Finding your people..." if lang == "en" else "🔍 Ищу твоих людей..."
             )
 
             matches_found = []
@@ -952,11 +962,11 @@ async def _do_complete_onboarding(
                 )
 
                 done_text = (
-                    f"🎉 Found {match_count} match{'es' if match_count != 1 else ''}!"
+                    f"🎉 <b>Found {match_count} match{'es' if match_count != 1 else ''}!</b> Let's see who's here 👇"
                     if lang == "en" else
-                    f"🎉 Найдено {match_count} {'матчей' if match_count > 1 else 'матч'}!"
+                    f"🎉 <b>Найдено {match_count} {'матчей' if match_count > 1 else 'матч'}!</b> Смотрим, кто тут 👇"
                 )
-                await message.answer(done_text)
+                await message.answer(done_text, parse_mode="HTML")
 
                 # Generate personality card in background
                 asyncio.create_task(_send_personality_card(message.chat.id, user))
@@ -984,14 +994,15 @@ async def _do_complete_onboarding(
 
         # Fallback if user fetch failed
         await message.answer(
-            "🎉 Profile saved!" if lang == "en" else "🎉 Профиль сохранён!",
+            "🎉 <b>Profile saved!</b>" if lang == "en" else "🎉 <b>Профиль сохранён!</b>",
             reply_markup=get_main_menu_keyboard(lang),
+            parse_mode="HTML",
         )
 
     except Exception as e:
         logger.error(f"Agent onboarding save error: {e}", exc_info=True)
         await message.answer(
-            "✓ Profile saved!" if lang == "en" else "✓ Профиль сохранён!",
+            "✅ Profile saved!" if lang == "en" else "✅ Профиль сохранён!",
             reply_markup=get_main_menu_keyboard(lang),
         )
         await state.clear()
@@ -1042,13 +1053,13 @@ async def _start_expansion_flow(message: Message, state: FSMContext, user, lang:
     """Start the expansion flow when no/few matches are found after onboarding."""
     if lang == "ru":
         text = (
-            "Пока не нашёл идеальных матчей — но это не страшно!\n\n"
-            "Расскажи мне чуть больше о себе, и я поищу снова 🔍"
+            "🔎 Пока идеальных матчей нет — но мы только начали!\n\n"
+            "Расскажи чуть больше, и я поищу снова"
         )
     else:
         text = (
-            "Haven't found the perfect matches yet — but that's okay!\n\n"
-            "Tell me a bit more about yourself and I'll search again 🔍"
+            "🔎 No perfect matches yet — but we're just getting started!\n\n"
+            "Tell me a bit more and I'll search again"
         )
     await message.answer(text)
 
@@ -1123,7 +1134,7 @@ async def handle_expansion_voice(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("expansion_lang", "en")
 
-    status = await message.answer("🎤 ..." if lang == "en" else "🎤 ...")
+    status = await message.answer("🎙 Listening..." if lang == "en" else "🎙 Слушаю...")
     try:
         file = await bot.get_file(message.voice.file_id)
         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
@@ -1141,13 +1152,13 @@ async def handle_expansion_voice(message: Message, state: FSMContext):
             await handle_expansion_text(message, state)
         else:
             await message.answer(
-                "Couldn't hear that. Please try again or type." if lang == "en"
-                else "Не расслышал. Попробуй ещё раз или напиши."
+                "🤔 Couldn't catch that — try again or type ✍️" if lang == "en"
+                else "🤔 Не расслышал — попробуй ещё раз или напиши ✍️"
             )
     except Exception as e:
         logger.error(f"Expansion voice error: {e}")
         try:
-            await status.edit_text("Please try again." if lang == "en" else "Попробуй ещё раз.")
+            await status.edit_text("😅 Try again or type ✍️" if lang == "en" else "😅 Попробуй ещё раз или напиши ✍️")
         except Exception:
             pass
 
@@ -1155,8 +1166,8 @@ async def handle_expansion_voice(message: Message, state: FSMContext):
 async def _finish_expansion(message: Message, user_id: str, platform_user_id: str, answers: list, lang: str):
     """Merge expansion answers into profile, regenerate embeddings, and rematch."""
     loading = await message.answer(
-        "🔍 Searching again with your new info..." if lang == "en"
-        else "🔍 Ищу снова с новой информацией..."
+        "🔍 Searching with your new info..." if lang == "en"
+        else "🔍 Ищу с новой информацией..."
     )
 
     try:
@@ -1249,24 +1260,24 @@ async def _finish_expansion(message: Message, user_id: str, platform_user_id: st
                 from adapters.telegram.handlers.matches import show_matches as show_matches_view
 
                 done_text = (
-                    f"🎉 Found {match_count} match{'es' if match_count != 1 else ''}!"
+                    f"🎉 <b>Found {match_count} match{'es' if match_count != 1 else ''}!</b> 👇"
                     if lang == "en" else
-                    f"🎉 Нашёл {match_count} {'матчей' if match_count > 1 else 'матч'}!"
+                    f"🎉 <b>Нашёл {match_count} {'матчей' if match_count > 1 else 'матч'}!</b> 👇"
                 )
-                await message.answer(done_text)
+                await message.answer(done_text, parse_mode="HTML")
                 await show_matches_view(message, user.id, lang=lang, edit=False, match_scope="global")
             else:
                 if lang == "ru":
                     text = (
-                        "Пока матчей нет — но твой профиль уже работает!\n"
-                        "Как только появятся подходящие люди, ты получишь уведомление 🔔"
+                        "Твой профиль <b>активен</b> ✅\n"
+                        "Напишем, как только появится кто-то подходящий 🔔"
                     )
                 else:
                     text = (
-                        "No matches yet — but your profile is live!\n"
-                        "You'll get notified as soon as someone great joins 🔔"
+                        "Your profile is <b>live</b> ✅\n"
+                        "We'll ping you when someone great shows up 🔔"
                     )
-                await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+                await message.answer(text, reply_markup=get_main_menu_keyboard(lang), parse_mode="HTML")
         else:
             try:
                 await loading.delete()
@@ -1308,19 +1319,19 @@ async def _offer_sphere_global(chat_id: int, user, lang: str):
         if lang == "ru":
             text = (
                 "🌍 <b>Sphere Global</b>\n\n"
-                "Присоединяйся к глобальному сообществу!\n"
-                "Найди интересных людей за пределами своей группы."
+                "Присоединяйся к мировому сообществу!\n"
+                "Найди интересных людей за пределами своего круга 🚀"
             )
             btn_join = "🌍 Присоединиться"
-            btn_skip = "⏩ Пропустить"
+            btn_skip = "Позже"
         else:
             text = (
                 "🌍 <b>Sphere Global</b>\n\n"
-                "Join the global community!\n"
-                "Meet interesting people beyond your group."
+                "Join the worldwide community!\n"
+                "Meet interesting people beyond your circle 🚀"
             )
             btn_join = "🌍 Join Sphere Global"
-            btn_skip = "⏩ Skip"
+            btn_skip = "Later"
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=btn_join, callback_data="join_sphere_global")],

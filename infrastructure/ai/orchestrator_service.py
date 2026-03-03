@@ -206,11 +206,20 @@ class OrchestratorService:
                     )
                     reply_text = follow_up.choices[0].message.content or ""
 
-                    # Fallback if LLM returned empty text — NEVER auto-show profile here
+                    # Fallback if LLM returned empty text
                     if not reply_text.strip():
-                        reply_text = self._fallback_next_question(agent_state)
+                        fallback = self._fallback_next_question(agent_state)
+                        if fallback is None:
+                            # All 3 steps done → auto-show profile
+                            show_profile = True
+                            keyboard_hint = "confirm"
+                            agent_state.phase = "confirming"
+                            reply_text = ""
+                        else:
+                            reply_text = fallback
 
-                    agent_state.messages.append({"role": "assistant", "content": reply_text})
+                    if reply_text:
+                        agent_state.messages.append({"role": "assistant", "content": reply_text})
 
             else:
                 # No tool calls — just a text response
@@ -294,7 +303,7 @@ class OrchestratorService:
             agent_state.set_checklist(checklist)
             return {
                 "action": "show_profile",
-                "profile_summary": checklist.profile_summary_text(),
+                "profile_summary": checklist.profile_summary_text(lang=agent_state.lang),
                 "completeness": checklist.completeness_score(),
             }
 
@@ -479,8 +488,8 @@ class OrchestratorService:
     # Fallback when LLM fails — NEVER auto-shows profile
     # ------------------------------------------------------------------
 
-    def _fallback_next_question(self, agent_state: OnboardingAgentState) -> str:
-        """Return the next step question based on what's missing. NEVER returns show_profile."""
+    def _fallback_next_question(self, agent_state: OnboardingAgentState) -> Optional[str]:
+        """Return the next step question based on what's missing, or None if all done (trigger show_profile)."""
         checklist = agent_state.get_checklist()
         lang = agent_state.lang
 
@@ -491,29 +500,34 @@ class OrchestratorService:
 
         if not has_about:
             return (
-                "So what's your deal — what do you do?" if lang == "en"
-                else "Расскажи, чем занимаешься?"
+                "So tell me — what's your story? What do you do? 💬" if lang == "en"
+                else "Расскажи — чем занимаешься? Что тебя драйвит? 💬"
             )
         elif not has_help:
             return (
-                "What do people usually come to you for? What's your expertise?" if lang == "en"
-                else "За чем к тебе обычно обращаются? В чём твоя экспертиза?"
+                "Nice! What do people come to you for? What's your superpower? 💪" if lang == "en"
+                else "Круто! А за чем к тебе обращаются? В чём твоя суперсила? 💪"
             )
         elif not has_looking:
             return (
-                "Now the fun part — who would you like to meet first?" if lang == "en"
-                else "А теперь самое интересное — кого хочешь встретить первым?"
+                "Now the fun part — who's your dream first match? 🎯" if lang == "en"
+                else "А теперь самое интересное — кого хочешь встретить первым? 🎯"
             )
         else:
-            # All 3 steps done — ask if ready to see profile (but don't auto-show)
-            return (
-                "I think I've got a good picture. Want to see your profile?" if lang == "en"
-                else "Думаю, у меня хорошая картина. Показать профиль?"
-            )
+            # All 3 steps genuinely done → signal to auto-show profile
+            return None
 
     def _fallback_response(self, agent_state: OnboardingAgentState) -> OrchestratorResponse:
-        """Full fallback response for exception handler. NEVER auto-shows profile."""
+        """Full fallback response for exception handler."""
         text = self._fallback_next_question(agent_state)
+        if text is None:
+            # All 3 steps done → auto-show profile
+            agent_state.phase = "confirming"
+            return OrchestratorResponse(
+                text="",
+                show_profile=True,
+                keyboard_hint="confirm",
+            )
         return OrchestratorResponse(text=text)
 
     # ------------------------------------------------------------------
