@@ -1,25 +1,23 @@
 """
-Story onboarding handler — intent-first flow.
+Story onboarding handler — intent-first flow, bilingual EN/RU.
 
-Flow (9 messages, 4 interactive moments):
-  Phase 1: Intent → Hook → Character → How it works + [See what Sphere found →]
-  Phase 2: [delete all] → Mechanism → Match card → Game
-  Phase 3: [delete all] → Result → CTA → Onboarding
+4 intents: friends, dating, networking, open
+7 screens: hook, character, how_it_works, mechanism, match_card, game, cta
 
-Messages accumulate during auto-play. Deleted only when user taps a button.
+Flow (3 phases with message deletion between):
+  Phase 1: Intent → Hook → Character → How it works + [See what happened →]
+  Phase 2: [delete all] → Mechanism → Match card → Game (2 buttons)
+  Phase 3: [delete all] → CTA (personalized by game answer) + [Let's go]
 """
 
 import asyncio
-import random
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from adapters.telegram.states.onboarding import StoryOnboarding
-from core.services.story_service import (
-    INTENT_QUESTION, get_story, classify_intent, GAME_OPTIONS,
-)
+from core.services.story_service import INTENT_QUESTION, get_story, classify_intent
 
 logger = logging.getLogger(__name__)
 router = Router(name="story_onboarding")
@@ -63,23 +61,32 @@ async def _delete_all_story_msgs(chat_id: int, state: FSMContext):
     await state.update_data(story_msg_ids=[])
 
 
+def _get_intent_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Build bilingual 4-intent keyboard."""
+    if lang == "ru":
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👥 Найди своих", callback_data="story_intent_friends"),
+                InlineKeyboardButton(text="💕 Познакомиться", callback_data="story_intent_dating"),
+            ],
+            [
+                InlineKeyboardButton(text="💼 Деловые связи", callback_data="story_intent_networking"),
+                InlineKeyboardButton(text="✨ Удиви меня", callback_data="story_intent_open"),
+            ],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👥 Find your people", callback_data="story_intent_friends"),
+            InlineKeyboardButton(text="💕 Meet someone", callback_data="story_intent_dating"),
+        ],
+        [
+            InlineKeyboardButton(text="💼 Career connections", callback_data="story_intent_networking"),
+            InlineKeyboardButton(text="✨ Surprise me", callback_data="story_intent_open"),
+        ],
+    ])
+
+
 # ── Entry point ────────────────────────────────────────────────────────────
-
-INTENT_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(text="🤝 Find friends", callback_data="story_intent_friends"),
-        InlineKeyboardButton(text="💕 Meet someone", callback_data="story_intent_dating"),
-    ],
-    [
-        InlineKeyboardButton(text="⚡ Activity partners", callback_data="story_intent_activities"),
-        InlineKeyboardButton(text="💼 Networking", callback_data="story_intent_networking"),
-    ],
-    [
-        InlineKeyboardButton(text="🌟 Open to anything", callback_data="story_intent_open"),
-        InlineKeyboardButton(text="✍️ Something specific", callback_data="story_intent_custom"),
-    ],
-])
-
 
 async def start_story(message: Message, state: FSMContext, mode: str = "global",
                        context_id: str = "default", lang: str = "en",
@@ -102,7 +109,8 @@ async def start_story(message: Message, state: FSMContext, mode: str = "global",
     await state.update_data(**fsm_data)
 
     # Send intent question
-    await _send(message.chat.id, INTENT_QUESTION, state, reply_markup=INTENT_KEYBOARD)
+    question = INTENT_QUESTION.get(lang, INTENT_QUESTION["en"])
+    await _send(message.chat.id, question, state, reply_markup=_get_intent_keyboard(lang))
     await state.set_state(StoryOnboarding.waiting_intent)
 
 
@@ -116,19 +124,20 @@ async def handle_intent_tap(callback: CallbackQuery, state: FSMContext):
 
     if intent == "custom":
         # Delete intent message, ask user to type
+        data = await state.get_data()
+        lang = data.get("story_lang", "en")
         await _delete_all_story_msgs(callback.message.chat.id, state)
-        await _send(
-            callback.message.chat.id,
-            "What are you looking for? Just type it 👇",
-            state,
-        )
+        prompt = "Что ты ищешь? Просто напиши 👇" if lang == "ru" else "What are you looking for? Just type it 👇"
+        await _send(callback.message.chat.id, prompt, state)
         await state.set_state(StoryOnboarding.waiting_custom_intent)
         return
 
     # Delete intent message, start story
     await _delete_all_story_msgs(callback.message.chat.id, state)
     await state.update_data(story_intent=intent)
-    await _play_story(callback.message.chat.id, state, intent)
+    data = await state.get_data()
+    lang = data.get("story_lang", "en")
+    await _play_story(callback.message.chat.id, state, intent, lang)
 
 
 @router.message(StoryOnboarding.waiting_custom_intent)
@@ -136,19 +145,21 @@ async def handle_custom_intent_text(message: Message, state: FSMContext):
     """User typed their specific intent."""
     intent = classify_intent(message.text or "")
     await state.update_data(story_intent=intent)
+    data = await state.get_data()
+    lang = data.get("story_lang", "en")
 
     # Delete prompt + user's message
     await _delete_all_story_msgs(message.chat.id, state)
     await _delete_msg(message.chat.id, message.message_id)
 
-    await _play_story(message.chat.id, state, intent)
+    await _play_story(message.chat.id, state, intent, lang)
 
 
 # ── Phase 1: Story playback ──────────────────────────────────────────────
 
-async def _play_story(chat_id: int, state: FSMContext, intent: str):
+async def _play_story(chat_id: int, state: FSMContext, intent: str, lang: str):
     """Phase 1: Hook → Character → How it works + reveal button."""
-    story = get_story(intent)
+    story = get_story(intent, lang)
     await state.update_data(story_data=story)
     await state.set_state(StoryOnboarding.playing)
 
@@ -161,8 +172,9 @@ async def _play_story(chat_id: int, state: FSMContext, intent: str):
     await asyncio.sleep(STEP_DELAY)
 
     # How it works + interactive button
+    btn_text = "👀 Что получилось →" if lang == "ru" else "👀 See what happened →"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👀 See what Sphere found →", callback_data="story_reveal")]
+        [InlineKeyboardButton(text=btn_text, callback_data="story_reveal")]
     ])
     await _send(chat_id, story["how_it_works"], state, reply_markup=kb)
     await state.set_state(StoryOnboarding.waiting_reveal_tap)
@@ -172,11 +184,12 @@ async def _play_story(chat_id: int, state: FSMContext, intent: str):
 
 @router.callback_query(F.data == "story_reveal", StoryOnboarding.waiting_reveal_tap)
 async def handle_reveal_tap(callback: CallbackQuery, state: FSMContext):
-    """User tapped 'See what Sphere found'. Delete Phase 1, show mechanism + card + game."""
+    """User tapped 'See what happened'. Delete Phase 1, show mechanism + card + game."""
     await callback.answer()
     chat_id = callback.message.chat.id
     data = await state.get_data()
     story = data.get("story_data", {})
+    lang = data.get("story_lang", "en")
 
     # Delete all Phase 1 messages (hook, character, how it works)
     await _delete_all_story_msgs(chat_id, state)
@@ -189,55 +202,50 @@ async def handle_reveal_tap(callback: CallbackQuery, state: FSMContext):
     await _send(chat_id, story.get("match_card", ""), state)
     await asyncio.sleep(STEP_DELAY)
 
-    # Game — interactive
+    # Game — interactive with intent-specific options
+    game_options = story.get("game_options", ["Option A", "Option B"])
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=story["game_options"][0], callback_data="story_game_0"),
-            InlineKeyboardButton(text=story["game_options"][1], callback_data="story_game_1"),
+            InlineKeyboardButton(text=game_options[0], callback_data="story_game_0"),
+            InlineKeyboardButton(text=game_options[1], callback_data="story_game_1"),
         ]
     ])
-    await _send(chat_id, story["game_question"], state, reply_markup=kb)
+    await _send(chat_id, story.get("game_question", ""), state, reply_markup=kb)
     await state.set_state(StoryOnboarding.waiting_game_tap)
 
 
-# ── Phase 3: Game result → CTA ───────────────────────────────────────────
+# ── Phase 3: Game result → CTA (merged) ─────────────────────────────────
 
 @router.callback_query(F.data.startswith("story_game_"), StoryOnboarding.waiting_game_tap)
 async def handle_game_tap(callback: CallbackQuery, state: FSMContext):
-    """User tapped a game option. Delete Phase 2, show result + CTA."""
+    """User tapped a game option. Delete Phase 2, show personalized CTA."""
     await callback.answer()
 
     choice_idx = int(callback.data.split("_")[-1])
     data = await state.get_data()
     story = data.get("story_data", {})
-    game_options = story.get("game_options", GAME_OPTIONS)
+    lang = data.get("story_lang", "en")
 
-    chosen = game_options[choice_idx] if choice_idx < len(game_options) else "that"
-    pct = random.randint(58, 78)
-    feedbacks = ["Nice one", "Great pick", "Interesting", "Good choice"]
-    feedback = random.choice(feedbacks)
-
-    after_text = story.get("game_after", "{feedback}! {pct}% picked the same 🎯")
-    after_text = after_text.replace("{feedback}", feedback)
-    after_text = after_text.replace("{pct}", str(pct))
-    after_text = after_text.replace("{choice}", chosen)
+    # Get personalized CTA based on game answer
+    ctas = story.get("ctas", [])
+    if choice_idx < len(ctas):
+        cta_text = ctas[choice_idx]
+    elif ctas:
+        cta_text = ctas[0]
+    else:
+        cta_text = "Your turn ✨" if lang == "en" else "Твоя очередь ✨"
 
     chat_id = callback.message.chat.id
 
     # Delete all Phase 2 messages (mechanism, match card, game)
     await _delete_all_story_msgs(chat_id, state)
 
-    # Game result
-    await _send(chat_id, after_text, state)
-    await asyncio.sleep(SHORT_DELAY)
-
-    # CTA
-    lang = data.get("story_lang", "en")
-    cta_text = "🚀 Let's go" if lang == "en" else "🚀 Поехали"
+    # CTA with Let's go button
+    btn_text = "🚀 Погнали!" if lang == "ru" else "🚀 Let's go!"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=cta_text, callback_data="story_start_onboarding")]
+        [InlineKeyboardButton(text=btn_text, callback_data="story_start_onboarding")]
     ])
-    await _send(chat_id, story.get("cta", "Your turn ✨"), state, reply_markup=kb)
+    await _send(chat_id, cta_text, state, reply_markup=kb)
     await state.set_state(StoryOnboarding.waiting_next_tap)
 
 
