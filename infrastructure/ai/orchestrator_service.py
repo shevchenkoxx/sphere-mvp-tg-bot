@@ -416,6 +416,28 @@ class OrchestratorService:
             if not extracted:
                 return {"error": "Could not parse extraction result", "raw": raw[:200]}
 
+            # Count real user messages to enforce 3-step flow
+            real_user_msgs = 0
+            for m in agent_state.messages:
+                if m.get("role") != "user":
+                    continue
+                content = m.get("content", "")
+                if content.startswith("Hi, I'm ") and "Ask me about myself" in content:
+                    continue
+                if content.startswith("User selected:"):
+                    continue
+                real_user_msgs += 1
+
+            # Step guard: block looking_for/can_help_with from early extraction
+            # so the orchestrator is forced to ask Steps 2 and 3 separately
+            step_blocked_fields = set()
+            if real_user_msgs < 2:
+                # First message — only allow Step 1 fields (about, interests, etc.)
+                step_blocked_fields = {"looking_for", "can_help_with"}
+            elif real_user_msgs < 3:
+                # Second message — allow can_help_with (Step 2) but block looking_for (Step 3)
+                step_blocked_fields = {"looking_for"}
+
             # Merge extracted data into checklist
             fields_updated = []
             all_fields = self._SHORT_TEXT_SAFE_FIELDS | self._LONG_TEXT_FIELDS
@@ -423,6 +445,11 @@ class OrchestratorService:
             for ext_key in all_fields:
                 val = extracted.get(ext_key)
                 if not val or self._is_placeholder(val):
+                    continue
+
+                # Enforce 3-step sequence — don't save later-step fields early
+                if ext_key in step_blocked_fields:
+                    logger.info(f"Step guard: skipping '{ext_key}' — only {real_user_msgs} real messages so far")
                     continue
 
                 # For SHORT inputs, skip fields that require rich user expression
