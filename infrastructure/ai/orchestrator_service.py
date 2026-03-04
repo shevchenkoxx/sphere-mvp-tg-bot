@@ -33,7 +33,7 @@ from infrastructure.ai.orchestrator_models import (
 logger = logging.getLogger(__name__)
 
 # Configurable model — change here to switch between gpt-4o / gpt-4o-mini
-ORCHESTRATOR_MODEL = "gpt-4o"
+ORCHESTRATOR_MODEL = "gpt-5.2"
 MAX_HISTORY_TURNS = 20
 
 
