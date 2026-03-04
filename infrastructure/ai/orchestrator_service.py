@@ -404,7 +404,7 @@ class OrchestratorService:
             )
 
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self.model,  # Same model as orchestrator for quality extraction
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=1200,
                 temperature=0.1,
