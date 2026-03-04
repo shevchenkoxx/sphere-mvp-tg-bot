@@ -9,6 +9,7 @@ from adapters.telegram.states.onboarding import (
     MatchesPhotoStates,
     MeetupStates,
     VibeCheckStates,
+    StoryOnboardingStates,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "MatchesPhotoStates",
     "MeetupStates",
     "VibeCheckStates",
+    "StoryOnboardingStates",
 ]

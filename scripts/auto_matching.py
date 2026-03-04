@@ -81,8 +81,9 @@ async def run_matching():
     """Run matching for POSTSW24 event"""
     match_repo = SupabaseMatchRepository()
     event_repo = SupabaseEventRepository()
+    user_repo = SupabaseUserRepository()
     ai_service = OpenAIService()
-    matching_service = MatchingService(match_repo, event_repo, ai_service)
+    matching_service = MatchingService(match_repo, event_repo, ai_service, user_repo=user_repo)
 
     # Get participant count
     participants = await event_repo.get_participants(EVENT_ID)

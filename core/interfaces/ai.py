@@ -4,7 +4,7 @@ Allows swapping between providers (Claude, GPT, local models, etc.)
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from core.domain.models import MatchResult
 
 
@@ -21,7 +21,7 @@ class IAIService(ABC):
         self,
         user_a: Dict[str, Any],
         user_b: Dict[str, Any],
-        event_context: str = None
+        event_context: Optional[str] = None
     ) -> MatchResult:
         """Analyze compatibility between two users"""
         pass

@@ -79,3 +79,11 @@ class VibeCheckStates(StatesGroup):
     """FSM states for Vibe Check compatibility game"""
     interviewing = State()       # AI agent is interviewing user
     waiting_for_partner = State()  # Done, waiting for other user
+
+
+class StoryOnboardingStates(StatesGroup):
+    """FSM states for story onboarding flow (pre-onboarding)"""
+    choosing_intent = State()    # Picking friends/dating/networking/open
+    viewing_screen = State()     # Viewing a story screen (hook, character, etc.)
+    playing_game = State()       # Answering the game question
+    viewing_cta = State()        # Viewing the final CTA screen

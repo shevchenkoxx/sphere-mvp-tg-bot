@@ -45,6 +45,11 @@ from adapters.telegram.keyboards.inline import (
     get_vibe_share_keyboard,
     get_vibe_result_keyboard,
     get_vibe_waiting_keyboard,
+    # Story Onboarding
+    get_story_intent_keyboard,
+    get_story_next_keyboard,
+    get_story_game_keyboard,
+    get_story_cta_keyboard,
 )
 
 __all__ = [
@@ -94,4 +99,9 @@ __all__ = [
     "get_vibe_share_keyboard",
     "get_vibe_result_keyboard",
     "get_vibe_waiting_keyboard",
+    # Story Onboarding
+    "get_story_intent_keyboard",
+    "get_story_next_keyboard",
+    "get_story_game_keyboard",
+    "get_story_cta_keyboard",
 ]

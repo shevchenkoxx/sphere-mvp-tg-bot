@@ -7,7 +7,7 @@ import random
 import string
 from typing import Optional, List
 from uuid import UUID
-from core.domain.models import Event, EventCreate, User, MessagePlatform
+from core.domain.models import Event, EventCreate, User, UserUpdate, MessagePlatform
 from core.domain.constants import EVENT_CODE_LENGTH
 from core.interfaces.repositories import IEventRepository, IUserRepository
 
@@ -86,7 +86,7 @@ class EventService:
         await self.event_repo.add_participant(event.id, user.id)
 
         # Update user's current event
-        await self.user_repo.update(user.id, {"current_event_id": str(event.id)})
+        await self.user_repo.update(user.id, UserUpdate(current_event_id=str(event.id)))
 
         return True, "Successfully joined!", event
 

@@ -3,7 +3,7 @@
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "if [[ \"$CC_FILE_PATH\" == *.py ]]; then python3 -m py_compile \"$CC_FILE_PATH\" 2>&1 || echo 'Syntax error in $CC_FILE_PATH'; fi"
+        "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [[ -n \"$FILE_PATH\" && \"$FILE_PATH\" == *.py ]]; then python3 -m py_compile \"$FILE_PATH\" 2>&1 || echo \"Syntax error in $FILE_PATH\"; fi"
       }
     ]
   }

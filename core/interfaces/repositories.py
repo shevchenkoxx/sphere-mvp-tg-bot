@@ -49,6 +49,31 @@ class IUserRepository(ABC):
         """Get existing user or create new one"""
         pass
 
+    @abstractmethod
+    async def reset_profile(
+        self,
+        platform: MessagePlatform,
+        platform_user_id: str,
+        reset_data: dict
+    ) -> Optional[User]:
+        """Reset user profile fields to explicit values (including nulls)"""
+        pass
+
+    @abstractmethod
+    async def cleanup_user_related_data(self, user_id: UUID) -> None:
+        """Delete user-related rows from auxiliary tables before profile reset"""
+        pass
+
+    @abstractmethod
+    async def get_users_by_city(
+        self,
+        city: str,
+        exclude_user_id: UUID,
+        limit: int = 20
+    ) -> List[User]:
+        """Get active users in a city excluding one user"""
+        pass
+
 
 class IEventRepository(ABC):
     """Interface for event data access"""
@@ -118,13 +143,34 @@ class IMatchRepository(ABC):
         pass
 
     @abstractmethod
-    async def exists(self, event_id: UUID, user_a_id: UUID, user_b_id: UUID) -> bool:
+    async def exists(self, event_id: Optional[UUID], user_a_id: UUID, user_b_id: UUID) -> bool:
         """Check if match already exists between two users for an event"""
         pass
 
     @abstractmethod
     async def get_unnotified_matches(self, user_id: UUID) -> List[Match]:
         """Get matches where user hasn't been notified yet"""
+        pass
+
+    @abstractmethod
+    async def get_city_matches(self, user_id: UUID, city: str) -> List[Match]:
+        """Get city-based matches for a user (where event_id is null)"""
+        pass
+
+    @abstractmethod
+    async def exists_any(self, user_a_id: UUID, user_b_id: UUID) -> bool:
+        """Check if any match exists between two users regardless of context"""
+        pass
+
+    @abstractmethod
+    async def find_vector_candidates(
+        self,
+        query_user_id: UUID,
+        query_event_id: UUID,
+        similarity_threshold: float,
+        limit_count: int
+    ) -> List[tuple[UUID, float]]:
+        """Find candidate user ids via vector similarity RPC"""
         pass
 
 

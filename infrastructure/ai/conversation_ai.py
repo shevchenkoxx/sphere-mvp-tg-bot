@@ -49,15 +49,13 @@ class OpenAIConversationAI(IConversationAI):
     ) -> ConversationResponse:
         """Generate next response in conversation"""
 
-        # Add user message to state
-        state.add_user_message(user_message)
-
         # Build messages for API
         system_prompt = self._build_system_prompt(state.context)
         messages = [{"role": "system", "content": system_prompt}]
 
         for msg in state.messages:
             messages.append({"role": msg.role.value, "content": msg.content})
+        messages.append({"role": "user", "content": user_message})
 
         try:
             response = await self.client.chat.completions.create(
@@ -76,8 +74,6 @@ class OpenAIConversationAI(IConversationAI):
             # Clean marker from display message
             display_message = assistant_message.replace(f"🎉 {self.COMPLETION_MARKER} 🎉", "").strip()
 
-            # Add assistant message to state
-            state.add_assistant_message(assistant_message)
             state.is_complete = is_complete
 
             return ConversationResponse(

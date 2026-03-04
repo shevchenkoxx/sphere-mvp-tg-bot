@@ -57,5 +57,6 @@ event_service = EventService(event_repo=event_repo, user_repo=user_repo)
 matching_service = MatchingService(
     match_repo=match_repo,
     event_repo=event_repo,
-    ai_service=ai_service
+    ai_service=ai_service,
+    user_repo=user_repo
 )

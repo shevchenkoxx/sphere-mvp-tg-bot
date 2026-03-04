@@ -2,6 +2,24 @@
 
 All notable changes to Sphere Bot.
 
+## [0.4.1] - 2026-02-28
+
+### Changed
+- Refactored repository contracts so `core` services use explicit interfaces for profile reset, city search, and vector candidates.
+- Refactored `MatchingService` to remove duplicated match-creation logic and use parallel user fetches for candidate/result hydration.
+- Injected `user_repo` into `MatchingService` wiring in runtime and scripts to keep dependency flow explicit.
+- Refactored conversational onboarding flow so conversation state ownership is centralized in `ConversationService`.
+
+### Fixed
+- Fixed double user-message persistence in conversational onboarding history (`ConversationService` + `OpenAIConversationAI` were both appending user input).
+- Fixed synthetic greeting trigger leakage into persisted conversation history.
+- Fixed type mismatch in event join flow by using `UserUpdate` model instead of raw dict.
+- Replaced debug `print()` in settings loader with structured logger debug calls.
+
+### Verified
+- `python -m compileall -q .`
+- `python -m unittest discover -v tests`
+
 ## [0.4.0] - 2026-01-30
 
 ### Added

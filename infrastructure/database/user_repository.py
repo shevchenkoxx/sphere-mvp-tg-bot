@@ -168,6 +168,18 @@ class SupabaseUserRepository(IUserRepository):
         data = await self._reset_profile_sync(platform, platform_user_id, reset_data)
         return self._to_model(data) if data else None
 
+    @run_sync
+    def _cleanup_user_related_data_sync(self, user_id: UUID) -> None:
+        """Delete user-linked rows in event/match tables before profile reset."""
+        supabase.table("event_participants").delete().eq("user_id", str(user_id)).execute()
+        supabase.table("matches").delete().or_(
+            f"user_a_id.eq.{user_id},user_b_id.eq.{user_id}"
+        ).execute()
+
+    async def cleanup_user_related_data(self, user_id: UUID) -> None:
+        """Remove user from event participants and delete their matches."""
+        await self._cleanup_user_related_data_sync(user_id)
+
     async def get_or_create(self, user_data: UserCreate) -> User:
         # Try to get existing user
         existing = await self.get_by_platform_id(user_data.platform, user_data.platform_user_id)

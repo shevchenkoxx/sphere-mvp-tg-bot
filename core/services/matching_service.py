@@ -8,9 +8,9 @@ from uuid import UUID
 import asyncio
 import logging
 from core.domain.models import (
-    User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchType, MatchStatus
+    User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchStatus
 )
-from core.interfaces.repositories import IMatchRepository, IEventRepository
+from core.interfaces.repositories import IMatchRepository, IEventRepository, IUserRepository
 from core.interfaces.ai import IAIService
 from config.settings import settings
 
@@ -24,13 +24,67 @@ class MatchingService:
         self,
         match_repo: IMatchRepository,
         event_repo: IEventRepository,
-        ai_service: IAIService
+        ai_service: IAIService,
+        user_repo: Optional[IUserRepository] = None
     ):
         self.match_repo = match_repo
         self.event_repo = event_repo
         self.ai_service = ai_service
+        self.user_repo = user_repo
         # Cap threshold at 0.4 — higher values reject too many valid matches
         self.threshold = min(settings.default_match_threshold, 0.4)
+
+    def _get_user_repo(self) -> IUserRepository:
+        """Resolve user repository from injected dependency."""
+        if self.user_repo is None:
+            raise RuntimeError(
+                "MatchingService requires user_repo. Inject IUserRepository at construction time."
+            )
+        return self.user_repo
+
+    @staticmethod
+    def _to_result_with_id(result: MatchResult, match_id: UUID) -> MatchResultWithId:
+        """Map AI match analysis + DB id to API-ready result model."""
+        return MatchResultWithId(
+            compatibility_score=result.compatibility_score,
+            match_type=result.match_type,
+            explanation=result.explanation,
+            icebreaker=result.icebreaker,
+            match_id=match_id
+        )
+
+    @staticmethod
+    def _to_result_from_match(match: Match) -> MatchResultWithId:
+        """Map stored match row to API-ready result model."""
+        return MatchResultWithId(
+            compatibility_score=match.compatibility_score,
+            match_type=match.match_type,
+            explanation=match.ai_explanation,
+            icebreaker=match.icebreaker,
+            match_id=match.id
+        )
+
+    async def _create_match_and_result(
+        self,
+        user_a_id: UUID,
+        user_b_id: UUID,
+        result: MatchResult,
+        event_id: Optional[UUID] = None,
+        city: Optional[str] = None
+    ) -> MatchResultWithId:
+        """Persist match and return MatchResultWithId."""
+        match_create = MatchCreate(
+            event_id=event_id,
+            user_a_id=user_a_id,
+            user_b_id=user_b_id,
+            compatibility_score=result.compatibility_score,
+            match_type=result.match_type,
+            ai_explanation=result.explanation,
+            icebreaker=result.icebreaker,
+            city=city
+        )
+        created_match = await self.match_repo.create(match_create)
+        return self._to_result_with_id(result, created_match.id)
 
     def calculate_base_score(self, user_a: User, user_b: User) -> float:
         """
@@ -47,7 +101,6 @@ class MatchingService:
         help_b = (user_b.can_help_with or "").lower()
 
         # Simple keyword matching for pre-filter
-        value_exchange = False
         keywords_a_looking = set(looking_a.split()) if looking_a else set()
         keywords_b_help = set(help_b.split()) if help_b else set()
         keywords_b_looking = set(looking_b.split()) if looking_b else set()
@@ -61,7 +114,6 @@ class MatchingService:
         keywords_a_help -= stopwords
 
         if keywords_a_looking & keywords_b_help or keywords_b_looking & keywords_a_help:
-            value_exchange = True
             score += 0.4  # Strong signal
 
         # If both have looking_for and can_help_with filled, that's good
@@ -131,34 +183,33 @@ class MatchingService:
         Find candidate matches using vector similarity search.
         Uses pgvector function match_candidates for fast similarity lookup.
         """
-        from infrastructure.database.supabase_client import supabase
-        from infrastructure.database.user_repository import SupabaseUserRepository
-
-        user_repo = SupabaseUserRepository()
+        user_repo = self._get_user_repo()
 
         try:
-            # Call pgvector function via RPC
-            response = supabase.rpc('match_candidates', {
-                'query_user_id': str(user.id),
-                'query_event_id': str(event_id),
-                'similarity_threshold': similarity_threshold,
-                'limit_count': limit
-            }).execute()
+            candidate_rows = await self.match_repo.find_vector_candidates(
+                query_user_id=user.id,
+                query_event_id=event_id,
+                similarity_threshold=similarity_threshold,
+                limit_count=limit
+            )
 
-            if not response.data:
+            if not candidate_rows:
                 logger.info(f"Vector search found 0 candidates for user {user.id}")
                 return []
 
-            # Fetch full user objects for candidates
+            # Fetch full user objects for candidates concurrently
+            fetched_users = await asyncio.gather(
+                *[user_repo.get_by_id(candidate_id) for candidate_id, _ in candidate_rows],
+                return_exceptions=True
+            )
+
             candidates = []
-            for row in response.data:
-                try:
-                    candidate = await user_repo.get_by_id(UUID(row['user_id']))
-                    if candidate:
-                        candidates.append((candidate, row.get('similarity_score', 0.5)))
-                except (KeyError, ValueError) as e:
-                    logger.warning(f"Invalid RPC row: {e}")
+            for (candidate_id, similarity_score), candidate in zip(candidate_rows, fetched_users):
+                if isinstance(candidate, Exception):
+                    logger.warning(f"Failed to fetch candidate user {candidate_id}: {candidate}")
                     continue
+                if candidate:
+                    candidates.append((candidate, similarity_score))
 
             logger.info(f"Vector search found {len(candidates)} candidates for {user.display_name or user.id}")
             return candidates
@@ -261,22 +312,11 @@ class MatchingService:
                 continue
             candidate, vector_score, result = item
             if result and result.compatibility_score >= self.threshold:
-                match_create = MatchCreate(
-                    event_id=event_id,
+                result_with_id = await self._create_match_and_result(
                     user_a_id=user.id,
                     user_b_id=candidate.id,
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    ai_explanation=result.explanation,
-                    icebreaker=result.icebreaker
-                )
-                created_match = await self.match_repo.create(match_create)
-                result_with_id = MatchResultWithId(
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    explanation=result.explanation,
-                    icebreaker=result.icebreaker,
-                    match_id=created_match.id
+                    result=result,
+                    event_id=event_id
                 )
                 matches.append((candidate, result_with_id))
 
@@ -327,7 +367,7 @@ class MatchingService:
         created_count = 0
 
         for user_a, user_b, result in matches_data:
-            match_create = MatchCreate(
+            await self.match_repo.create(MatchCreate(
                 event_id=event_id,
                 user_a_id=user_a.id,
                 user_b_id=user_b.id,
@@ -335,9 +375,7 @@ class MatchingService:
                 match_type=result.match_type,
                 ai_explanation=result.explanation,
                 icebreaker=result.icebreaker
-            )
-
-            await self.match_repo.create(match_create)
+            ))
             created_count += 1
 
         return created_count
@@ -375,15 +413,13 @@ class MatchingService:
         user_id: UUID,
         event_id: Optional[UUID] = None,
         limit: int = 3,
-        user_repo=None
+        user_repo: Optional[IUserRepository] = None
     ) -> List[Tuple[User, Match]]:
         """
         Get top N matches for a user, optionally filtered by event.
         Returns list of (matched_user, match) tuples sorted by score.
         """
-        if user_repo is None:
-            from infrastructure.database.user_repository import SupabaseUserRepository
-            user_repo = SupabaseUserRepository()
+        resolved_user_repo = user_repo or self._get_user_repo()
 
         # Get all matches for user
         matches = await self.match_repo.get_user_matches(user_id)
@@ -396,11 +432,21 @@ class MatchingService:
         matches.sort(key=lambda m: m.compatibility_score, reverse=True)
 
         # Get top N with user details
+        top_matches = matches[:limit]
+        other_user_ids = [
+            match.user_b_id if match.user_a_id == user_id else match.user_a_id
+            for match in top_matches
+        ]
+        other_users = await asyncio.gather(
+            *[resolved_user_repo.get_by_id(other_user_id) for other_user_id in other_user_ids],
+            return_exceptions=True
+        )
+
         results = []
-        for match in matches[:limit]:
-            # Determine which user is the "other" one
-            other_user_id = match.user_b_id if match.user_a_id == user_id else match.user_a_id
-            other_user = await user_repo.get_by_id(other_user_id)
+        for match, other_user in zip(top_matches, other_users):
+            if isinstance(other_user, Exception):
+                logger.warning(f"Failed to fetch matched user for match {match.id}: {other_user}")
+                continue
             if other_user:
                 results.append((other_user, match))
 
@@ -435,25 +481,11 @@ class MatchingService:
             # Analyze pair
             result = await self.analyze_pair(user, other, event_context)
             if result:
-                # Create match record
-                match_create = MatchCreate(
-                    event_id=event_id,
+                result_with_id = await self._create_match_and_result(
                     user_a_id=user.id,
                     user_b_id=other.id,
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    ai_explanation=result.explanation,
-                    icebreaker=result.icebreaker
-                )
-                created_match = await self.match_repo.create(match_create)
-
-                # Create result with match_id for notifications
-                result_with_id = MatchResultWithId(
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    explanation=result.explanation,
-                    icebreaker=result.icebreaker,
-                    match_id=created_match.id
+                    result=result,
+                    event_id=event_id
                 )
                 matches.append((other, result_with_id))
 
@@ -477,12 +509,10 @@ class MatchingService:
         limit: int = 20
     ) -> List[User]:
         """Find users in the same city as potential matches"""
-        from infrastructure.database.user_repository import SupabaseUserRepository
-
         if not user.city_current:
             return []
 
-        user_repo = SupabaseUserRepository()
+        user_repo = self._get_user_repo()
 
         try:
             # Get users in the same city
@@ -513,22 +543,24 @@ class MatchingService:
         existing = await self.match_repo.get_city_matches(user.id, user.city_current)
         if existing:
             # Return existing matches with user objects
-            from infrastructure.database.user_repository import SupabaseUserRepository
-            user_repo = SupabaseUserRepository()
+            user_repo = self._get_user_repo()
+            top_existing = existing[:limit]
+            other_ids = [
+                match.user_b_id if match.user_a_id == user.id else match.user_a_id
+                for match in top_existing
+            ]
+            other_users = await asyncio.gather(
+                *[user_repo.get_by_id(other_id) for other_id in other_ids],
+                return_exceptions=True
+            )
 
             results = []
-            for match in existing[:limit]:
-                other_id = match.user_b_id if match.user_a_id == user.id else match.user_a_id
-                other_user = await user_repo.get_by_id(other_id)
+            for match, other_user in zip(top_existing, other_users):
+                if isinstance(other_user, Exception):
+                    logger.warning(f"Failed to load existing city match {match.id}: {other_user}")
+                    continue
                 if other_user:
-                    result_with_id = MatchResultWithId(
-                        compatibility_score=match.compatibility_score,
-                        match_type=match.match_type,
-                        explanation=match.ai_explanation,
-                        icebreaker=match.icebreaker,
-                        match_id=match.id
-                    )
-                    results.append((other_user, result_with_id))
+                    results.append((other_user, self._to_result_from_match(match)))
             return results
 
         # Find new candidates
@@ -551,25 +583,12 @@ class MatchingService:
             result = await self.analyze_pair(user, candidate, f"Sphere City - {user.city_current}")
 
             if result and result.compatibility_score >= self.threshold:
-                # Create city match (event_id is None)
-                match_create = MatchCreate(
-                    event_id=None,  # City match, no event
+                result_with_id = await self._create_match_and_result(
                     user_a_id=user.id,
                     user_b_id=candidate.id,
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    ai_explanation=result.explanation,
-                    icebreaker=result.icebreaker,
-                    city=user.city_current  # Store city for filtering
-                )
-                created_match = await self.match_repo.create(match_create)
-
-                result_with_id = MatchResultWithId(
-                    compatibility_score=result.compatibility_score,
-                    match_type=result.match_type,
-                    explanation=result.explanation,
-                    icebreaker=result.icebreaker,
-                    match_id=created_match.id
+                    result=result,
+                    event_id=None,
+                    city=user.city_current
                 )
                 matches.append((candidate, result_with_id))
 

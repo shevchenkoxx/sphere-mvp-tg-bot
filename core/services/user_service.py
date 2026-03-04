@@ -73,12 +73,8 @@ class UserService:
         # First, remove user from all events
         user = await self.user_repo.get_by_platform_id(platform, platform_user_id)
         if user:
-            from infrastructure.database.supabase_client import supabase
             try:
-                # Delete from event_participants
-                supabase.table("event_participants").delete().eq("user_id", str(user.id)).execute()
-                # Delete user's matches
-                supabase.table("matches").delete().or_(f"user_a_id.eq.{user.id},user_b_id.eq.{user.id}").execute()
+                await self.user_repo.cleanup_user_related_data(user.id)
             except Exception as e:
                 logger.error(f"Failed to clean up data for user {user.id}: {e}", exc_info=True)
 

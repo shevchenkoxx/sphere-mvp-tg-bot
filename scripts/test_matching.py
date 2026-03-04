@@ -24,7 +24,7 @@ async def test():
     match_repo = SupabaseMatchRepository()
     event_repo = SupabaseEventRepository()
     ai_service = OpenAIService()
-    matching = MatchingService(match_repo, event_repo, ai_service)
+    matching = MatchingService(match_repo, event_repo, ai_service, user_repo=user_repo)
 
     # Get TEST2024 event
     event = await event_repo.get_by_code("TEST2024")

@@ -3,6 +3,9 @@ from pydantic import field_validator
 from typing import List, Optional
 import os
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -53,6 +56,6 @@ settings = Settings()
 
 # Debug: print what we got (remove in production)
 if os.getenv("DEBUG", "").lower() == "true":
-    print(f"Settings loaded:")
-    print(f"  SUPABASE_URL: {'set' if settings.supabase_url else 'MISSING'}")
-    print(f"  SUPABASE_KEY: {'set' if settings.supabase_key else 'MISSING'}")
+    logger.debug("Settings loaded")
+    logger.debug("  SUPABASE_URL: %s", "set" if settings.supabase_url else "MISSING")
+    logger.debug("  SUPABASE_KEY: %s", "set" if settings.supabase_key else "MISSING")

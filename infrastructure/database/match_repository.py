@@ -2,7 +2,7 @@
 Supabase implementation of Match repository.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from uuid import UUID
 from core.domain.models import Match, MatchCreate, MatchStatus, MatchType
 from core.interfaces.repositories import IMatchRepository
@@ -94,7 +94,7 @@ class SupabaseMatchRepository(IMatchRepository):
         await self._mark_notified_sync(match_id, user_position)
 
     @run_sync
-    def _exists_sync(self, event_id: UUID, user_a_id: UUID, user_b_id: UUID) -> bool:
+    def _exists_sync(self, event_id: Optional[UUID], user_a_id: UUID, user_b_id: UUID) -> bool:
         # Check both directions (A-B and B-A)
         query = supabase.table("matches").select("id")
 
@@ -110,7 +110,7 @@ class SupabaseMatchRepository(IMatchRepository):
         ).execute()
         return len(response.data) > 0 if response.data else False
 
-    async def exists(self, event_id: UUID, user_a_id: UUID, user_b_id: UUID) -> bool:
+    async def exists(self, event_id: Optional[UUID], user_a_id: UUID, user_b_id: UUID) -> bool:
         return await self._exists_sync(event_id, user_a_id, user_b_id)
 
     @run_sync
@@ -165,3 +165,41 @@ class SupabaseMatchRepository(IMatchRepository):
     async def exists_any(self, user_a_id: UUID, user_b_id: UUID) -> bool:
         """Check if any match exists between two users"""
         return await self._exists_any_sync(user_a_id, user_b_id)
+
+    @run_sync
+    def _find_vector_candidates_sync(
+        self,
+        query_user_id: UUID,
+        query_event_id: UUID,
+        similarity_threshold: float,
+        limit_count: int
+    ) -> List[Tuple[UUID, float]]:
+        """Run pgvector RPC and return (user_id, similarity_score)."""
+        response = supabase.rpc('match_candidates', {
+            'query_user_id': str(query_user_id),
+            'query_event_id': str(query_event_id),
+            'similarity_threshold': similarity_threshold,
+            'limit_count': limit_count,
+        }).execute()
+
+        results: List[Tuple[UUID, float]] = []
+        for row in response.data or []:
+            try:
+                results.append((UUID(row["user_id"]), float(row.get("similarity_score", 0.5))))
+            except (KeyError, ValueError, TypeError):
+                continue
+        return results
+
+    async def find_vector_candidates(
+        self,
+        query_user_id: UUID,
+        query_event_id: UUID,
+        similarity_threshold: float,
+        limit_count: int
+    ) -> List[Tuple[UUID, float]]:
+        return await self._find_vector_candidates_sync(
+            query_user_id=query_user_id,
+            query_event_id=query_event_id,
+            similarity_threshold=similarity_threshold,
+            limit_count=limit_count,
+        )

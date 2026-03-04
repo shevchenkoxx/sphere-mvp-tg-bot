@@ -709,6 +709,58 @@ def get_vibe_waiting_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+# === STORY ONBOARDING ===
+
+def get_story_intent_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """4 intent buttons for story onboarding."""
+    from core.services.story_service import INTENT_META
+    builder = InlineKeyboardBuilder()
+    for key, meta in INTENT_META.items():
+        m = meta.get(lang, meta["en"])
+        builder.button(
+            text=f"{m['emoji']} {m['label']}",
+            callback_data=f"story_intent_{key}",
+        )
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def get_story_next_keyboard(lang: str = "en", screen_index: int = 0,
+                            btn_label: str = None) -> InlineKeyboardMarkup:
+    """Next button for story screens. Shows progress dots."""
+    builder = InlineKeyboardBuilder()
+
+    # Progress indicator (7 screens total)
+    dots = ""
+    for i in range(7):
+        dots += "●" if i == screen_index else "○"
+
+    label = btn_label or ("Next →" if lang == "en" else "Дальше →")
+    builder.button(text=f"{dots}  {label}", callback_data="story_next")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_story_game_keyboard(options: list) -> InlineKeyboardMarkup:
+    """Game answer buttons (2 options from story content)."""
+    builder = InlineKeyboardBuilder()
+    for opt in options:
+        builder.button(text=opt["text"], callback_data=opt["data"])
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def get_story_cta_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """Final CTA with 'Let's go' button."""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="🚀 Погнали!", callback_data="story_start_onboarding")
+    else:
+        builder.button(text="🚀 Let's go!", callback_data="story_start_onboarding")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 # Legacy support
 def get_skip_keyboard() -> InlineKeyboardMarkup:
     return get_skip_or_voice_keyboard()

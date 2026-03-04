@@ -18,7 +18,6 @@ from adapters.telegram.keyboards import (
     get_back_to_menu_keyboard,
     get_profile_with_edit_keyboard,
 )
-from adapters.telegram.states import OnboardingStates
 from adapters.telegram.config import ONBOARDING_VERSION
 from core.utils.language import detect_lang
 
@@ -105,30 +104,14 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         if event:
             lang = detect_lang(message)
             if not user.onboarding_completed:
-                # Start onboarding with event context
-                if ONBOARDING_VERSION == "audio":
-                    from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-                    await start_audio_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                elif ONBOARDING_VERSION == "v2":
-                    from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-                    await start_conversational_onboarding(
-                        message, state,
-                        event_name=event.name,
-                        event_code=event_code
-                    )
-                else:
-                    # Legacy v1 flow
-                    await state.update_data(pending_event=event_code, language=lang)
-                    if lang == "ru":
-                        text = f"👋 Привет! Ты на <b>{event.name}</b>\n\nДавай познакомимся! Как тебя зовут?"
-                    else:
-                        text = f"👋 Hi! You're at <b>{event.name}</b>\n\nLet's get to know each other! What's your name?"
-                    await message.answer(text)
-                    await state.set_state(OnboardingStates.waiting_name)
+                # Start story onboarding (pre-onboarding flow)
+                from adapters.telegram.handlers.story_onboarding import start_story_onboarding
+                await start_story_onboarding(
+                    message, state,
+                    lang=lang,
+                    event_name=event.name,
+                    event_code=event_code
+                )
             else:
                 if lang == "ru":
                     text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nПрисоединяйся!"
@@ -172,22 +155,9 @@ async def start_command(message: Message, state: FSMContext):
         text = f"👋 {name}!\n\n" + ("What would you like to do?" if lang == "en" else "Что делаем?")
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
     else:
-        # Start onboarding
-        if ONBOARDING_VERSION == "audio":
-            from adapters.telegram.handlers.onboarding_audio import start_audio_onboarding
-            await start_audio_onboarding(message, state)
-        elif ONBOARDING_VERSION == "v2":
-            from adapters.telegram.handlers.onboarding_v2 import start_conversational_onboarding
-            await start_conversational_onboarding(message, state)
-        else:
-            # Legacy v1 flow
-            await state.update_data(language=lang)
-            if lang == "ru":
-                text = "👋 Привет! Я помогу найти интересных людей.\n\nКак тебя зовут?"
-            else:
-                text = "👋 Hi! I help you find interesting people to meet.\n\nWhat's your name?"
-            await message.answer(text)
-            await state.set_state(OnboardingStates.waiting_name)
+        # Start story onboarding (pre-onboarding flow)
+        from adapters.telegram.handlers.story_onboarding import start_story_onboarding
+        await start_story_onboarding(message, state, lang=lang)
 
 
 @router.message(Command("menu"))

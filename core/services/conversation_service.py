@@ -10,9 +10,8 @@ from dataclasses import dataclass
 from core.interfaces.conversation import (
     IConversationAI,
     ConversationState,
-    ConversationResponse,
 )
-from core.domain.models import MessagePlatform, OnboardingData
+from core.domain.models import OnboardingData
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,7 @@ class ConversationService:
 
             # Generate response
             response = await self.conversation_ai.generate_response(state, user_message)
+            state.add_assistant_message(response.raw_response or response.message)
 
             # Increment step (guaranteed to happen since message already added)
             state.step += 1
@@ -130,21 +130,13 @@ class ConversationService:
 
         Returns greeting message without needing user input.
         """
-        # Create initial assistant message to start conversation
-        event_name = state.context.get("event_name", "")
         user_name = state.context.get("user_first_name", "")
 
-        # Generate first message by sending empty trigger
-        # The LLM will see it's a fresh conversation and greet
+        # Trigger prompt for initial greeting without persisting synthetic user text.
         initial_trigger = f"Hi" if not user_name else f"Hi, I'm {user_name}"
 
         response = await self.conversation_ai.generate_response(state, initial_trigger)
-
-        # Actually, let's handle this differently - we want the bot to speak first
-        # Remove the user message we just added and keep only assistant response
-        if state.messages and state.messages[-1].role.value == "user":
-            # Keep the conversation but mark it as started
-            pass
+        state.add_assistant_message(response.raw_response or response.message)
 
         return state, response.message
 
