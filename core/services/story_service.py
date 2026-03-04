@@ -373,41 +373,41 @@ GAMES = {
     "friends": {
         "en": {
             "question": "🎲 Quick one — what sounds more like you?",
-            "options": ["Deep 1-on-1 talks", "Big group energy"],
+            "options": ["🫂 Deep talks", "🎉 Group energy"],
         },
         "ru": {
             "question": "🎲 Быстрый вопрос — что тебе ближе?",
-            "options": ["Глубокие разговоры 1-на-1", "Энергия большой компании"],
+            "options": ["🫂 Глубокие беседы", "🎉 Компания"],
         },
     },
     "dating": {
         "en": {
             "question": "🎲 What's more your style?",
-            "options": ["Slow burn connection", "Instant chemistry"],
+            "options": ["🌊 Slow burn", "⚡ Instant spark"],
         },
         "ru": {
             "question": "🎲 Что тебе ближе?",
-            "options": ["Когда чувства растут постепенно", "Мгновенная химия"],
+            "options": ["🌊 Постепенно", "⚡ Искра сразу"],
         },
     },
     "networking": {
         "en": {
             "question": "🎲 At events, you usually:",
-            "options": ["Talk to 2-3 people deeply", "Work the room"],
+            "options": ["🎯 Go deep", "🌐 Work room"],
         },
         "ru": {
             "question": "🎲 На мероприятиях ты обычно:",
-            "options": ["Общаюсь с 2-3 людьми глубоко", "Обхожу всех по кругу"],
+            "options": ["🎯 Вглубь", "🌐 Ко всем"],
         },
     },
     "open": {
         "en": {
             "question": "🎲 What excites you more?",
-            "options": ["Meeting someone totally different", "Finding a hidden twin"],
+            "options": ["🔀 Total opposite", "🪞 Hidden twin"],
         },
         "ru": {
             "question": "🎲 Что тебя больше заводит?",
-            "options": ["Встретить кого-то совсем другого", "Найти скрытого двойника"],
+            "options": ["🔀 Полная противоположность", "🪞 Скрытый двойник"],
         },
     },
 }

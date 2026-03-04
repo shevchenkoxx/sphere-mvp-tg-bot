@@ -66,22 +66,22 @@ def _get_intent_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     if lang == "ru":
         return InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="👥 Найди своих", callback_data="story_intent_friends"),
-                InlineKeyboardButton(text="💕 Познакомиться", callback_data="story_intent_dating"),
+                InlineKeyboardButton(text="👥 Друзья", callback_data="story_intent_friends"),
+                InlineKeyboardButton(text="💕 Знакомства", callback_data="story_intent_dating"),
             ],
             [
-                InlineKeyboardButton(text="💼 Деловые связи", callback_data="story_intent_networking"),
-                InlineKeyboardButton(text="✨ Удиви меня", callback_data="story_intent_open"),
+                InlineKeyboardButton(text="💼 Нетворкинг", callback_data="story_intent_networking"),
+                InlineKeyboardButton(text="✨ Любое", callback_data="story_intent_open"),
             ],
         ])
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="👥 Find your people", callback_data="story_intent_friends"),
-            InlineKeyboardButton(text="💕 Meet someone", callback_data="story_intent_dating"),
+            InlineKeyboardButton(text="👥 Friends", callback_data="story_intent_friends"),
+            InlineKeyboardButton(text="💕 Dating", callback_data="story_intent_dating"),
         ],
         [
-            InlineKeyboardButton(text="💼 Career connections", callback_data="story_intent_networking"),
-            InlineKeyboardButton(text="✨ Surprise me", callback_data="story_intent_open"),
+            InlineKeyboardButton(text="💼 Network", callback_data="story_intent_networking"),
+            InlineKeyboardButton(text="✨ Surprise", callback_data="story_intent_open"),
         ],
     ])
 
@@ -172,7 +172,7 @@ async def _play_story(chat_id: int, state: FSMContext, intent: str, lang: str):
     await asyncio.sleep(STEP_DELAY)
 
     # How it works + interactive button
-    btn_text = "👀 Что получилось →" if lang == "ru" else "👀 See what happened →"
+    btn_text = "👀 Дальше →" if lang == "ru" else "👀 Next →"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=btn_text, callback_data="story_reveal")]
     ])
