@@ -98,7 +98,7 @@ class OrchestratorService:
                 messages=messages,
                 tools=ORCHESTRATOR_TOOLS,
                 tool_choice="auto",
-                max_tokens=500,
+                max_completion_tokens=500,
                 temperature=0.7,
             )
 
@@ -201,7 +201,7 @@ class OrchestratorService:
                         model=self.model,
                         messages=messages_after,
                         tool_choice="none",
-                        max_tokens=300,
+                        max_completion_tokens=300,
                         temperature=0.7,
                     )
                     reply_text = follow_up.choices[0].message.content or ""
@@ -406,7 +406,7 @@ class OrchestratorService:
             response = await self.client.chat.completions.create(
                 model=self.model,  # Same model as orchestrator for quality extraction
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1200,
+                max_completion_tokens=1200,
                 temperature=0.1,
             )
 
@@ -596,7 +596,7 @@ class OrchestratorService:
             response = await self.client.chat.completions.create(
                 model=self.model,  # GPT-4o for quality
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1000,
+                max_completion_tokens=1000,
                 temperature=0.3,
             )
 
