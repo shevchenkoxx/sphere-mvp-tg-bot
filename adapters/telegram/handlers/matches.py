@@ -161,8 +161,8 @@ async def show_new_matches(message: Message, matches: list, event_name: str, lan
     await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
 
-async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None, state: FSMContext = None):
-    """Show user's matches via callback, optionally filtered by event"""
+async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_id=None, city: str = None, state: FSMContext = None):
+    """Show user's matches via callback, optionally filtered by event or city"""
     lang = detect_lang(callback)
 
     user = await user_service.get_user_by_platform(
@@ -175,12 +175,20 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         await callback.answer(msg, show_alert=True)
         return
 
+    # Store matching context in FSM state for pagination
+    if state:
+        await state.update_data(
+            matching_city=city,
+            matching_event_id=str(event_id) if event_id else None,
+        )
+
     # Check if user has no photo - ask for one before showing matches
     if not user.photo_url and state:
         # Store context for after photo
         await state.update_data(
             matches_index=index,
-            matches_event_id=str(event_id) if event_id else None
+            matches_event_id=str(event_id) if event_id else None,
+            matching_city=city,
         )
         await state.set_state(MatchesPhotoStates.waiting_photo)
 
@@ -202,15 +210,17 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         return
 
     await callback.answer()  # Answer early to avoid Telegram timeout
-    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id)
+    await show_matches(callback.message, user.id, lang=lang, edit=True, index=index, event_id=event_id, city=city)
 
 
-async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None):
+async def show_matches(message: Message, user_id, lang: str = "en", edit: bool = False, index: int = 0, event_id=None, city: str = None):
     """Display user's matches with detailed profiles and pagination"""
     matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
 
-    # Filter by event if specified (use str() to avoid UUID type mismatch)
-    if event_id:
+    # Filter by city (Sphere City mode) or event
+    if city:
+        matches = [m for m in matches if m.event_id is None and m.city and m.city.lower() == city.lower()]
+    elif event_id:
         event_id_str = str(event_id)
         matches = [m for m in matches if str(m.event_id) == event_id_str]
 
@@ -218,8 +228,37 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     if not matches:
         user = await user_service.get_user(user_id)
 
-        # Check if user is in an event
-        if user and user.current_event_id:
+        # City mode: try to find city matches
+        if city and user:
+            loading_text = (
+                "✨ Sphere is finding people in your city..."
+            ) if lang == "en" else (
+                "✨ Sphere ищет интересных людей в твоём городе..."
+            )
+            if not edit:
+                status_msg = await message.answer(loading_text)
+
+            try:
+                new_matches = await matching_service.find_city_matches(
+                    user=user,
+                    limit=5
+                )
+
+                # Re-fetch matches from DB
+                matches = await matching_service.get_user_matches(user_id, MatchStatus.PENDING)
+                matches = [m for m in matches if m.event_id is None and m.city and m.city.lower() == city.lower()]
+
+            except Exception as e:
+                logger.error(f"City matching failed for user {user_id}: {e}")
+
+            if not edit and 'status_msg' in locals():
+                try:
+                    await status_msg.delete()
+                except Exception:
+                    pass
+
+        # Event mode: try to find event matches
+        elif user and user.current_event_id:
             # Show loading message (only for new messages, not edits to avoid double-flash)
             loading_text = (
                 "✨ Sphere is finding your best matches..."
@@ -284,51 +323,66 @@ async def show_matches(message: Message, user_id, lang: str = "en", edit: bool =
     if not matches:
         user = await user_service.get_user(user_id) if not locals().get('user') else user
 
-        # Determine specific reason
-        has_event = user and user.current_event_id
-        has_profile = user and user.bio and user.looking_for
-        participant_count = 0
-        if has_event:
-            try:
-                participants = await event_service.get_event_participants(user.current_event_id)
-                participant_count = len(participants) if participants else 0
-            except Exception:
-                pass
-
-        if lang == "ru":
-            text = "<b>💫 Твои матчи</b>\n\n"
-            if not has_event:
-                text += "Ты ещё не присоединился к ивенту.\nСканируй QR-код или присоединись через ссылку!"
-            elif participant_count <= 1:
-                text += "Пока на ивенте мало участников.\nМатчи появятся, когда присоединятся другие!"
-            elif not has_profile:
-                text += (
-                    "Профиль пока не заполнен до конца.\n\n"
-                    "💡 <b>Совет:</b> Добавь информацию — чем ищешь, чем можешь помочь. "
-                    "Это поможет найти релевантных людей!"
+        if city:
+            # City mode - no matches in this city
+            if lang == "ru":
+                text = (
+                    f"🏙️ <b>Sphere City — {city}</b>\n\n"
+                    "Пока нет матчей в твоём городе.\n\n"
+                    "💡 Как только появятся новые люди — ты получишь уведомление!"
                 )
             else:
-                text += (
-                    "Пока нет подходящих матчей.\n\n"
-                    "💡 Попробуй позже — новые участники присоединяются постоянно!"
+                text = (
+                    f"🏙️ <b>Sphere City — {city}</b>\n\n"
+                    "No matches in your city yet.\n\n"
+                    "💡 You'll be notified when new people join!"
                 )
         else:
-            text = "<b>💫 Your Matches</b>\n\n"
-            if not has_event:
-                text += "You haven't joined an event yet.\nScan a QR code or join via link!"
-            elif participant_count <= 1:
-                text += "Not many people at this event yet.\nMatches will appear when others join!"
-            elif not has_profile:
-                text += (
-                    "Your profile isn't complete yet.\n\n"
-                    "💡 <b>Tip:</b> Add what you're looking for and how you can help. "
-                    "This helps find better matches!"
-                )
+            # Event mode - determine specific reason
+            has_event = user and user.current_event_id
+            has_profile = user and user.bio and user.looking_for
+            participant_count = 0
+            if has_event:
+                try:
+                    participants = await event_service.get_event_participants(user.current_event_id)
+                    participant_count = len(participants) if participants else 0
+                except Exception:
+                    pass
+
+            if lang == "ru":
+                text = "<b>💫 Твои матчи</b>\n\n"
+                if not has_event:
+                    text += "Ты ещё не присоединился к ивенту.\nСканируй QR-код или присоединись через ссылку!"
+                elif participant_count <= 1:
+                    text += "Пока на ивенте мало участников.\nМатчи появятся, когда присоединятся другие!"
+                elif not has_profile:
+                    text += (
+                        "Профиль пока не заполнен до конца.\n\n"
+                        "💡 <b>Совет:</b> Добавь информацию — чем ищешь, чем можешь помочь. "
+                        "Это поможет найти релевантных людей!"
+                    )
+                else:
+                    text += (
+                        "Пока нет подходящих матчей.\n\n"
+                        "💡 Попробуй позже — новые участники присоединяются постоянно!"
+                    )
             else:
-                text += (
-                    "No matches found yet.\n\n"
-                    "💡 Try again later — new people are joining all the time!"
-                )
+                text = "<b>💫 Your Matches</b>\n\n"
+                if not has_event:
+                    text += "You haven't joined an event yet.\nScan a QR code or join via link!"
+                elif participant_count <= 1:
+                    text += "Not many people at this event yet.\nMatches will appear when others join!"
+                elif not has_profile:
+                    text += (
+                        "Your profile isn't complete yet.\n\n"
+                        "💡 <b>Tip:</b> Add what you're looking for and how you can help. "
+                        "This helps find better matches!"
+                    )
+                else:
+                    text += (
+                        "No matches found yet.\n\n"
+                        "💡 Try again later — new people are joining all the time!"
+                    )
 
         # Create keyboard with "Add more info" button
         from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -682,7 +736,7 @@ async def view_match_profile(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "back_to_matches")
-async def back_to_matches(callback: CallbackQuery):
+async def back_to_matches(callback: CallbackQuery, state: FSMContext):
     """Go back to matches list — handle photo messages gracefully"""
     lang = detect_lang(callback)
     user = await user_service.get_user_by_platform(
@@ -692,6 +746,15 @@ async def back_to_matches(callback: CallbackQuery):
         await callback.answer("Profile not found", show_alert=True)
         return
 
+    # Restore matching context from state
+    city = None
+    event_id = user.current_event_id
+    if state:
+        data = await state.get_data()
+        city = data.get("matching_city")
+        if city:
+            event_id = None  # City mode, no event filter
+
     # If current message is a photo (from view_profile), delete and send new text
     if callback.message.photo:
         try:
@@ -699,14 +762,14 @@ async def back_to_matches(callback: CallbackQuery):
         except Exception:
             pass
         await callback.answer()
-        await show_matches(callback.message, user.id, lang=lang, edit=False, event_id=user.current_event_id)
+        await show_matches(callback.message, user.id, lang=lang, edit=False, event_id=event_id, city=city)
     else:
         await callback.answer()
-        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
+        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=event_id, city=city)
 
 
 @router.callback_query(F.data == "retry_matching")
-async def retry_matching(callback: CallbackQuery):
+async def retry_matching(callback: CallbackQuery, state: FSMContext):
     """Retry finding matches"""
     lang = detect_lang(callback)
 
@@ -715,7 +778,18 @@ async def retry_matching(callback: CallbackQuery):
         str(callback.from_user.id)
     )
 
-    if not user or not user.current_event_id:
+    if not user:
+        await callback.answer("Profile not found", show_alert=True)
+        return
+
+    # Check matching context from state
+    city = None
+    if state:
+        data = await state.get_data()
+        city = data.get("matching_city")
+
+    # City mode or event mode
+    if not city and not user.current_event_id:
         msg = "Join an event first!" if lang == "en" else "Сначала присоединись к ивенту!"
         await callback.answer(msg, show_alert=True)
         return
@@ -729,23 +803,28 @@ async def retry_matching(callback: CallbackQuery):
     )
 
     try:
-        from config.features import Features
-
-        if user.profile_embedding:
-            matches = await matching_service.find_matches_vector(
-                user=user,
-                event_id=user.current_event_id,
-                limit=Features.SHOW_TOP_MATCHES
-            )
+        if city:
+            # City mode: find city matches
+            await matching_service.find_city_matches(user=user, limit=5, force_new=True)
+            await show_matches(callback.message, user.id, lang=lang, edit=True, city=city)
         else:
-            matches = await matching_service.find_and_create_matches_for_user(
-                user=user,
-                event_id=user.current_event_id,
-                limit=Features.SHOW_TOP_MATCHES
-            )
+            # Event mode
+            from config.features import Features
 
-        # Show results
-        await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
+            if user.profile_embedding:
+                matches = await matching_service.find_matches_vector(
+                    user=user,
+                    event_id=user.current_event_id,
+                    limit=Features.SHOW_TOP_MATCHES
+                )
+            else:
+                matches = await matching_service.find_and_create_matches_for_user(
+                    user=user,
+                    event_id=user.current_event_id,
+                    limit=Features.SHOW_TOP_MATCHES
+                )
+
+            await show_matches(callback.message, user.id, lang=lang, edit=True, event_id=user.current_event_id)
 
     except Exception as e:
         logger.error(f"Retry matching failed: {e}", exc_info=True)
@@ -765,7 +844,16 @@ async def match_prev(callback: CallbackQuery, state: FSMContext):
     except ValueError:
         return
     new_index = max(0, current_index - 1)
-    await list_matches_callback(callback, index=new_index, state=state)
+
+    # Restore matching context from state
+    city = None
+    event_id = None
+    if state:
+        data = await state.get_data()
+        city = data.get("matching_city")
+        event_id = data.get("matching_event_id")
+
+    await list_matches_callback(callback, index=new_index, city=city, event_id=event_id, state=state)
 
 
 @router.callback_query(F.data.startswith("match_next_"))
@@ -777,7 +865,16 @@ async def match_next(callback: CallbackQuery, state: FSMContext):
     except ValueError:
         return
     new_index = current_index + 1
-    await list_matches_callback(callback, index=new_index, state=state)
+
+    # Restore matching context from state
+    city = None
+    event_id = None
+    if state:
+        data = await state.get_data()
+        city = data.get("matching_city")
+        event_id = data.get("matching_event_id")
+
+    await list_matches_callback(callback, index=new_index, city=city, event_id=event_id, state=state)
 
 
 @router.callback_query(F.data == "match_counter")

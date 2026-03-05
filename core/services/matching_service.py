@@ -499,7 +499,8 @@ class MatchingService:
     async def find_city_matches(
         self,
         user: User,
-        limit: int = 5
+        limit: int = 5,
+        force_new: bool = False
     ) -> List[Tuple[User, MatchResultWithId]]:
         """
         Find matches for a user based on city (Sphere City feature).
@@ -509,9 +510,9 @@ class MatchingService:
             logger.warning(f"User {user.id} has no city_current set")
             return []
 
-        # First check for existing matches
+        # First check for existing matches (unless forcing new)
         existing = await self.match_repo.get_city_matches(user.id, user.city_current)
-        if existing:
+        if existing and not force_new:
             # Return existing matches with user objects
             from infrastructure.database.user_repository import SupabaseUserRepository
             user_repo = SupabaseUserRepository()
