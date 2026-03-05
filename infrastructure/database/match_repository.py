@@ -14,15 +14,21 @@ class SupabaseMatchRepository(IMatchRepository):
 
     def _to_model(self, data: dict) -> Match:
         """Convert database row to Match model"""
+        # Safe enum conversion
+        try:
+            match_type = MatchType(data["match_type"])
+        except (ValueError, KeyError):
+            match_type = MatchType.PROFESSIONAL
+
         return Match(
             id=data["id"],
             event_id=data.get("event_id"),
             user_a_id=data["user_a_id"],
             user_b_id=data["user_b_id"],
             compatibility_score=data["compatibility_score"],
-            match_type=MatchType(data["match_type"]),
-            ai_explanation=data["ai_explanation"],
-            icebreaker=data["icebreaker"],
+            match_type=match_type,
+            ai_explanation=data.get("ai_explanation") or "Compatible profiles",
+            icebreaker=data.get("icebreaker") or "Say hello!",
             status=MatchStatus(data.get("status", "pending")),
             user_a_notified=data.get("user_a_notified", False),
             user_b_notified=data.get("user_b_notified", False),

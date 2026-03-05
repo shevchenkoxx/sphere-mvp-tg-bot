@@ -226,8 +226,8 @@ async def handle_custom_city(message: Message, state: FSMContext):
 # === City Matches ===
 
 @router.callback_query(F.data == "sphere_city_matches")
-async def show_city_matches(callback: CallbackQuery):
-    """Show city-based matches"""
+async def show_city_matches(callback: CallbackQuery, state: FSMContext):
+    """Show city-based matches using the shared match display"""
     lang = detect_lang(callback)
 
     user = await user_service.get_user_by_platform(
@@ -240,65 +240,9 @@ async def show_city_matches(callback: CallbackQuery):
         await callback.answer(msg, show_alert=True)
         return
 
-    # Get or create city matches
-    try:
-        matches = await matching_service.find_city_matches(
-            user=user,
-            limit=5
-        )
-
-        if not matches:
-            if lang == "ru":
-                text = (
-                    "👀 Пока нет матчей в твоём городе.\n\n"
-                    "Как только появятся новые люди — ты получишь уведомление!"
-                )
-            else:
-                text = (
-                    "👀 No matches in your city yet.\n\n"
-                    "You'll be notified when new people join!"
-                )
-            await callback.message.edit_text(
-                text,
-                reply_markup=get_sphere_city_menu_keyboard(False, lang)
-            )
-            await callback.answer()
-            return
-
-        # Format matches
-        if lang == "ru":
-            header = f"🏙️ <b>Люди в {user.city_current}</b>\n\n"
-        else:
-            header = f"🏙️ <b>People in {user.city_current}</b>\n\n"
-
-        lines = []
-        for i, (matched_user, match_result) in enumerate(matches):
-            name = matched_user.display_name or matched_user.first_name or "Anonymous"
-
-            line = f"<b>{i+1}. {name}</b>"
-            if matched_user.username:
-                line += f" @{matched_user.username}"
-
-            if matched_user.profession:
-                line += f"\n   🏢 {matched_user.profession}"
-
-            if match_result.explanation:
-                line += f"\n   💡 {match_result.explanation[:80]}..."
-
-            lines.append(line)
-
-        text = header + "\n\n".join(lines)
-
-        await callback.message.edit_text(
-            text,
-            reply_markup=get_sphere_city_menu_keyboard(True, lang)
-        )
-        await callback.answer()
-
-    except Exception as e:
-        logger.error(f"Error showing city matches: {e}")
-        msg = "Error loading matches" if lang == "en" else "Ошибка загрузки матчей"
-        await callback.answer(msg, show_alert=True)
+    # Use the shared match display with city filter
+    from adapters.telegram.handlers.matches import list_matches_callback
+    await list_matches_callback(callback, index=0, city=user.city_current, state=state)
 
 
 # === Change City ===

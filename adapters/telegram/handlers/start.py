@@ -25,6 +25,16 @@ from core.utils.language import detect_lang
 router = Router()
 
 
+def _extract_city_from_location(location: str):
+    """Extract a known city name from event location string."""
+    from adapters.telegram.keyboards.inline import SPHERE_CITIES
+    location_lower = location.lower()
+    for city_key, names in SPHERE_CITIES.items():
+        if names["en"].lower() in location_lower or names["ru"].lower() in location_lower:
+            return names["en"]
+    return None
+
+
 async def _increment_referral_count(referrer_telegram_id: str):
     """Increment referral_count for the referrer user."""
     from infrastructure.database.supabase_client import supabase
@@ -110,9 +120,15 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
                 event_code, MessagePlatform.TELEGRAM, str(message.from_user.id)
             )
             if success:
+                update_kwargs = {"current_event_id": str(event.id)}
+                # Auto-set city from event location
+                if event.location:
+                    city_name = _extract_city_from_location(event.location)
+                    if city_name:
+                        update_kwargs["city_current"] = city_name
                 await user_service.update_user(
                     MessagePlatform.TELEGRAM, str(message.from_user.id),
-                    current_event_id=str(event.id)
+                    **update_kwargs
                 )
 
             if not user.onboarding_completed:
@@ -881,7 +897,6 @@ async def show_events(callback: CallbackQuery):
 async def show_matches(callback: CallbackQuery, state: FSMContext):
     """Show matches based on current matching_mode (event or city)"""
     from adapters.telegram.handlers.matches import list_matches_callback
-    from adapters.telegram.handlers.sphere_city import show_city_matches
 
     lang = detect_lang_callback(callback)
 
@@ -909,7 +924,7 @@ async def show_matches(callback: CallbackQuery, state: FSMContext):
             from adapters.telegram.handlers.sphere_city import sphere_city_entry
             await sphere_city_entry(callback, None)
         else:
-            await show_city_matches(callback)
+            await list_matches_callback(callback, index=0, city=user.city_current, state=state)
     else:
         # Show event matches (default)
         if user.current_event_id:
