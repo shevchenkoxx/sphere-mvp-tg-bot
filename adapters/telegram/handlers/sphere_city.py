@@ -70,7 +70,7 @@ async def sphere_city_entry(callback: CallbackQuery, state: FSMContext):
                 "Choose your city to find interesting people nearby.\n\n"
                 "What city are you in?"
             )
-        await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang))
+        await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang, back_callback="back_to_menu"))
     else:
         # Show Sphere City menu
         await show_sphere_city_menu(callback, user, lang)
@@ -245,6 +245,25 @@ async def show_city_matches(callback: CallbackQuery, state: FSMContext):
     await list_matches_callback(callback, index=0, city=user.city_current, state=state)
 
 
+# === Cities List ===
+
+@router.callback_query(F.data == "sphere_city_cities")
+async def show_cities(callback: CallbackQuery):
+    """Show city picker to browse/select a city"""
+    lang = detect_lang(callback)
+
+    if lang == "ru":
+        text = "🏙 <b>Города</b>\n\nВыбери город, чтобы найти людей:"
+    else:
+        text = "🏙 <b>Cities</b>\n\nPick a city to find people:"
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_city_picker_keyboard(lang, back_callback="sphere_city")
+    )
+    await callback.answer()
+
+
 # === Change City ===
 
 @router.callback_query(F.data == "sphere_city_change")
@@ -257,5 +276,8 @@ async def change_city(callback: CallbackQuery):
     else:
         text = "📍 Choose a new city:"
 
-    await callback.message.edit_text(text, reply_markup=get_city_picker_keyboard(lang))
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_city_picker_keyboard(lang, back_callback="sphere_city")
+    )
     await callback.answer()

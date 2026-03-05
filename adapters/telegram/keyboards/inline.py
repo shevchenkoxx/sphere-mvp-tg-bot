@@ -394,7 +394,7 @@ SPHERE_CITIES = {
 }
 
 
-def get_city_picker_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_city_picker_keyboard(lang: str = "en", back_callback: str = "back_to_menu") -> InlineKeyboardMarkup:
     """City selection keyboard for Sphere City"""
     builder = InlineKeyboardBuilder()
 
@@ -408,7 +408,7 @@ def get_city_picker_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
 
     # Back button
     back_text = "← Back" if lang == "en" else "← Назад"
-    builder.button(text=back_text, callback_data="back_to_menu")
+    builder.button(text=back_text, callback_data=back_callback)
 
     builder.adjust(2)  # 2 cities per row
     return builder.as_markup()
@@ -421,6 +421,9 @@ def get_sphere_city_menu_keyboard(has_matches: bool = True, lang: str = "en") ->
     if has_matches:
         view_text = "👀 View matches" if lang == "en" else "👀 Посмотреть матчи"
         builder.button(text=view_text, callback_data="sphere_city_matches")
+
+    cities_text = "🏙 Cities" if lang == "en" else "🏙 Города"
+    builder.button(text=cities_text, callback_data="sphere_city_cities")
 
     change_city = "📍 Change city" if lang == "en" else "📍 Сменить город"
     builder.button(text=change_city, callback_data="sphere_city_change")
