@@ -1218,3 +1218,205 @@ async def admin_checkmatches(message: Message):
             await message.answer(chunk, parse_mode="HTML")
     else:
         await message.answer(text, parse_mode="HTML")
+
+
+# === /newEvent — one-command event creation from URL ===
+
+@router.message(Command("newEvent", "newevent", "new_event"))
+async def new_event_from_url(message: Message, state: FSMContext):
+    """
+    /newEvent [url] — Create event from a Luma/Eventbrite/any URL.
+    If URL given inline: process immediately.
+    If no URL: ask for it.
+    """
+    if message.from_user.id not in settings.admin_telegram_ids:
+        await message.answer("Admin only")
+        return
+
+    parts = message.text.split(maxsplit=1)
+    if len(parts) > 1:
+        url = parts[1].strip()
+        if url.startswith(("http://", "https://")):
+            await _process_new_event_url(message, url)
+            return
+
+    await message.answer(
+        "🔗 <b>New Event</b>\n\n"
+        "Send me a link to the event page (Luma, Eventbrite, etc.).\n"
+        "I'll create the event, import info, and generate a QR code.\n\n"
+        "Send /cancel to abort."
+    )
+    await state.set_state(EventInfoStates.waiting_new_event_url)
+
+
+@router.message(EventInfoStates.waiting_new_event_url, F.text)
+async def process_new_event_url_state(message: Message, state: FSMContext):
+    """Process URL sent after /newEvent prompt"""
+    if message.text.strip().lower() in ("/cancel", "cancel", "отмена"):
+        await state.clear()
+        await message.answer("Cancelled.", reply_markup=get_main_menu_keyboard())
+        return
+
+    url = message.text.strip()
+    if not url.startswith(("http://", "https://")):
+        await message.answer("Please send a valid URL starting with http:// or https://")
+        return
+
+    await state.clear()
+    await _process_new_event_url(message, url)
+
+
+async def _process_new_event_url(message: Message, url: str):
+    """Core logic: fetch URL → parse → create event → generate QR → send"""
+    import re
+    import os
+    import io
+    import qrcode
+    from qrcode.image.styledpil import StyledPilImage
+    from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
+    from PIL import Image, ImageDraw, ImageFont
+    from aiogram.types import BufferedInputFile
+
+    status_msg = await message.answer("🔄 Fetching event page...")
+
+    # 1. Parse URL with LLM
+    event_info = await event_parser_service.parse_event_url(url)
+    if not event_info:
+        await status_msg.edit_text(
+            "❌ Failed to parse event page.\n"
+            "Check if the URL is accessible and try again."
+        )
+        return
+
+    await status_msg.edit_text("✅ Page parsed. Creating event...")
+
+    # 2. Generate event code from name/topics
+    raw_name = event_info.get("full_description", "")[:80] or "Event"
+    topics = event_info.get("topics", [])
+
+    if topics:
+        code = "".join([t[0].upper() for t in topics[:4] if t])
+    else:
+        words = re.sub(r'[^a-zA-Z0-9\s]', '', raw_name).split()[:3]
+        code = "".join([w[0].upper() for w in words if w])
+
+    if len(code) < 2:
+        code = "EV"
+
+    # Check if code exists, append number if needed
+    from infrastructure.database.supabase_client import supabase
+    existing = supabase.table("events").select("code").eq("code", code).execute()
+    if existing.data:
+        i = 2
+        while True:
+            new_code = f"{code}{i}"
+            check = supabase.table("events").select("code").eq("code", new_code).execute()
+            if not check.data:
+                code = new_code
+                break
+            i += 1
+
+    # 3. Build event name from description
+    desc = event_info.get("full_description", "")
+    if desc:
+        first_sentence = desc.split(".")[0].split("!")[0].split("?")[0]
+        event_name = first_sentence[:60].strip()
+        if len(first_sentence) > 60:
+            event_name += "..."
+    elif topics:
+        event_name = ", ".join(topics[:3])
+    else:
+        event_name = "New Event"
+
+    # 4. Create event in DB
+    venue = event_info.get("venue_details", "")
+    location = venue if venue else None
+    event = await event_service.create_event(
+        name=event_name,
+        organizer_platform=MessagePlatform.TELEGRAM,
+        organizer_platform_id=str(message.from_user.id),
+        description=desc[:500] if desc else None,
+        location=location
+    )
+
+    # Update code and event_info
+    supabase.table("events").update({"code": code, "event_info": event_info}).eq(
+        "id", str(event.id)
+    ).execute()
+    event.code = code
+
+    await status_msg.edit_text("✅ Event created. Generating QR...")
+
+    # 5. Generate QR code
+    bot_info = await bot.me()
+    deep_link = f"https://t.me/{bot_info.username}?start=event_{code}"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=12,
+        border=2
+    )
+    qr.add_data(deep_link)
+    qr.make(fit=True)
+
+    img = qr.make_image(
+        image_factory=StyledPilImage,
+        module_drawer=RoundedModuleDrawer(),
+        fill_color='black',
+        back_color='white'
+    )
+    img = img.convert('RGB')
+
+    w, h = img.size
+    padding = 60
+    new_img = Image.new('RGB', (w + 40, h + padding + 20), 'white')
+    new_img.paste(img, (20, 20))
+
+    draw = ImageDraw.Draw(new_img)
+    try:
+        font = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 22)
+    except Exception:
+        font = ImageFont.load_default()
+
+    label = f"{event_name[:40]} — Scan to join!"
+    bbox = draw.textbbox((0, 0), label, font=font)
+    tw = bbox[2] - bbox[0]
+    draw.text(((w + 40 - tw) // 2, h + 25), label, fill='black', font=font)
+
+    # Save to buffer
+    buf = io.BytesIO()
+    new_img.save(buf, format='PNG')
+    buf.seek(0)
+
+    # Also save to project root
+    qr_filename = f"{code}_QR.png"
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    qr_path = os.path.join(project_root, qr_filename)
+    new_img.save(qr_path)
+
+    # 6. Send results
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+
+    card_text = event_parser_service.format_event_card(event_info, event_name)
+    card_text += f"\n\n<b>Code:</b> <code>{code}</code>"
+    card_text += f"\n<b>Deep link:</b> <code>{deep_link}</code>"
+
+    await message.answer(card_text, parse_mode="HTML", disable_web_page_preview=True)
+
+    photo = BufferedInputFile(buf.getvalue(), filename=qr_filename)
+    await message.answer_photo(
+        photo,
+        caption=f"📅 <b>{event_name}</b>\n\n🔗 {deep_link}\n📍 {location or 'TBD'}\n\nCode: <b>{code}</b>",
+        parse_mode="HTML"
+    )
+
+    await message.answer(
+        "Event ready! Use buttons below to manage:",
+        reply_markup=get_event_actions_keyboard(code)
+    )
+
+    logger.info(f"[EVENTS] New event created via /newEvent: {code} = {event_name} from {url}")

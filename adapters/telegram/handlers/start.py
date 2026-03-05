@@ -104,6 +104,17 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
 
         if event:
             lang = detect_lang(message)
+
+            # Auto-join event for everyone who opens the deep link
+            success, _, _ = await event_service.join_event(
+                event_code, MessagePlatform.TELEGRAM, str(message.from_user.id)
+            )
+            if success:
+                await user_service.update_user(
+                    MessagePlatform.TELEGRAM, str(message.from_user.id),
+                    current_event_id=str(event.id)
+                )
+
             if not user.onboarding_completed:
                 # Start onboarding with event context
                 if ONBOARDING_VERSION == "audio":
@@ -131,10 +142,20 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
                     await state.set_state(OnboardingStates.waiting_name)
             else:
                 if lang == "ru":
-                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nПрисоединяйся!"
+                    text = (
+                        f"🎉 <b>Ты в ивенте {event.name}!</b>\n\n"
+                        f"📍 {event.location or ''}\n\n"
+                        "Система уже ищет для тебя интересных людей.\n"
+                        "Напишу, когда найду матчи!"
+                    )
                 else:
-                    text = f"🎉 <b>{event.name}</b>\n\n📍 {event.location or ''}\n\nJoin the event!"
-                await message.answer(text, reply_markup=get_join_event_keyboard(event_code))
+                    text = (
+                        f"🎉 <b>You're in {event.name}!</b>\n\n"
+                        f"📍 {event.location or ''}\n\n"
+                        "The system is finding interesting people for you.\n"
+                        "I'll message you when I find matches!"
+                    )
+                await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
         else:
             lang = detect_lang(message)
             await message.answer("Event not found 😕" if lang == "en" else "Ивент не найден 😕")

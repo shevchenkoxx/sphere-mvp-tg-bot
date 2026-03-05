@@ -33,6 +33,7 @@ class EventInfoStates(StatesGroup):
     editing_schedule = State()        # Editing schedule
     editing_speakers = State()        # Editing speakers
     confirming_import = State()       # Confirming imported data
+    waiting_new_event_url = State()   # /newEvent — waiting for event page URL
 
 
 class ChatStates(StatesGroup):
