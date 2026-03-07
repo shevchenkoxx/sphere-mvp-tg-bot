@@ -141,6 +141,50 @@ Language: same as bio text."""
             if ideal_b:
                 personalization_context += f"B's ideal connection description: {ideal_b[:150]}\n"
 
+        # Activity intent context
+        activity_cats_a = user_a.get('activity_categories', []) or []
+        activity_cats_b = user_b.get('activity_categories', []) or []
+        activity_details_a = user_a.get('activity_details', {}) or {}
+        activity_details_b = user_b.get('activity_details', {}) or {}
+
+        if activity_cats_a or activity_cats_b:
+            from core.domain.activity_constants import get_category_label, get_subcategory_label
+            personalization_context += "\n=== ACTIVITY INTENT ===\n"
+
+            def format_activities(cats, details):
+                parts = []
+                for cat in cats:
+                    cat_label = get_category_label(cat)
+                    cat_detail = details.get(cat, {})
+                    subs = cat_detail.get("selected", [])
+                    custom = cat_detail.get("custom")
+                    if subs:
+                        sub_labels = [get_subcategory_label(cat, s).split(" ", 1)[-1] for s in subs]
+                        parts.append(f"{cat_label} ({', '.join(sub_labels)})")
+                    elif custom:
+                        parts.append(f"{cat_label} ({custom})")
+                    else:
+                        parts.append(cat_label)
+                return ", ".join(parts) if parts else "None"
+
+            personalization_context += f"A wants: {format_activities(activity_cats_a, activity_details_a)}\n"
+            personalization_context += f"B wants: {format_activities(activity_cats_b, activity_details_b)}\n"
+
+            # Find shared activities
+            shared = set(activity_cats_a) & set(activity_cats_b)
+            if shared:
+                shared_labels = [get_category_label(c) for c in shared]
+                personalization_context += f"SHARED ACTIVITIES: {', '.join(shared_labels)} ✓\n"
+
+                # Check for shared subcategories
+                for cat in shared:
+                    subs_a = set(activity_details_a.get(cat, {}).get("selected", []))
+                    subs_b = set(activity_details_b.get(cat, {}).get("selected", []))
+                    shared_subs = subs_a & subs_b
+                    if shared_subs:
+                        sub_labels = [get_subcategory_label(cat, s) for s in shared_subs]
+                        personalization_context += f"  → Both want: {', '.join(sub_labels)}\n"
+
         prompt = f"""Analyze compatibility between two people for networking at an event.
 
 Base analysis on what users stated. You may approximate when profiles are short, but stay within the same domain.
@@ -174,7 +218,7 @@ SCORING CRITERIA (in order of importance):
    - Example: "building AI startup" + "product manager" = closely related (same domain)
 2. TOPIC RELEVANCE (0.35 weight): Are they in the same domain / working on related things?
    - Same field + shared interests: +0.35 | Adjacent fields: +0.15 | Unrelated: 0
-   - Use bio, profession, interests, and passion to judge domain overlap
+   - Use bio, profession, interests, passion, and activity intent to judge domain overlap
 3. GOALS ALIGNMENT (0.25 weight): Compatible networking goals + complementary strengths?
    - Strong fit: +0.25 | Partial: +0.1 | None: 0
 
