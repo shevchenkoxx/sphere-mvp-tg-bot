@@ -702,6 +702,80 @@ async def show_invitations(callback: CallbackQuery):
             logging.getLogger(__name__).error(f"Failed to send invitation card {inv.short_id}: {e}")
 
 
+@router.callback_query(F.data == "my_activities")
+async def show_my_activities(callback: CallbackQuery, state: FSMContext):
+    """Show user's selected activities with edit/refine options."""
+    lang = detect_lang(callback)
+    user_id = str(callback.from_user.id)
+    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+
+    if not user:
+        await callback.answer()
+        return
+
+    from core.domain.activity_constants import format_user_activities
+    from adapters.telegram.keyboards import get_my_activities_keyboard
+
+    categories = user.activity_categories or []
+    details = user.activity_details or {}
+
+    if categories or user.custom_activity_text:
+        activities_text = format_user_activities(categories, details, lang)
+        if user.custom_activity_text:
+            activities_text += f"\n\n{user.custom_activity_text}"
+
+        if lang == "ru":
+            text = f"🎯 <b>Твои активности:</b>\n\n{activities_text}"
+        else:
+            text = f"🎯 <b>Your Activities:</b>\n\n{activities_text}"
+    else:
+        if lang == "ru":
+            text = "🎯 <b>Активности ещё не выбраны</b>\n\nНажми кнопку ниже чтобы выбрать"
+        else:
+            text = "🎯 <b>No activities selected yet</b>\n\nTap below to choose"
+
+    await callback.message.edit_text(text, reply_markup=get_my_activities_keyboard(lang))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "change_activities")
+async def change_activities(callback: CallbackQuery, state: FSMContext):
+    """Re-open activity picker from My Activities menu."""
+    lang = detect_lang(callback)
+    await state.update_data(personalization_lang=lang)
+
+    from adapters.telegram.handlers.personalization import start_activity_flow
+    await start_activity_flow(callback.message, state, lang)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "refine_activities")
+async def refine_activities(callback: CallbackQuery, state: FSMContext):
+    """Ask user to add details about their activities."""
+    lang = detect_lang(callback)
+
+    if lang == "ru":
+        text = (
+            "✏️ <b>Добавь детали</b>\n\n"
+            "Напиши конкретное место, время или предпочтения.\n"
+            "Например: \"Падел в Padel Zone Mokotow, вечером в будни\"\n\n"
+            "Напиши текстом или запиши голосовое 🎤"
+        )
+    else:
+        text = (
+            "✏️ <b>Add details</b>\n\n"
+            "Tell me a specific place, time, or preferences.\n"
+            "For example: \"Padel at Padel Zone Mokotow, weekday evenings\"\n\n"
+            "Type or send a voice message 🎤"
+        )
+
+    from adapters.telegram.states import UserEventStates
+    await state.update_data(personalization_lang=lang)
+    await callback.message.edit_text(text)
+    await state.set_state(UserEventStates.refining_activity)
+    await callback.answer()
+
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
     """Return to main menu"""

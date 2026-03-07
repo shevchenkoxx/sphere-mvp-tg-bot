@@ -251,6 +251,7 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
         builder.button(text="👤 Профиль", callback_data="my_profile")
         builder.button(text="🎉 Ивенты", callback_data="my_events")
         builder.button(text="💫 Матчи", callback_data="my_matches")
+        builder.button(text="🎯 Мои активности", callback_data="my_activities")
         builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
         builder.button(text="🔮 Проверь совместимость", callback_data="vibe_new")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
@@ -258,10 +259,11 @@ def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> In
         builder.button(text="👤 Profile", callback_data="my_profile")
         builder.button(text="🎉 Events", callback_data="my_events")
         builder.button(text="💫 Matches", callback_data="my_matches")
+        builder.button(text="🎯 My Activities", callback_data="my_activities")
         builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
         builder.button(text="🔮 Check Our Vibe", callback_data="vibe_new")
         builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
-    builder.adjust(2, 2, 2)
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 

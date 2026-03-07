@@ -601,6 +601,78 @@ async def process_custom_activity_voice(message: Message, state: FSMContext):
         )
 
 
+# === My Activities: Refinement Handlers ===
+
+@router.message(UserEventStates.refining_activity, F.text)
+async def process_refinement_text(message: Message, state: FSMContext):
+    """Save refinement text for user's activities."""
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        return
+
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    user_id = str(message.chat.id)
+
+    refinement_text = message.text.strip()
+    if len(refinement_text) < 3:
+        return
+
+    user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+    if user:
+        details = user.activity_details or {}
+        details["_refinement"] = refinement_text
+        await user_service.update_user(
+            MessagePlatform.TELEGRAM, user_id,
+            activity_details=details
+        )
+
+    confirm = "✓ Записал!" if lang == "ru" else "✓ Saved!"
+    await message.answer(confirm, reply_markup=get_main_menu_keyboard(lang))
+    await state.clear()
+
+
+@router.message(UserEventStates.refining_activity, F.voice)
+async def process_refinement_voice(message: Message, state: FSMContext):
+    """Save refinement from voice input."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+
+    status = await message.answer("🎤 Слушаю..." if lang == "ru" else "🎤 Listening...")
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription and len(transcription) >= 3:
+            await status.delete()
+            user_id = str(message.chat.id)
+            user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+            if user:
+                details = user.activity_details or {}
+                details["_refinement"] = transcription
+                await user_service.update_user(
+                    MessagePlatform.TELEGRAM, user_id,
+                    activity_details=details
+                )
+            confirm = "✓ Записал!" if lang == "ru" else "✓ Saved!"
+            await message.answer(confirm, reply_markup=get_main_menu_keyboard(lang))
+            await state.clear()
+        else:
+            await status.edit_text(
+                "Не расслышал. Напиши текстом?" if lang == "ru"
+                else "Couldn't hear that. Type it out?"
+            )
+    except Exception as e:
+        logger.error(f"Refinement voice error: {e}")
+        await status.edit_text(
+            "Напиши текстом" if lang == "ru" else "Please type instead"
+        )
+
+
 async def finish_activity_selection(message: Message, state: FSMContext, lang: str):
     """Finalize activity selections and proceed to connection mode (Step 2)."""
     data = await state.get_data()
