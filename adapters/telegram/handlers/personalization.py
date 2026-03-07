@@ -25,15 +25,23 @@ from core.prompts.templates import (
     IDEAL_CONNECTION_QUESTION_PROMPT,
 )
 from adapters.telegram.loader import user_service, bot, voice_service
-from adapters.telegram.states import PersonalizationStates
+from adapters.telegram.states import PersonalizationStates, UserEventStates
 from adapters.telegram.keyboards import (
     get_connection_mode_keyboard,
     get_adaptive_buttons_keyboard,
     get_skip_personalization_keyboard,
     get_main_menu_keyboard,
+    get_activity_keyboard,
+    get_activity_subcategory_keyboard,
 )
 from config.settings import settings
+from config.features import Features
 from core.utils.language import detect_lang
+from core.domain.activity_constants import (
+    ACTIVITY_CATEGORIES,
+    ACTIVITY_SUBCATEGORIES,
+    MAX_ACTIVITY_SELECTIONS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +60,7 @@ async def start_personalization(
     """
     Start personalization flow after onboarding completion.
     Called from onboarding handlers after profile is saved.
+    Branches on Features.PERSONALIZATION_MODE: "intent" or "passion".
     """
     if lang is None:
         lang = detect_lang(message)
@@ -63,7 +72,14 @@ async def start_personalization(
         personalization_lang=lang
     )
 
-    # Step 1: Ask passion question
+    if Features.PERSONALIZATION_MODE == "intent":
+        await start_activity_flow(message, state, lang)
+    else:
+        await start_passion_flow(message, state, lang)
+
+
+async def start_passion_flow(message: Message, state: FSMContext, lang: str):
+    """Start the passion question flow (original Step 1)."""
     if lang == "ru":
         text = (
             "🔥 <b>Последний штрих!</b>\n\n"
@@ -81,6 +97,35 @@ async def start_personalization(
 
     await message.answer(text, reply_markup=get_skip_personalization_keyboard(lang))
     await state.set_state(PersonalizationStates.waiting_passion)
+
+
+# === Activity Intent Flow ===
+
+async def start_activity_flow(message: Message, state: FSMContext, lang: str):
+    """Start the activity intent picker (alternative Step 1)."""
+    if lang == "ru":
+        text = (
+            "🎯 <b>Чем хочешь заняться?</b>\n\n"
+            "Выбери активности — мы найдём людей,\n"
+            "которые хотят того же ✨\n\n"
+            "Также можешь написать текстом или записать голосовое 🎤"
+        )
+    else:
+        text = (
+            "🎯 <b>What would you like to do?</b>\n\n"
+            "Pick activities you're up for — we'll find people\n"
+            "who want the same thing and make it happen ✨\n\n"
+            "You can also type or send a voice message 🎤"
+        )
+
+    await state.update_data(
+        activity_selected=[],
+        activity_details_temp={},
+        current_subcategory=None,
+    )
+
+    await message.answer(text, reply_markup=get_activity_keyboard(selected=[], lang=lang))
+    await state.set_state(UserEventStates.choosing_activity)
 
 
 # === Step 1: Passion Question ===
@@ -180,6 +225,397 @@ async def skip_passion_step(callback: CallbackQuery, state: FSMContext):
     await state.update_data(passion_text=None, passion_themes=[])
     await show_connection_mode_step(callback.message, state, lang)
     await callback.answer()
+
+
+# === Activity Intent Handlers (Level 1) ===
+
+@router.callback_query(UserEventStates.choosing_activity, F.data.startswith("activity_"))
+async def process_activity_selection(callback: CallbackQuery, state: FSMContext):
+    """Handle Level 1 activity category selection."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    selected = data.get("activity_selected", [])
+
+    action = callback.data.replace("activity_", "")
+
+    # Handle "Done" button
+    if action == "done":
+        await finish_activity_selection(callback.message, state, lang)
+        await callback.answer()
+        return
+
+    cat = ACTIVITY_CATEGORIES.get(action)
+    if not cat:
+        await callback.answer()
+        return
+
+    # If category has subcategories, show Level 2
+    if cat.get("has_sub"):
+        await state.update_data(current_subcategory=action)
+        details_temp = data.get("activity_details_temp", {})
+        cat_details = details_temp.get(action, {})
+        sub_selected = cat_details.get("selected", [])
+
+        label_key = f"label_{lang}" if f"label_{lang}" in cat else "label_en"
+        cat_label = f"{cat['emoji']} {cat[label_key]}"
+
+        if lang == "ru":
+            text = f"<b>{cat_label}</b>\n\nВыбери, что именно:"
+        else:
+            text = f"<b>{cat_label}</b>\n\nPick what you're into:"
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_activity_subcategory_keyboard(
+                category=action, selected=sub_selected, lang=lang
+            ),
+        )
+        await state.set_state(UserEventStates.choosing_subcategory)
+        await callback.answer()
+        return
+
+    # Simple category (coffee/walk/chat) — toggle in selected list
+    if action in selected:
+        selected.remove(action)
+    else:
+        if len(selected) >= MAX_ACTIVITY_SELECTIONS:
+            await callback.answer(
+                f"Maximum {MAX_ACTIVITY_SELECTIONS}!" if lang == "en"
+                else f"Максимум {MAX_ACTIVITY_SELECTIONS}!",
+                show_alert=True,
+            )
+            return
+        selected.append(action)
+
+    await state.update_data(activity_selected=selected)
+    await callback.message.edit_reply_markup(
+        reply_markup=get_activity_keyboard(selected=selected, lang=lang)
+    )
+    await callback.answer()
+
+
+@router.message(UserEventStates.choosing_activity, F.text)
+async def process_activity_free_text(message: Message, state: FSMContext):
+    """Handle free text input during activity selection."""
+    # Handle /start or other commands
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        elif message.text.startswith("/menu"):
+            from adapters.telegram.handlers.start import menu_command
+            await menu_command(message)
+        else:
+            await message.answer("Flow cancelled. Send the command again.")
+        return
+
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    custom_text = message.text.strip()
+
+    if len(custom_text) < 3:
+        if lang == "ru":
+            await message.answer("Напиши чуть подробнее!")
+        else:
+            await message.answer("Tell me a bit more!")
+        return
+
+    await state.update_data(custom_activity_text=custom_text)
+
+    await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
+    await show_connection_mode_step(message, state, lang)
+
+
+@router.message(UserEventStates.choosing_activity, F.voice)
+async def process_activity_voice(message: Message, state: FSMContext):
+    """Handle voice input during activity selection."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+
+    status = await message.answer("🎤 Слушаю..." if lang == "ru" else "🎤 Listening...")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription and len(transcription) >= 3:
+            await status.delete()
+            await state.update_data(custom_activity_text=transcription)
+            await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
+            await show_connection_mode_step(message, state, lang)
+        else:
+            await status.edit_text(
+                "Не расслышал 😅 Попробуй ещё раз или напиши текстом" if lang == "ru"
+                else "Couldn't hear that 😅 Try again or type it out"
+            )
+    except Exception as e:
+        logger.error(f"Activity voice processing error: {e}")
+        await status.edit_text(
+            "Что-то пошло не так. Напиши текстом" if lang == "ru"
+            else "Something went wrong. Please type instead"
+        )
+
+
+# === Activity Intent Handlers (Level 2: Subcategories) ===
+
+@router.callback_query(UserEventStates.choosing_subcategory, F.data.startswith("actsub_"))
+async def process_subcategory_selection(callback: CallbackQuery, state: FSMContext):
+    """Handle Level 2 subcategory selection."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    selected = data.get("activity_selected", [])
+    details_temp = data.get("activity_details_temp", {})
+
+    # Parse callback: actsub_{category}_{action}
+    parts = callback.data.split("_", 2)
+    if len(parts) < 3:
+        await callback.answer()
+        return
+    category = parts[1]
+    action = parts[2]
+
+    cat_details = details_temp.get(category, {"selected": []})
+    sub_selected = cat_details.get("selected", [])
+
+    if action == "back":
+        # Return to Level 1 — show full activity message again
+        if lang == "ru":
+            text = (
+                "🎯 <b>Чем хочешь заняться?</b>\n\n"
+                "Выбери активности — мы найдём людей,\n"
+                "которые хотят того же ✨\n\n"
+                "Также можешь написать текстом или записать голосовое 🎤"
+            )
+        else:
+            text = (
+                "🎯 <b>What would you like to do?</b>\n\n"
+                "Pick activities you're up for — we'll find people\n"
+                "who want the same thing and make it happen ✨\n\n"
+                "You can also type or send a voice message 🎤"
+            )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_activity_keyboard(selected=selected, lang=lang),
+        )
+        await state.set_state(UserEventStates.choosing_activity)
+        await callback.answer()
+        return
+
+    if action == "done":
+        # Add category to selected if not already there
+        if category not in selected:
+            if len(selected) >= MAX_ACTIVITY_SELECTIONS:
+                await callback.answer(
+                    f"Maximum {MAX_ACTIVITY_SELECTIONS}!" if lang == "en"
+                    else f"Максимум {MAX_ACTIVITY_SELECTIONS}!",
+                    show_alert=True,
+                )
+                return
+            selected.append(category)
+
+        await state.update_data(activity_selected=selected)
+
+        # Return to Level 1
+        if lang == "ru":
+            text = (
+                "🎯 <b>Чем хочешь заняться?</b>\n\n"
+                "Выбери активности — мы найдём людей,\n"
+                "которые хотят того же ✨\n\n"
+                "Также можешь написать текстом или записать голосовое 🎤"
+            )
+        else:
+            text = (
+                "🎯 <b>What would you like to do?</b>\n\n"
+                "Pick activities you're up for — we'll find people\n"
+                "who want the same thing and make it happen ✨\n\n"
+                "You can also type or send a voice message 🎤"
+            )
+
+        await callback.message.edit_text(
+            text,
+            reply_markup=get_activity_keyboard(selected=selected, lang=lang),
+        )
+        await state.set_state(UserEventStates.choosing_activity)
+        await callback.answer()
+        return
+
+    if action == "other":
+        # Ask for custom text/voice input
+        await state.update_data(current_subcategory=category)
+        if lang == "ru":
+            text = "✏️ Напиши, что именно тебе интересно, или запиши голосовое 🎤"
+        else:
+            text = "✏️ Tell me what you're into, or send a voice message 🎤"
+        await callback.message.edit_text(text)
+        await state.set_state(UserEventStates.waiting_custom_input)
+        await callback.answer()
+        return
+
+    # Toggle subcategory in selected list
+    if action in sub_selected:
+        sub_selected.remove(action)
+    else:
+        sub_selected.append(action)
+
+    cat_details["selected"] = sub_selected
+    details_temp[category] = cat_details
+    await state.update_data(activity_details_temp=details_temp)
+
+    await callback.message.edit_reply_markup(
+        reply_markup=get_activity_subcategory_keyboard(
+            category=category, selected=sub_selected, lang=lang
+        ),
+    )
+    await callback.answer()
+
+
+# === Activity Intent: Custom Input Handlers ===
+
+@router.message(UserEventStates.waiting_custom_input, F.text)
+async def process_custom_activity_text(message: Message, state: FSMContext):
+    """Handle custom text input for 'Other' subcategory option."""
+    # Handle /start or other commands
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        elif message.text.startswith("/menu"):
+            from adapters.telegram.handlers.start import menu_command
+            await menu_command(message)
+        else:
+            await message.answer("Flow cancelled. Send the command again.")
+        return
+
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    category = data.get("current_subcategory")
+    selected = data.get("activity_selected", [])
+    details_temp = data.get("activity_details_temp", {})
+
+    custom_text = message.text.strip()
+    if len(custom_text) < 2:
+        if lang == "ru":
+            await message.answer("Напиши чуть подробнее!")
+        else:
+            await message.answer("Tell me a bit more!")
+        return
+
+    # Save custom text to details
+    cat_details = details_temp.get(category, {"selected": []})
+    cat_details["custom"] = custom_text
+    details_temp[category] = cat_details
+    await state.update_data(activity_details_temp=details_temp)
+
+    # Add category to selected if not already there
+    if category and category not in selected:
+        if len(selected) < MAX_ACTIVITY_SELECTIONS:
+            selected.append(category)
+            await state.update_data(activity_selected=selected)
+
+    # Return to Level 1
+    if lang == "ru":
+        text = (
+            "🎯 <b>Чем хочешь заняться?</b>\n\n"
+            "Выбери активности — мы найдём людей,\n"
+            "которые хотят того же ✨\n\n"
+            "Также можешь написать текстом или записать голосовое 🎤"
+        )
+    else:
+        text = (
+            "🎯 <b>What would you like to do?</b>\n\n"
+            "Pick activities you're up for — we'll find people\n"
+            "who want the same thing and make it happen ✨\n\n"
+            "You can also type or send a voice message 🎤"
+        )
+
+    await message.answer(text, reply_markup=get_activity_keyboard(selected=selected, lang=lang))
+    await state.set_state(UserEventStates.choosing_activity)
+
+
+@router.message(UserEventStates.waiting_custom_input, F.voice)
+async def process_custom_activity_voice(message: Message, state: FSMContext):
+    """Handle voice input for 'Other' subcategory option."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    category = data.get("current_subcategory")
+    selected = data.get("activity_selected", [])
+    details_temp = data.get("activity_details_temp", {})
+
+    status = await message.answer("🎤 Слушаю..." if lang == "ru" else "🎤 Listening...")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
+        transcription = await voice_service.download_and_transcribe(file_url)
+
+        if transcription and len(transcription) >= 2:
+            await status.delete()
+
+            # Save custom text to details
+            cat_details = details_temp.get(category, {"selected": []})
+            cat_details["custom"] = transcription
+            details_temp[category] = cat_details
+            await state.update_data(activity_details_temp=details_temp)
+
+            # Add category to selected if not already there
+            if category and category not in selected:
+                if len(selected) < MAX_ACTIVITY_SELECTIONS:
+                    selected.append(category)
+                    await state.update_data(activity_selected=selected)
+
+            # Return to Level 1
+            if lang == "ru":
+                text = (
+                    "🎯 <b>Чем хочешь заняться?</b>\n\n"
+                    "Выбери активности — мы найдём людей,\n"
+                    "которые хотят того же ✨\n\n"
+                    "Также можешь написать текстом или записать голосовое 🎤"
+                )
+            else:
+                text = (
+                    "🎯 <b>What would you like to do?</b>\n\n"
+                    "Pick activities you're up for — we'll find people\n"
+                    "who want the same thing and make it happen ✨\n\n"
+                    "You can also type or send a voice message 🎤"
+                )
+
+            await message.answer(
+                text,
+                reply_markup=get_activity_keyboard(selected=selected, lang=lang),
+            )
+            await state.set_state(UserEventStates.choosing_activity)
+        else:
+            await status.edit_text(
+                "Не расслышал 😅 Попробуй ещё раз или напиши текстом" if lang == "ru"
+                else "Couldn't hear that 😅 Try again or type it out"
+            )
+    except Exception as e:
+        logger.error(f"Custom activity voice error: {e}")
+        await status.edit_text(
+            "Что-то пошло не так. Напиши текстом" if lang == "ru"
+            else "Something went wrong. Please type instead"
+        )
+
+
+async def finish_activity_selection(message: Message, state: FSMContext, lang: str):
+    """Finalize activity selections and proceed to connection mode (Step 2)."""
+    data = await state.get_data()
+    selected = data.get("activity_selected", [])
+    details_temp = data.get("activity_details_temp", {})
+
+    # Save structured activity data to state for later persistence
+    await state.update_data(
+        activity_categories=selected,
+        activity_details=details_temp,
+    )
+
+    await message.edit_text("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
+
+    await show_connection_mode_step(message, state, lang)
 
 
 # === Step 2: Connection Mode ===
@@ -443,7 +879,10 @@ async def save_personalization_data(message: Message, state: FSMContext, lang: s
             passion_themes=data.get("passion_themes"),
             connection_mode=data.get("connection_mode"),
             personalization_preference=data.get("personalization_preference"),
-            ideal_connection=data.get("ideal_connection")
+            ideal_connection=data.get("ideal_connection"),
+            activity_categories=data.get("activity_categories"),
+            activity_details=data.get("activity_details"),
+            custom_activity_text=data.get("custom_activity_text"),
         )
 
         logger.info(f"Personalization data saved for user {user_id}")
@@ -472,6 +911,13 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
         adaptive_buttons=None,
         personalization_preference=None,
         ideal_connection=None,
+        # Clear activity intent temp data
+        activity_selected=None,
+        activity_details_temp=None,
+        current_subcategory=None,
+        activity_categories=None,
+        activity_details=None,
+        custom_activity_text=None,
     )
 
     # Show matches (combined with "profile ready" text — NO separate message)
