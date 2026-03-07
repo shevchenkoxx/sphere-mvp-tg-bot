@@ -549,6 +549,85 @@ def get_skip_personalization_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+# === ACTIVITY INTENT (UserEvents) ===
+
+def get_activity_keyboard(selected: List[str] = None, lang: str = "en") -> InlineKeyboardMarkup:
+    """Level 1 activity selection keyboard (multi-select, max 3)."""
+    from core.domain.activity_constants import ACTIVITY_CATEGORIES, ACTIVITY_CATEGORY_ORDER
+
+    if selected is None:
+        selected = []
+
+    builder = InlineKeyboardBuilder()
+
+    for cat_key in ACTIVITY_CATEGORY_ORDER:
+        cat = ACTIVITY_CATEGORIES[cat_key]
+        label_key = f"label_{lang}" if f"label_{lang}" in cat else "label_en"
+        label = f"{cat['emoji']} {cat[label_key]}"
+        if cat_key in selected:
+            label = f"✓ {label}"
+        builder.button(text=label, callback_data=f"activity_{cat_key}")
+
+    builder.adjust(2)
+
+    if selected:
+        done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
+        builder.row(InlineKeyboardButton(text=done_text, callback_data="activity_done"))
+
+    return builder.as_markup()
+
+
+def get_activity_subcategory_keyboard(
+    category: str,
+    selected: List[str] = None,
+    lang: str = "en"
+) -> InlineKeyboardMarkup:
+    """Level 2 subcategory keyboard (multi-select) with Other + Back buttons."""
+    from core.domain.activity_constants import ACTIVITY_SUBCATEGORIES
+
+    if selected is None:
+        selected = []
+
+    builder = InlineKeyboardBuilder()
+    subs = ACTIVITY_SUBCATEGORIES.get(category, [])
+
+    for sub in subs:
+        label_key = f"label_{lang}" if f"label_{lang}" in sub else "label_en"
+        label = f"{sub['emoji']} {sub[label_key]}"
+        if sub["key"] in selected:
+            label = f"✓ {label}"
+        builder.button(text=label, callback_data=f"actsub_{category}_{sub['key']}")
+
+    other_text = "✏️ Other" if lang == "en" else "✏️ Другое"
+    builder.button(text=other_text, callback_data=f"actsub_{category}_other")
+
+    builder.adjust(2)
+
+    back_text = "← Back" if lang == "en" else "← Назад"
+    builder.row(InlineKeyboardButton(text=back_text, callback_data=f"actsub_{category}_back"))
+
+    if selected:
+        done_text = f"Done ({len(selected)}) →" if lang == "en" else f"Готово ({len(selected)}) →"
+        builder.row(InlineKeyboardButton(text=done_text, callback_data=f"actsub_{category}_done"))
+
+    return builder.as_markup()
+
+
+def get_my_activities_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+    """My Activities menu -- view/edit/refine activities."""
+    builder = InlineKeyboardBuilder()
+    if lang == "ru":
+        builder.button(text="🔄 Изменить активности", callback_data="change_activities")
+        builder.button(text="✏️ Добавить детали", callback_data="refine_activities")
+        builder.button(text="← Меню", callback_data="back_to_menu")
+    else:
+        builder.button(text="🔄 Change activities", callback_data="change_activities")
+        builder.button(text="✏️ Add details", callback_data="refine_activities")
+        builder.button(text="← Menu", callback_data="back_to_menu")
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
 # === MATCHES PHOTO REQUEST ===
 
 def get_matches_photo_keyboard(lang: str = "en") -> InlineKeyboardMarkup:

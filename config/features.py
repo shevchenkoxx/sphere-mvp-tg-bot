@@ -13,6 +13,10 @@ class Features:
     # Options: "v1" (buttons), "v2" (conversation), "audio" (voice message)
     ONBOARDING_MODE: str = os.getenv("ONBOARDING_MODE", "audio")
 
+    # === PERSONALIZATION ===
+    # Options: "intent" (activity picker), "passion" (free text passion question)
+    PERSONALIZATION_MODE: str = os.getenv("PERSONALIZATION_MODE", "intent")
+
     # === MATCHING ===
     MATCHING_ENABLED: bool = os.getenv("MATCHING_ENABLED", "true").lower() == "true"
     AUTO_MATCH_ON_JOIN: bool = os.getenv("AUTO_MATCH_ON_JOIN", "true").lower() == "true"
@@ -43,6 +47,7 @@ class Features:
         """Get all features as dict (useful for logging)"""
         return {
             "onboarding_mode": cls.ONBOARDING_MODE,
+            "personalization_mode": cls.PERSONALIZATION_MODE,
             "matching_enabled": cls.MATCHING_ENABLED,
             "auto_match_on_join": cls.AUTO_MATCH_ON_JOIN,
             "show_top_matches": cls.SHOW_TOP_MATCHES,

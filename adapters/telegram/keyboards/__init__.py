@@ -30,6 +30,10 @@ from adapters.telegram.keyboards.inline import (
     get_adaptive_buttons_keyboard,
     get_text_step_keyboard,
     get_skip_personalization_keyboard,
+    # Activity intent (UserEvents)
+    get_activity_keyboard,
+    get_activity_subcategory_keyboard,
+    get_my_activities_keyboard,
     # Matches photo & feedback
     get_matches_photo_keyboard,
     get_feedback_keyboard,
@@ -79,6 +83,10 @@ __all__ = [
     "get_adaptive_buttons_keyboard",
     "get_text_step_keyboard",
     "get_skip_personalization_keyboard",
+    # Activity intent (UserEvents)
+    "get_activity_keyboard",
+    "get_activity_subcategory_keyboard",
+    "get_my_activities_keyboard",
     # Matches photo & feedback
     "get_matches_photo_keyboard",
     "get_feedback_keyboard",

@@ -59,6 +59,15 @@ class PersonalizationStates(StatesGroup):
     waiting_ideal_connection = State()  # Step 4: Open-ended "Опиши идеального человека"
 
 
+class UserEventStates(StatesGroup):
+    """FSM states for activity intent selection (UserEvents feature)"""
+    choosing_activity = State()         # Level 1: main 6 categories
+    choosing_subcategory = State()      # Level 2: sport/dining/event subcategories
+    waiting_custom_input = State()      # After "Other" pressed — free text/voice
+    viewing_activities = State()        # My Activities menu view
+    refining_activity = State()         # Adding details/refinement
+
+
 class MatchesPhotoStates(StatesGroup):
     """FSM states for photo request in matches flow"""
     waiting_photo = State()  # Waiting for selfie when user opens matches without photo

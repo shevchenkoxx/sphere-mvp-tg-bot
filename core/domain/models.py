@@ -95,6 +95,10 @@ class User(UserBase):
     connection_mode: Optional[str] = None
     personalization_preference: Optional[str] = None
     ideal_connection: Optional[str] = None
+    # Activity intent fields (UserEvents feature)
+    activity_categories: Optional[List[str]] = None
+    activity_details: Optional[Dict[str, Any]] = None
+    custom_activity_text: Optional[str] = None
     # Referral tracking
     referral_count: int = 0
     referred_by: Optional[str] = None
@@ -133,6 +137,10 @@ class UserUpdate(BaseModel):
     connection_mode: Optional[str] = None  # 'receive_help' / 'give_help' / 'exchange'
     personalization_preference: Optional[str] = None  # Selected adaptive button text
     ideal_connection: Optional[str] = None  # Free-form description of ideal person to meet
+    # Activity intent fields (UserEvents feature)
+    activity_categories: Optional[List[str]] = None
+    activity_details: Optional[Dict[str, Any]] = None
+    custom_activity_text: Optional[str] = None
     # Referral tracking
     referral_count: Optional[int] = None
     referred_by: Optional[str] = None

@@ -73,6 +73,10 @@ class SupabaseUserRepository(IUserRepository):
             connection_mode=data.get("connection_mode"),
             personalization_preference=data.get("personalization_preference"),
             ideal_connection=data.get("ideal_connection"),
+            # Activity intent fields (UserEvents feature)
+            activity_categories=data.get("activity_categories"),
+            activity_details=data.get("activity_details"),
+            custom_activity_text=data.get("custom_activity_text"),
             # Referral tracking
             referral_count=data.get("referral_count", 0),
             referred_by=data.get("referred_by"),
