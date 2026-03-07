@@ -734,8 +734,8 @@ async def show_my_activities(callback: CallbackQuery, state: FSMContext):
         else:
             text = "🎯 <b>No activities selected yet</b>\n\nTap below to choose"
 
-    await callback.message.edit_text(text, reply_markup=get_my_activities_keyboard(lang))
     await callback.answer()
+    await callback.message.edit_text(text, reply_markup=get_my_activities_keyboard(lang))
 
 
 @router.callback_query(F.data == "change_activities")

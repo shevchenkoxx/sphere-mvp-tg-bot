@@ -185,6 +185,14 @@ Language: same as bio text."""
                         sub_labels = [get_subcategory_label(cat, s) for s in shared_subs]
                         personalization_context += f"  → Both want: {', '.join(sub_labels)}\n"
 
+            # Include refinement notes if present
+            refinement_a = activity_details_a.get("_refinement")
+            refinement_b = activity_details_b.get("_refinement")
+            if refinement_a:
+                personalization_context += f"A's activity note: {refinement_a}\n"
+            if refinement_b:
+                personalization_context += f"B's activity note: {refinement_b}\n"
+
         prompt = f"""Analyze compatibility between two people for networking at an event.
 
 Base analysis on what users stated. You may approximate when profiles are short, but stay within the same domain.

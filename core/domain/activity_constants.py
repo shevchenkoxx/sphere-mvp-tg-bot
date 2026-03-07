@@ -95,4 +95,9 @@ def format_user_activities(categories: list, details: dict, lang: str = "en") ->
         if refinement:
             lines.append(f"   └ {refinement}")
 
+    # Show general refinement if present (stored as _refinement key)
+    general_refinement = details.get("_refinement")
+    if general_refinement:
+        lines.append(f"\n📝 {general_refinement}")
+
     return "\n".join(lines)
