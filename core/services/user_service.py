@@ -102,6 +102,9 @@ class UserService:
             "profile_embedding": None,
             "interests_embedding": None,
             "expertise_embedding": None,
+            "activity_categories": [],
+            "activity_details": {},
+            "custom_activity_text": None,
         }
         return await self.user_repo.reset_profile(platform, platform_user_id, reset_data)
 

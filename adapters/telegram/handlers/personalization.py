@@ -101,22 +101,27 @@ async def start_passion_flow(message: Message, state: FSMContext, lang: str):
 
 # === Activity Intent Flow ===
 
-async def start_activity_flow(message: Message, state: FSMContext, lang: str):
-    """Start the activity intent picker (alternative Step 1)."""
+def _get_activity_picker_text(lang: str) -> str:
+    """Get the Level 1 activity picker message text."""
     if lang == "ru":
-        text = (
+        return (
             "🎯 <b>Чем хочешь заняться?</b>\n\n"
             "Выбери активности — мы найдём людей,\n"
             "которые хотят того же ✨\n\n"
-            "Также можешь написать текстом или записать голосовое 🎤"
+            "<i>Также можешь написать текстом или записать голосовое</i> 🎤"
         )
     else:
-        text = (
+        return (
             "🎯 <b>What would you like to do?</b>\n\n"
             "Pick activities you're up for — we'll find people\n"
             "who want the same thing and make it happen ✨\n\n"
-            "You can also type or send a voice message 🎤"
+            "<i>You can also type or send a voice message</i> 🎤"
         )
+
+
+async def start_activity_flow(message: Message, state: FSMContext, lang: str):
+    """Start the activity intent picker (alternative Step 1)."""
+    text = _get_activity_picker_text(lang)
 
     await state.update_data(
         activity_selected=[],
@@ -240,8 +245,7 @@ async def process_activity_selection(callback: CallbackQuery, state: FSMContext)
 
     # Handle "Done" button
     if action == "done":
-        await finish_activity_selection(callback.message, state, lang)
-        await callback.answer()
+        await finish_activity_selection(callback, state, lang)
         return
 
     cat = ACTIVITY_CATEGORIES.get(action)
@@ -381,23 +385,8 @@ async def process_subcategory_selection(callback: CallbackQuery, state: FSMConte
 
     if action == "back":
         # Return to Level 1 — show full activity message again
-        if lang == "ru":
-            text = (
-                "🎯 <b>Чем хочешь заняться?</b>\n\n"
-                "Выбери активности — мы найдём людей,\n"
-                "которые хотят того же ✨\n\n"
-                "Также можешь написать текстом или записать голосовое 🎤"
-            )
-        else:
-            text = (
-                "🎯 <b>What would you like to do?</b>\n\n"
-                "Pick activities you're up for — we'll find people\n"
-                "who want the same thing and make it happen ✨\n\n"
-                "You can also type or send a voice message 🎤"
-            )
-
         await callback.message.edit_text(
-            text,
+            _get_activity_picker_text(lang),
             reply_markup=get_activity_keyboard(selected=selected, lang=lang),
         )
         await state.set_state(UserEventStates.choosing_activity)
@@ -419,23 +408,8 @@ async def process_subcategory_selection(callback: CallbackQuery, state: FSMConte
         await state.update_data(activity_selected=selected)
 
         # Return to Level 1
-        if lang == "ru":
-            text = (
-                "🎯 <b>Чем хочешь заняться?</b>\n\n"
-                "Выбери активности — мы найдём людей,\n"
-                "которые хотят того же ✨\n\n"
-                "Также можешь написать текстом или записать голосовое 🎤"
-            )
-        else:
-            text = (
-                "🎯 <b>What would you like to do?</b>\n\n"
-                "Pick activities you're up for — we'll find people\n"
-                "who want the same thing and make it happen ✨\n\n"
-                "You can also type or send a voice message 🎤"
-            )
-
         await callback.message.edit_text(
-            text,
+            _get_activity_picker_text(lang),
             reply_markup=get_activity_keyboard(selected=selected, lang=lang),
         )
         await state.set_state(UserEventStates.choosing_activity)
@@ -517,22 +491,10 @@ async def process_custom_activity_text(message: Message, state: FSMContext):
             await state.update_data(activity_selected=selected)
 
     # Return to Level 1
-    if lang == "ru":
-        text = (
-            "🎯 <b>Чем хочешь заняться?</b>\n\n"
-            "Выбери активности — мы найдём людей,\n"
-            "которые хотят того же ✨\n\n"
-            "Также можешь написать текстом или записать голосовое 🎤"
-        )
-    else:
-        text = (
-            "🎯 <b>What would you like to do?</b>\n\n"
-            "Pick activities you're up for — we'll find people\n"
-            "who want the same thing and make it happen ✨\n\n"
-            "You can also type or send a voice message 🎤"
-        )
-
-    await message.answer(text, reply_markup=get_activity_keyboard(selected=selected, lang=lang))
+    await message.answer(
+        _get_activity_picker_text(lang),
+        reply_markup=get_activity_keyboard(selected=selected, lang=lang),
+    )
     await state.set_state(UserEventStates.choosing_activity)
 
 
@@ -568,23 +530,8 @@ async def process_custom_activity_voice(message: Message, state: FSMContext):
                     await state.update_data(activity_selected=selected)
 
             # Return to Level 1
-            if lang == "ru":
-                text = (
-                    "🎯 <b>Чем хочешь заняться?</b>\n\n"
-                    "Выбери активности — мы найдём людей,\n"
-                    "которые хотят того же ✨\n\n"
-                    "Также можешь написать текстом или записать голосовое 🎤"
-                )
-            else:
-                text = (
-                    "🎯 <b>What would you like to do?</b>\n\n"
-                    "Pick activities you're up for — we'll find people\n"
-                    "who want the same thing and make it happen ✨\n\n"
-                    "You can also type or send a voice message 🎤"
-                )
-
             await message.answer(
-                text,
+                _get_activity_picker_text(lang),
                 reply_markup=get_activity_keyboard(selected=selected, lang=lang),
             )
             await state.set_state(UserEventStates.choosing_activity)
@@ -673,11 +620,12 @@ async def process_refinement_voice(message: Message, state: FSMContext):
         )
 
 
-async def finish_activity_selection(message: Message, state: FSMContext, lang: str):
-    """Finalize activity selections and proceed to connection mode (Step 2)."""
+async def finish_activity_selection(callback: CallbackQuery, state: FSMContext, lang: str):
+    """Finalize activity selections and proceed or save directly if editing."""
     data = await state.get_data()
     selected = data.get("activity_selected", [])
     details_temp = data.get("activity_details_temp", {})
+    custom_text = data.get("custom_activity_text")
 
     # Save structured activity data to state for later persistence
     await state.update_data(
@@ -685,9 +633,38 @@ async def finish_activity_selection(message: Message, state: FSMContext, lang: s
         activity_details=details_temp,
     )
 
-    await message.edit_text("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
+    # Check if editing from My Activities menu
+    if data.get("is_editing_activities"):
+        # Save directly to DB and return to menu
+        user_id = str(callback.message.chat.id)
+        try:
+            await user_service.update_user(
+                MessagePlatform.TELEGRAM,
+                user_id,
+                activity_categories=selected,
+                activity_details=details_temp,
+                custom_activity_text=custom_text,
+            )
+        except Exception as e:
+            logger.error(f"Failed to save activity edit: {e}")
 
-    await show_connection_mode_step(message, state, lang)
+        await callback.message.edit_text(
+            "✓ Активности обновлены!" if lang == "ru" else "✓ Activities updated!"
+        )
+        await state.clear()
+        await callback.message.answer(
+            "Что делаем?" if lang == "ru" else "What would you like to do?",
+            reply_markup=get_main_menu_keyboard(lang),
+        )
+        await callback.answer()
+        return
+
+    # Normal onboarding flow: proceed to connection mode
+    await callback.message.edit_text(
+        "✓ " + ("Отлично!" if lang == "ru" else "Great!")
+    )
+    await show_connection_mode_step(callback.message, state, lang)
+    await callback.answer()
 
 
 # === Step 2: Connection Mode ===

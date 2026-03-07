@@ -742,7 +742,7 @@ async def show_my_activities(callback: CallbackQuery, state: FSMContext):
 async def change_activities(callback: CallbackQuery, state: FSMContext):
     """Re-open activity picker from My Activities menu."""
     lang = detect_lang(callback)
-    await state.update_data(personalization_lang=lang)
+    await state.update_data(personalization_lang=lang, is_editing_activities=True)
 
     from adapters.telegram.handlers.personalization import start_activity_flow
     await start_activity_flow(callback.message, state, lang)
