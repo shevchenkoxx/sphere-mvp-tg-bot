@@ -255,6 +255,11 @@ async def process_activity_selection(callback: CallbackQuery, state: FSMContext)
 
     # If category has subcategories, show Level 2
     if cat.get("has_sub"):
+        # Block entry if at max and this category isn't already selected
+        if len(selected) >= MAX_ACTIVITY_SELECTIONS and action not in selected:
+            max_text = f"Maximum {MAX_ACTIVITY_SELECTIONS}!" if lang == "en" else f"Максимум {MAX_ACTIVITY_SELECTIONS}!"
+            await callback.answer(max_text, show_alert=True)
+            return
         await state.update_data(current_subcategory=action)
         details_temp = data.get("activity_details_temp", {})
         cat_details = details_temp.get(action, {})
@@ -327,6 +332,31 @@ async def process_activity_free_text(message: Message, state: FSMContext):
 
     await state.update_data(custom_activity_text=custom_text)
 
+    # Copy temp selections to final keys
+    selected = data.get("activity_selected", [])
+    details_temp = data.get("activity_details_temp", {})
+    await state.update_data(
+        activity_categories=selected,
+        activity_details=details_temp,
+    )
+
+    # If editing from My Activities menu, save and return to menu
+    if data.get("is_editing_activities"):
+        user_id = str(message.chat.id)
+        try:
+            await user_service.update_user(
+                MessagePlatform.TELEGRAM, user_id,
+                activity_categories=selected,
+                activity_details=details_temp,
+                custom_activity_text=custom_text,
+            )
+        except Exception as e:
+            logger.error(f"Failed to save activity edit: {e}")
+        confirm = "✓ Активности обновлены!" if lang == "ru" else "✓ Activities updated!"
+        await message.answer(confirm, reply_markup=get_main_menu_keyboard(lang))
+        await state.clear()
+        return
+
     await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
     await show_connection_mode_step(message, state, lang)
 
@@ -347,6 +377,32 @@ async def process_activity_voice(message: Message, state: FSMContext):
         if transcription and len(transcription) >= 3:
             await status.delete()
             await state.update_data(custom_activity_text=transcription)
+
+            # Copy temp selections to final keys
+            selected = data.get("activity_selected", [])
+            details_temp = data.get("activity_details_temp", {})
+            await state.update_data(
+                activity_categories=selected,
+                activity_details=details_temp,
+            )
+
+            # If editing from My Activities menu, save and return to menu
+            if data.get("is_editing_activities"):
+                user_id = str(message.chat.id)
+                try:
+                    await user_service.update_user(
+                        MessagePlatform.TELEGRAM, user_id,
+                        activity_categories=selected,
+                        activity_details=details_temp,
+                        custom_activity_text=transcription,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save activity edit: {e}")
+                confirm = "✓ Активности обновлены!" if lang == "ru" else "✓ Activities updated!"
+                await message.answer(confirm, reply_markup=get_main_menu_keyboard(lang))
+                await state.clear()
+                return
+
             await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
             await show_connection_mode_step(message, state, lang)
         else:
@@ -444,6 +500,34 @@ async def process_subcategory_selection(callback: CallbackQuery, state: FSMConte
         ),
     )
     await callback.answer()
+
+
+@router.message(UserEventStates.choosing_subcategory, F.text)
+async def subcategory_text_hint(message: Message, state: FSMContext):
+    """Prompt user to use buttons in subcategory view."""
+    if message.text and message.text.startswith("/"):
+        await state.clear()
+        if message.text.startswith("/start"):
+            from adapters.telegram.handlers.start import start_command
+            await start_command(message, state)
+        return
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    await message.answer(
+        "Используй кнопки выше или нажми ✏️ Другое" if lang == "ru"
+        else "Use the buttons above or tap ✏️ Other"
+    )
+
+
+@router.message(UserEventStates.choosing_subcategory, F.voice)
+async def subcategory_voice_hint(message: Message, state: FSMContext):
+    """Prompt user to use buttons in subcategory view."""
+    data = await state.get_data()
+    lang = data.get("personalization_lang", "en")
+    await message.answer(
+        "Используй кнопки выше или нажми ✏️ Другое" if lang == "ru"
+        else "Use the buttons above or tap ✏️ Other"
+    )
 
 
 # === Activity Intent: Custom Input Handlers ===
@@ -566,6 +650,9 @@ async def process_refinement_text(message: Message, state: FSMContext):
 
     refinement_text = message.text.strip()
     if len(refinement_text) < 3:
+        await message.answer(
+            "Напиши чуть подробнее!" if lang == "ru" else "Tell me a bit more!"
+        )
         return
 
     user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
@@ -622,6 +709,8 @@ async def process_refinement_voice(message: Message, state: FSMContext):
 
 async def finish_activity_selection(callback: CallbackQuery, state: FSMContext, lang: str):
     """Finalize activity selections and proceed or save directly if editing."""
+    await callback.answer()  # Answer immediately to prevent spinner hang
+
     data = await state.get_data()
     selected = data.get("activity_selected", [])
     details_temp = data.get("activity_details_temp", {})
@@ -656,7 +745,6 @@ async def finish_activity_selection(callback: CallbackQuery, state: FSMContext, 
             "Что делаем?" if lang == "ru" else "What would you like to do?",
             reply_markup=get_main_menu_keyboard(lang),
         )
-        await callback.answer()
         return
 
     # Normal onboarding flow: proceed to connection mode
@@ -664,7 +752,6 @@ async def finish_activity_selection(callback: CallbackQuery, state: FSMContext, 
         "✓ " + ("Отлично!" if lang == "ru" else "Great!")
     )
     await show_connection_mode_step(callback.message, state, lang)
-    await callback.answer()
 
 
 # === Step 2: Connection Mode ===

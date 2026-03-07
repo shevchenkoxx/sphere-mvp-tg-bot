@@ -744,6 +744,12 @@ async def change_activities(callback: CallbackQuery, state: FSMContext):
     lang = detect_lang(callback)
     await state.update_data(personalization_lang=lang, is_editing_activities=True)
 
+    # Remove old keyboard to prevent double-interaction
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
     from adapters.telegram.handlers.personalization import start_activity_flow
     await start_activity_flow(callback.message, state, lang)
     await callback.answer()
