@@ -62,12 +62,13 @@ async def main():
         while True:
             await asyncio.sleep(60)
             try:
+                config_service.invalidate_cache()
                 buttons = await config_service.get_menu_buttons()
                 set_menu_config(buttons)
             except Exception:
                 pass  # keep old config on failure
 
-    asyncio.create_task(_refresh_menu_config())
+    _menu_refresh_task = asyncio.create_task(_refresh_menu_config())  # noqa: F841 — prevent GC
 
     # Register rate limiting middleware
     dp.message.middleware(ThrottlingMiddleware())
