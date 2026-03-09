@@ -13,39 +13,43 @@ Flow:
 
 import asyncio
 import json
-import re
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+import re
+
+from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters import Command
 
+from adapters.telegram.keyboards import get_main_menu_keyboard
+from adapters.telegram.loader import (
+    bot,
+    embedding_service,
+    event_service,
+    matching_service,
+    user_service,
+    voice_service,
+)
+from config.features import Features
+from config.settings import settings
 from core.domain.models import MessagePlatform
 from core.prompts.audio_onboarding import (
-    AUDIO_GUIDE_PROMPT_RU,
-    AUDIO_GUIDE_PROMPT,
-    AUDIO_INTRO_PROMPT,
-    AUDIO_WELCOME_EN,
-    AUDIO_WELCOME_RU,
-    AUDIO_EXTRACTION_PROMPT,
-    AUDIO_VALIDATION_PROMPT,
-    AUDIO_CONFIRMATION_HEADER,
-    AUDIO_CONFIRMATION_HEADER_RU,
     AUDIO_CONFIRMATION_FOOTER,
     AUDIO_CONFIRMATION_FOOTER_RU,
+    AUDIO_CONFIRMATION_HEADER,
+    AUDIO_CONFIRMATION_HEADER_RU,
+    AUDIO_EXTRACTION_PROMPT,
+    AUDIO_VALIDATION_PROMPT,
+    AUDIO_WELCOME_EN,
+    AUDIO_WELCOME_RU,
+    TRANSCRIPT_CORRECTION_PROMPT,
     WHISPER_PROMPT_EN,
     WHISPER_PROMPT_RU,
-    TRANSCRIPT_CORRECTION_PROMPT,
 )
-from adapters.telegram.loader import user_service, event_service, voice_service, matching_service, bot, embedding_service
-from infrastructure.database.user_repository import SupabaseUserRepository
-from adapters.telegram.keyboards import get_main_menu_keyboard
-from config.settings import settings
-from config.features import Features
 from core.utils.language import detect_lang, get_language_name
+from infrastructure.database.user_repository import SupabaseUserRepository
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +155,7 @@ async def _delayed_optimization_message(chat_id: int, user_id: str, lang: str = 
                 "You can also just reply to continue."
             )
 
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💫 Find matches", callback_data="my_matches")]
         ])
@@ -304,7 +308,6 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
         )
 
     # Add "Switch to text" button
-    from adapters.telegram.keyboards import get_text_step_keyboard
     switch_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="⌨️ Switch to text" if lang != "ru" else "⌨️ Лучше текстом",
@@ -1133,7 +1136,6 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
     if hasattr(message_or_callback, 'message'):
         message = message_or_callback.message
         user_id = str(message_or_callback.from_user.id)
-        tg_username = message_or_callback.from_user.username
     else:
         message = message_or_callback
         user_id = str(message.from_user.id)
@@ -1232,7 +1234,10 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
                                 # Send notifications for each match
                                 if matches and chat_id:
-                                    from adapters.telegram.handlers.matches import notify_about_match, notify_admin_new_matches
+                                    from adapters.telegram.handlers.matches import (
+                                        notify_about_match,
+                                        notify_admin_new_matches,
+                                    )
                                     user_name = updated_user.display_name or updated_user.first_name or "Someone"
                                     for partner, result_with_id in matches[:3]:
                                         partner_name = partner.display_name or partner.first_name or "Someone"
@@ -1310,8 +1315,8 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
 
 async def show_top_matches(message, user, event, lang: str, tg_username: str = None):
     """Show top 3 matches after onboarding and notify matched users"""
-    from config.features import Features
     from adapters.telegram.handlers.matches import notify_about_match, notify_admin_new_matches
+    from config.features import Features
 
     try:
         # Use vector matching if user has embeddings (faster, more efficient)
@@ -1611,6 +1616,7 @@ async def extract_profile_from_transcription(
     If return_raw=True, returns the full LLM response for debugging.
     """
     from openai import AsyncOpenAI
+
     from config.settings import settings
 
     client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=30.0)

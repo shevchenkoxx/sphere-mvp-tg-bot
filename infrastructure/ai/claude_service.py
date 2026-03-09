@@ -5,11 +5,13 @@ Handles user analysis and match compatibility.
 
 import json
 import re
-from typing import Dict, Any
+from typing import Any, Dict
+
 from anthropic import Anthropic
+
+from config.settings import settings
 from core.domain.models import MatchResult, MatchType
 from core.interfaces.ai import IAIService
-from config.settings import settings
 
 
 class ClaudeAIService(IAIService):

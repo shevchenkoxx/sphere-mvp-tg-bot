@@ -3,11 +3,12 @@ Supabase client initialization.
 Single point of database connection.
 """
 
-from supabase import create_client, Client
 import asyncio
-import sys
 import os
+import sys
 from functools import wraps
+
+from supabase import Client, create_client
 
 # Get Supabase credentials directly from env (bypass pydantic for reliability)
 _supabase_url = os.environ.get("SUPABASE_URL", "")

@@ -4,22 +4,21 @@ Fast, friendly, conversational.
 Multilingual: English default, Russian supported.
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, CommandStart, CommandObject, StateFilter
+from aiogram import F, Router
+from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
-from core.domain.models import MessagePlatform
-from core.domain.constants import get_interest_display, get_goal_display
-from adapters.telegram.loader import user_service, event_service, bot, meetup_repo
+from adapters.telegram.config import ONBOARDING_VERSION
 from adapters.telegram.keyboards import (
-    get_main_menu_keyboard,
-    get_join_event_keyboard,
     get_back_to_menu_keyboard,
+    get_main_menu_keyboard,
     get_profile_with_edit_keyboard,
 )
+from adapters.telegram.loader import bot, event_service, meetup_repo, user_service
 from adapters.telegram.states import OnboardingStates
-from adapters.telegram.config import ONBOARDING_VERSION
+from core.domain.constants import get_goal_display
+from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
 router = Router()
@@ -581,8 +580,9 @@ async def refer_a_friend(callback: CallbackQuery):
 
     # Generate QR code for the referral link
     try:
-        import qrcode
         import io
+
+        import qrcode
         from aiogram.types import BufferedInputFile
 
         qr = qrcode.QRCode(version=1, box_size=10, border=2)
@@ -713,8 +713,8 @@ async def show_my_activities(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    from core.domain.activity_constants import format_user_activities
     from adapters.telegram.keyboards import get_my_activities_keyboard
+    from core.domain.activity_constants import format_user_activities
 
     categories = user.activity_categories or []
     details = user.activity_details or {}

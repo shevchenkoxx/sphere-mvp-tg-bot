@@ -3,24 +3,28 @@ Meetup handler - proposer FSM flow + receiver accept/decline callbacks.
 """
 
 import logging
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
-from aiogram.fsm.context import FSMContext
 
-from core.domain.models import MessagePlatform, MatchStatus
-from adapters.telegram.states.onboarding import MeetupStates
-from adapters.telegram.loader import (
-    user_service, matching_service, bot,
-    meetup_repo, meetup_ai_service,
-)
+from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from adapters.telegram.keyboards.inline import (
-    get_meetup_time_keyboard,
+    MEETUP_TIME_SLOTS,
+    get_back_to_menu_keyboard,
+    get_meetup_confirmation_keyboard,
     get_meetup_preview_keyboard,
     get_meetup_receiver_keyboard,
-    get_meetup_confirmation_keyboard,
-    get_back_to_menu_keyboard,
-    MEETUP_TIME_SLOTS,
+    get_meetup_time_keyboard,
 )
+from adapters.telegram.loader import (
+    bot,
+    matching_service,
+    meetup_ai_service,
+    meetup_repo,
+    user_service,
+)
+from adapters.telegram.states.onboarding import MeetupStates
+from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
@@ -189,7 +193,6 @@ async def receive_location(message: Message, state: FSMContext):
     )
 
     fsm = await state.get_data()
-    match_id = fsm["meetup_match_id"]
     partner_id = fsm["meetup_partner_id"]
     selected_times = fsm["meetup_selected_times"]
     ai_explanation = fsm.get("meetup_ai_explanation")

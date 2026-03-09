@@ -3,11 +3,12 @@ Supabase implementation of User repository.
 """
 
 import json
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
-from core.domain.models import User, UserCreate, UserUpdate, MessagePlatform
+
+from core.domain.models import MessagePlatform, User, UserCreate, UserUpdate
 from core.interfaces.repositories import IUserRepository
-from infrastructure.database.supabase_client import supabase, run_sync
+from infrastructure.database.supabase_client import run_sync, supabase
 
 
 def _parse_embedding(value) -> Optional[List[float]]:

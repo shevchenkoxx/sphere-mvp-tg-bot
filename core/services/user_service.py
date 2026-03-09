@@ -3,18 +3,14 @@ User service - business logic for user operations.
 Platform-agnostic, works through interfaces.
 """
 
+import logging
 from typing import Optional
 from uuid import UUID
-from core.domain.models import (
-    User, UserCreate, UserUpdate,
-    MessagePlatform, OnboardingData
-)
-from core.domain.constants import (
-    MIN_NAME_LENGTH, MAX_NAME_LENGTH, MAX_INTERESTS, MAX_GOALS
-)
-from core.interfaces.repositories import IUserRepository
+
+from core.domain.constants import MAX_GOALS, MAX_INTERESTS, MAX_NAME_LENGTH, MIN_NAME_LENGTH
+from core.domain.models import MessagePlatform, OnboardingData, User, UserCreate, UserUpdate
 from core.interfaces.ai import IAIService
-import logging
+from core.interfaces.repositories import IUserRepository
 
 logger = logging.getLogger(__name__)
 

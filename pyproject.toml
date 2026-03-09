@@ -1,0 +1,66 @@
+[project]
+name = "sphere-bot"
+version = "1.0.0"
+description = "Telegram bot for meaningful connections at events"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E402",   # module-import-not-at-top (aiogram handlers use delayed imports)
+    "B008",   # do not perform function call in argument defaults (common in aiogram)
+    "SIM105", # use contextlib.suppress (try/except pass is clearer in our patterns)
+    "SIM108", # use ternary operator (readability)
+    "RUF001", # ambiguous unicode (Russian text in strings)
+    "RUF002", # ambiguous unicode in docstrings
+    "RUF003", # ambiguous unicode in comments
+    "RUF006", # asyncio dangling task (we store refs where needed)
+    "RUF013", # implicit-optional (PEP 484 style, too noisy to fix everywhere)
+    "N802",   # function name should be lowercase (aiogram callbacks)
+    "N806",   # variable in function should be lowercase
+    "UP007",  # use X | Y for union (keep Optional for readability)
+    "UP006",  # non-pep585-annotation (List vs list — py3.9 compat)
+    "UP035",  # deprecated-import (from typing import List — py3.9 compat)
+    "UP042",  # replace-str-enum (StrEnum not available in py3.10)
+    "RUF059", # unused-unpacked-variable (common in tuple returns)
+    "RUF022", # unsorted-dunder-all (cosmetic)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["adapters", "core", "infrastructure", "config"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+exclude = ["tests/prompts/", "scripts/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"

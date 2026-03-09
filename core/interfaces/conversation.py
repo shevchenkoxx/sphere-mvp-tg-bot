@@ -4,9 +4,9 @@ Allows swapping LLM providers (OpenAI, Anthropic, local models).
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 
 class ConversationRole(str, Enum):

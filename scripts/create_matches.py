@@ -5,18 +5,19 @@ Run: python scripts/create_matches.py <telegram_user_id>
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load env
 from dotenv import load_dotenv
+
 load_dotenv()
 
+from adapters.telegram.loader import event_service, matching_service, user_service
 from core.domain.models import MessagePlatform
-from adapters.telegram.loader import user_service, matching_service, event_service
 
 
 async def create_matches_for_user(telegram_user_id: str):
@@ -50,7 +51,7 @@ async def create_matches_for_user(telegram_user_id: str):
     print(f"✅ Event: {event.name} ({event.code})")
 
     # Create matches
-    print(f"\n🤖 Creating matches via OpenAI...")
+    print("\n🤖 Creating matches via OpenAI...")
 
     try:
         matches = await matching_service.find_and_create_matches_for_user(

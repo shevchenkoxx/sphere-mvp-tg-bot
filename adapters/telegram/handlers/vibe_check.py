@@ -12,38 +12,37 @@ Viral loop: shareable link, fun result, drives new users.
 
 import asyncio
 import json
+import logging
 import os
 import re
-import logging
 import secrets
 import string
 import tempfile
 from datetime import datetime, timezone
 from uuid import UUID
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+from openai import AsyncOpenAI
 
-from core.domain.models import MessagePlatform
-from adapters.telegram.loader import user_service, bot
 from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
-    get_back_to_menu_keyboard,
-    get_vibe_share_keyboard,
     get_vibe_result_keyboard,
+    get_vibe_share_keyboard,
     get_vibe_waiting_keyboard,
 )
+from adapters.telegram.loader import bot, user_service
 from adapters.telegram.states import VibeCheckStates
-from core.utils.language import detect_lang, get_language_name
-from core.prompts.vibe_check import (
-    VIBE_INTERVIEW_PROMPT,
-    VIBE_INTERVIEW_EXTRACTION_PROMPT,
-    VIBE_COMPATIBILITY_PROMPT,
-)
-from infrastructure.database.supabase_client import supabase, run_sync
 from config.settings import settings
-from openai import AsyncOpenAI
+from core.domain.models import MessagePlatform
+from core.prompts.vibe_check import (
+    VIBE_COMPATIBILITY_PROMPT,
+    VIBE_INTERVIEW_EXTRACTION_PROMPT,
+    VIBE_INTERVIEW_PROMPT,
+)
+from core.utils.language import detect_lang, get_language_name
+from infrastructure.database.supabase_client import run_sync, supabase
 
 logger = logging.getLogger(__name__)
 router = Router()

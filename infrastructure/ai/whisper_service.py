@@ -2,15 +2,17 @@
 OpenAI Whisper service for voice transcription.
 """
 
+import asyncio
+import logging
 import os
 import tempfile
-import asyncio
-import aiohttp
+
 import aiofiles
-import logging
+import aiohttp
 from openai import OpenAI
-from core.interfaces.ai import IVoiceService
+
 from config.settings import settings
+from core.interfaces.ai import IVoiceService
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +25,20 @@ class WhisperVoiceService(IVoiceService):
 
     async def download_file(self, file_url: str) -> str:
         """Download file from URL to temp location"""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(file_url) as response:
-                if response.status == 200:
-                    data = await response.read()
-                    if not data or len(data) < 100:
-                        logger.warning(f"Downloaded voice file too small ({len(data)} bytes), skipping")
-                        return None
-                    # Create temp file
-                    fd, path = tempfile.mkstemp(suffix='.ogg')
-                    async with aiofiles.open(path, 'wb') as f:
-                        await f.write(data)
-                    os.close(fd)
-                    return path
-                else:
-                    logger.warning(f"Failed to download voice file: HTTP {response.status}")
+        async with aiohttp.ClientSession() as session, session.get(file_url) as response:
+            if response.status == 200:
+                data = await response.read()
+                if not data or len(data) < 100:
+                    logger.warning(f"Downloaded voice file too small ({len(data)} bytes), skipping")
+                    return None
+                # Create temp file
+                fd, path = tempfile.mkstemp(suffix='.ogg')
+                async with aiofiles.open(path, 'wb') as f:
+                    await f.write(data)
+                os.close(fd)
+                return path
+            else:
+                logger.warning(f"Failed to download voice file: HTTP {response.status}")
         return None
 
     async def transcribe(self, audio_file_path: str, language: str = None, prompt: str = None) -> str:

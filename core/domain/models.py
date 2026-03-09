@@ -3,12 +3,12 @@ Domain models - the core of business logic.
 These models are transport-agnostic (work with Telegram, WhatsApp, API, etc.)
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from uuid import UUID
 from enum import Enum
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
+from pydantic import BaseModel, Field
 
 # === ENUMS ===
 

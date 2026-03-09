@@ -5,10 +5,11 @@ Event service - business logic for event operations.
 import logging
 import random
 import string
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
-from core.domain.models import Event, EventCreate, User, MessagePlatform
+
 from core.domain.constants import EVENT_CODE_LENGTH
+from core.domain.models import Event, EventCreate, MessagePlatform, User
 from core.interfaces.repositories import IEventRepository, IUserRepository
 
 logger = logging.getLogger(__name__)

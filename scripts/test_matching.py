@@ -4,18 +4,17 @@ Picks a user and runs vector matching to verify everything works.
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from uuid import UUID
+from core.services.matching_service import MatchingService
+from infrastructure.ai.openai_service import OpenAIService
+from infrastructure.database.event_repository import SupabaseEventRepository
+from infrastructure.database.match_repository import SupabaseMatchRepository
 from infrastructure.database.supabase_client import supabase
 from infrastructure.database.user_repository import SupabaseUserRepository
-from infrastructure.database.match_repository import SupabaseMatchRepository
-from infrastructure.database.event_repository import SupabaseEventRepository
-from infrastructure.ai.openai_service import OpenAIService
-from core.services.matching_service import MatchingService
 
 
 async def test():

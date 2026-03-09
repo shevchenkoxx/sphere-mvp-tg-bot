@@ -1,14 +1,14 @@
 from adapters.telegram.states.onboarding import (
-    OnboardingStates,
-    EventStates,
-    EventInfoStates,
     ChatStates,
-    ProfileEditStates,
-    PersonalizationStates,
-    UserEventStates,
-    MatchFeedbackStates,
+    EventInfoStates,
+    EventStates,
     MatchesPhotoStates,
+    MatchFeedbackStates,
     MeetupStates,
+    OnboardingStates,
+    PersonalizationStates,
+    ProfileEditStates,
+    UserEventStates,
     VibeCheckStates,
 )
 

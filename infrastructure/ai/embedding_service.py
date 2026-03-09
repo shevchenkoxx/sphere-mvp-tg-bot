@@ -4,11 +4,13 @@ Uses OpenAI text-embedding-3-small (1536 dimensions).
 """
 
 import asyncio
-from typing import List, Tuple, Optional
-from openai import AsyncOpenAI
-from core.domain.models import User
-from config.settings import settings
 import logging
+from typing import List, Optional, Tuple
+
+from openai import AsyncOpenAI
+
+from config.settings import settings
+from core.domain.models import User
 
 logger = logging.getLogger(__name__)
 

@@ -5,18 +5,19 @@ Prevents users from spamming commands and wasting API calls.
 Uses in-memory storage with per-user tracking.
 """
 
-import time
 import logging
-from typing import Any, Awaitable, Callable, Dict
+import time
 from collections import defaultdict
+from collections.abc import Awaitable
+from typing import Any, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery, TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from core.domain.constants import (
     RATE_LIMIT_COMMANDS,
-    RATE_LIMIT_MATCHING,
     RATE_LIMIT_INTERVAL_SECONDS,
+    RATE_LIMIT_MATCHING,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,9 +71,7 @@ class ThrottlingMiddleware(BaseMiddleware):
     ) -> Any:
         # Extract user_id
         user = None
-        if isinstance(event, Message):
-            user = event.from_user
-        elif isinstance(event, CallbackQuery):
+        if isinstance(event, Message) or isinstance(event, CallbackQuery):
             user = event.from_user
 
         if not user:

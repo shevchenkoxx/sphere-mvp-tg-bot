@@ -2,31 +2,35 @@
 Matches handler - viewing and interacting with matches.
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+import logging
+
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
-from core.domain.models import MessagePlatform, MatchStatus
-from core.domain.constants import get_interest_display, get_goal_display
-from adapters.telegram.loader import (
-    matching_service, user_service, event_service, bot,
-    speed_dating_service, speed_dating_repo
-)
 from adapters.telegram.keyboards import (
-    get_match_keyboard,
+    get_back_to_menu_keyboard,
     get_chat_keyboard,
     get_main_menu_keyboard,
-    get_back_to_menu_keyboard,
-    get_profile_view_keyboard,
-    get_matches_menu_keyboard,
-    get_speed_dating_result_keyboard,
+    get_match_keyboard,
     get_matches_photo_keyboard,
+    get_profile_view_keyboard,
+    get_speed_dating_result_keyboard,
+)
+from adapters.telegram.loader import (
+    bot,
+    event_service,
+    matching_service,
+    speed_dating_repo,
+    speed_dating_service,
+    user_service,
 )
 from adapters.telegram.states.onboarding import MatchesPhotoStates, MatchFeedbackStates
 from config.features import Features
+from core.domain.constants import get_goal_display
+from core.domain.models import MatchStatus, MessagePlatform
 from core.utils.language import detect_lang
-import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -812,13 +816,13 @@ async def retry_matching(callback: CallbackQuery, state: FSMContext):
             from config.features import Features
 
             if user.profile_embedding:
-                matches = await matching_service.find_matches_vector(
+                await matching_service.find_matches_vector(
                     user=user,
                     event_id=user.current_event_id,
                     limit=Features.SHOW_TOP_MATCHES
                 )
             else:
-                matches = await matching_service.find_and_create_matches_for_user(
+                await matching_service.find_and_create_matches_for_user(
                     user=user,
                     event_id=user.current_event_id,
                     limit=Features.SHOW_TOP_MATCHES
@@ -1086,8 +1090,9 @@ async def handle_matches_photo_text(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("feedback_"))
 async def handle_feedback(callback: CallbackQuery, state: FSMContext):
     """Handle match feedback (good/bad) - saves to database, asks for voice feedback"""
-    from infrastructure.database.supabase_client import supabase
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    from infrastructure.database.supabase_client import supabase
 
     lang = detect_lang(callback)
 
@@ -1193,8 +1198,8 @@ async def skip_voice_feedback(callback: CallbackQuery, state: FSMContext):
 @router.message(MatchFeedbackStates.waiting_voice_feedback, F.voice)
 async def handle_voice_feedback(message: Message, state: FSMContext):
     """Handle voice feedback after match rating — transcribe and save"""
-    from infrastructure.database.supabase_client import supabase
     from adapters.telegram.loader import voice_service
+    from infrastructure.database.supabase_client import supabase
 
     data = await state.get_data()
     match_id = data.get("feedback_match_id")

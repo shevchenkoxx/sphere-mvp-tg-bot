@@ -3,8 +3,7 @@ Activity intent constants for UserEvents feature.
 Categories and subcategories for the activity picker.
 """
 
-from typing import Dict, List, Any
-
+from typing import Any, Dict, List
 
 # Level 1: Main activity categories
 ACTIVITY_CATEGORIES: Dict[str, Dict[str, Any]] = {

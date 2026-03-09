@@ -4,11 +4,13 @@ Supports: Luma, Eventbrite, custom websites.
 """
 
 import json
-import re
 import logging
+import re
+from typing import Any, Dict, Optional
+
 import httpx
-from typing import Optional, Dict, Any
 from openai import AsyncOpenAI
+
 from config.settings import settings
 
 logger = logging.getLogger(__name__)

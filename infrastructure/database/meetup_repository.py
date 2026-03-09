@@ -2,15 +2,15 @@
 Meetup Repository - CRUD for meetup_proposals table.
 """
 
-import string
-import random
 import logging
-from typing import Optional, List
-from uuid import UUID
+import random
+import string
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+from uuid import UUID
 
-from core.domain.models import MeetupProposal, MeetupStatus
-from infrastructure.database.supabase_client import supabase, run_sync
+from core.domain.models import MeetupProposal
+from infrastructure.database.supabase_client import run_sync, supabase
 
 logger = logging.getLogger(__name__)
 

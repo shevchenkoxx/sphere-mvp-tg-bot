@@ -1,30 +1,30 @@
+from core.domain.constants import (
+    EVENT_CODE_LENGTH,
+    GOALS,
+    INTERESTS,
+    MAX_BIO_LENGTH,
+    MAX_GOALS,
+    MAX_INTERESTS,
+    MAX_NAME_LENGTH,
+    MIN_NAME_LENGTH,
+    get_goal_display,
+    get_interest_display,
+)
 from core.domain.models import (
-    User,
-    UserCreate,
-    UserUpdate,
     Event,
     EventCreate,
     Match,
     MatchCreate,
     MatchResult,
-    MatchType,
     MatchStatus,
+    MatchType,
     Message,
     MessageCreate,
     MessagePlatform,
     OnboardingData,
-)
-from core.domain.constants import (
-    INTERESTS,
-    GOALS,
-    MAX_INTERESTS,
-    MAX_GOALS,
-    MIN_NAME_LENGTH,
-    MAX_NAME_LENGTH,
-    MAX_BIO_LENGTH,
-    EVENT_CODE_LENGTH,
-    get_interest_display,
-    get_goal_display,
+    User,
+    UserCreate,
+    UserUpdate,
 )
 
 __all__ = [

@@ -1,5 +1,17 @@
 from adapters.telegram.config import ONBOARDING_VERSION
-from adapters.telegram.handlers import start, onboarding, onboarding_v2, onboarding_audio, events, matches, profile_edit, sphere_city, personalization, meetup, vibe_check
+from adapters.telegram.handlers import (
+    events,
+    matches,
+    meetup,
+    onboarding,
+    onboarding_audio,
+    onboarding_v2,
+    personalization,
+    profile_edit,
+    sphere_city,
+    start,
+    vibe_check,
+)
 
 # Build list of onboarding routers based on config
 # Audio mode includes v2 router because users can switch to text mode

@@ -3,22 +3,22 @@ Events handler - event creation and joining.
 """
 
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
 
-from core.domain.models import MessagePlatform
-from config.settings import settings
-from adapters.telegram.loader import event_service, matching_service, user_service, bot, event_parser_service
+from aiogram import F, Router
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from adapters.telegram.keyboards import (
-    get_event_actions_keyboard,
-    get_join_event_keyboard,
-    get_main_menu_keyboard,
     get_back_to_menu_keyboard,
+    get_event_actions_keyboard,
     get_event_info_keyboard,
+    get_main_menu_keyboard,
 )
-from adapters.telegram.states import EventStates, EventInfoStates
+from adapters.telegram.loader import bot, event_parser_service, event_service, matching_service, user_service
+from adapters.telegram.states import EventInfoStates, EventStates
+from config.settings import settings
+from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
@@ -538,6 +538,7 @@ async def admin_event_info(message: Message):
 
     # Send QR code if exists
     import os
+
     from aiogram.types import FSInputFile
     qr_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     for qr_name in [f"{event.code}_QR_new.png", f"{event.code}_QR.png"]:
@@ -640,7 +641,7 @@ async def process_import_url(message: Message, state: FSMContext):
     event = await event_service.get_event_by_code(event_code)
 
     # Show result
-    text = f"✅ <b>Import successful!</b>\n\n"
+    text = "✅ <b>Import successful!</b>\n\n"
     text += event_parser_service.format_event_card(event_info, event.name if event else event_code)
 
     await status_msg.edit_text(text, reply_markup=get_event_info_keyboard(event_code), disable_web_page_preview=True)
@@ -1268,14 +1269,15 @@ async def process_new_event_url_state(message: Message, state: FSMContext):
 
 async def _process_new_event_url(message: Message, url: str):
     """Core logic: fetch URL → parse → create event → generate QR → send"""
-    import re
-    import os
     import io
+    import os
+    import re
+
     import qrcode
+    from aiogram.types import BufferedInputFile
+    from PIL import Image, ImageDraw, ImageFont
     from qrcode.image.styledpil import StyledPilImage
     from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
-    from PIL import Image, ImageDraw, ImageFont
-    from aiogram.types import BufferedInputFile
 
     status_msg = await message.answer("🔄 Fetching event page...")
 

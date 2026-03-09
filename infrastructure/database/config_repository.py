@@ -3,7 +3,8 @@ Repository for bot_config table.
 """
 
 import logging
-from infrastructure.database.supabase_client import supabase, run_sync
+
+from infrastructure.database.supabase_client import run_sync, supabase
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class ConfigRepository:
             # Don't spam logs if table simply doesn't exist
             err_str = str(e).lower()
             if "not found" in err_str or "does not exist" in err_str or "relation" in err_str:
-                logger.debug(f"bot_config table not found, using defaults")
+                logger.debug("bot_config table not found, using defaults")
             else:
                 logger.warning(f"Failed to read bot_config: {e}")
             return None

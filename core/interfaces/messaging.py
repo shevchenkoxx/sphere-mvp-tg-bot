@@ -4,7 +4,8 @@ This allows supporting Telegram, WhatsApp, and other platforms with the same bus
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Any
+from typing import Any, Optional
+
 from core.domain.models import MessagePlatform
 
 

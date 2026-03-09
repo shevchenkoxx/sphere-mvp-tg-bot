@@ -4,8 +4,9 @@ Centralized language detection for all handlers.
 Default: English. Auto-switches to Russian if user's Telegram language is "ru".
 """
 
-from aiogram.types import Message, CallbackQuery
 from typing import Union
+
+from aiogram.types import CallbackQuery, Message
 
 
 def detect_lang(source: Union[Message, CallbackQuery, None] = None) -> str:

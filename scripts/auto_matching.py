@@ -38,12 +38,13 @@ if missing:
 os.environ.setdefault('DEFAULT_MATCH_THRESHOLD', '0.5')
 
 from uuid import UUID
+
 from core.services.matching_service import MatchingService
-from infrastructure.database.match_repository import SupabaseMatchRepository
-from infrastructure.database.event_repository import SupabaseEventRepository
-from infrastructure.database.user_repository import SupabaseUserRepository
-from infrastructure.ai.openai_service import OpenAIService
 from infrastructure.ai.embedding_service import EmbeddingService
+from infrastructure.ai.openai_service import OpenAIService
+from infrastructure.database.event_repository import SupabaseEventRepository
+from infrastructure.database.match_repository import SupabaseMatchRepository
+from infrastructure.database.user_repository import SupabaseUserRepository
 
 # POSTSW24 event ID
 EVENT_ID = UUID("bd4817db-aac2-41a2-836c-2e4fd2fed944")

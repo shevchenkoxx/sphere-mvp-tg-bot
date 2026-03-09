@@ -3,21 +3,20 @@ Onboarding handler - fast, friendly, conversational flow.
 Goal: Complete onboarding in 60 seconds or less.
 """
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
-from core.domain.models import MessagePlatform, OnboardingData
-from core.domain.constants import INTERESTS, GOALS, MAX_INTERESTS, MAX_GOALS
-from adapters.telegram.loader import user_service, event_service, voice_service, bot
 from adapters.telegram.keyboards import (
-    get_interests_keyboard,
     get_goals_keyboard,
-    get_quick_confirm_keyboard,
+    get_interests_keyboard,
     get_main_menu_keyboard,
     get_skip_or_voice_keyboard,
 )
+from adapters.telegram.loader import bot, event_service, user_service, voice_service
 from adapters.telegram.states import OnboardingStates
+from core.domain.constants import MAX_GOALS, MAX_INTERESTS
+from core.domain.models import MessagePlatform, OnboardingData
 
 router = Router()
 
@@ -193,7 +192,7 @@ async def process_bio_voice(message: Message, state: FSMContext):
                 "Не расслышал 😅 Попробуй ещё раз или напиши текстом",
                 reply_markup=get_skip_or_voice_keyboard()
             )
-    except Exception as e:
+    except Exception:
         await status_msg.edit_text(
             "Что-то пошло не так. Напиши текстом или пропусти",
             reply_markup=get_skip_or_voice_keyboard()

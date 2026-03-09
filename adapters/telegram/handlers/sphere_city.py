@@ -9,21 +9,19 @@ Flow:
 """
 
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 
-from core.domain.models import MessagePlatform
-from adapters.telegram.loader import user_service, matching_service
 from adapters.telegram.keyboards.inline import (
+    SPHERE_CITIES,
     get_city_picker_keyboard,
     get_sphere_city_menu_keyboard,
-    get_back_to_menu_keyboard,
-    get_main_menu_keyboard,
-    SPHERE_CITIES,
 )
-
+from adapters.telegram.loader import matching_service, user_service
+from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)

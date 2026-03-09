@@ -8,11 +8,13 @@ Currently supports Telegram, with WhatsApp and Web API planned.
 import asyncio
 import logging
 import sys
+
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp, config_service
+
 from adapters.telegram.handlers import routers
-from adapters.telegram.middleware import ThrottlingMiddleware
 from adapters.telegram.keyboards.inline import set_menu_config
+from adapters.telegram.loader import bot, config_service, dp
+from adapters.telegram.middleware import ThrottlingMiddleware
 from config.features import features
 
 # Configure logging
@@ -68,7 +70,7 @@ async def main():
             except Exception:
                 pass  # keep old config on failure
 
-    _menu_refresh_task = asyncio.create_task(_refresh_menu_config())  # noqa: F841 — prevent GC
+    _menu_refresh_task = asyncio.create_task(_refresh_menu_config())
 
     # Register rate limiting middleware
     dp.message.middleware(ThrottlingMiddleware())

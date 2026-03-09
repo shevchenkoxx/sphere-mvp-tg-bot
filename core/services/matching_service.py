@@ -3,16 +3,15 @@ Matching service - AI-powered matching algorithm.
 Core business logic for finding compatible people.
 """
 
-from typing import List, Tuple, Optional
-from uuid import UUID
 import asyncio
 import logging
-from core.domain.models import (
-    User, Match, MatchCreate, MatchResult, MatchResultWithId, MatchType, MatchStatus
-)
-from core.interfaces.repositories import IMatchRepository, IEventRepository
-from core.interfaces.ai import IAIService
+from typing import List, Optional, Tuple
+from uuid import UUID
+
 from config.settings import settings
+from core.domain.models import Match, MatchCreate, MatchResult, MatchResultWithId, MatchStatus, User
+from core.interfaces.ai import IAIService
+from core.interfaces.repositories import IEventRepository, IMatchRepository
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,6 @@ class MatchingService:
         help_b = (user_b.can_help_with or "").lower()
 
         # Simple keyword matching for pre-filter
-        value_exchange = False
         keywords_a_looking = set(looking_a.split()) if looking_a else set()
         keywords_b_help = set(help_b.split()) if help_b else set()
         keywords_b_looking = set(looking_b.split()) if looking_b else set()
@@ -61,8 +59,7 @@ class MatchingService:
         keywords_a_help -= stopwords
 
         if keywords_a_looking & keywords_b_help or keywords_b_looking & keywords_a_help:
-            value_exchange = True
-            score += 0.4  # Strong signal
+            score += 0.4  # Strong signal — value exchange detected
 
         # If both have looking_for and can_help_with filled, that's good
         if (looking_a and help_a) or (looking_b and help_b):

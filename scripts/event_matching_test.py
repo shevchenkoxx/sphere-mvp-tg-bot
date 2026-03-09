@@ -10,10 +10,11 @@ Stop: pkill -f event_matching_test
 import asyncio
 import os
 import sys
-import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID
+
+import httpx
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -58,7 +59,7 @@ async def send_admin_notification(text: str):
                 "text": text,
                 "parse_mode": "HTML"
             })
-        log(f"  📤 Admin notified")
+        log("  📤 Admin notified")
     except Exception as e:
         log(f"  ⚠️ Failed to notify admin: {e}")
 
@@ -68,9 +69,10 @@ async def simple_match_users(user_a, user_b, event_name: str) -> dict:
     Simple matching using OpenAI - no complex pre-filtering.
     Returns match result or None.
     """
-    from openai import AsyncOpenAI
     import json
     import re
+
+    from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=os.environ['OPENAI_API_KEY'])
 
@@ -129,11 +131,11 @@ Return JSON only:
 
 async def run_event_matching():
     """Run simplified matching for POSTSW24 event"""
-    from infrastructure.database.supabase_client import supabase
+    from infrastructure.ai.embedding_service import EmbeddingService
     from infrastructure.database.event_repository import SupabaseEventRepository
     from infrastructure.database.match_repository import SupabaseMatchRepository
+    from infrastructure.database.supabase_client import supabase
     from infrastructure.database.user_repository import SupabaseUserRepository
-    from infrastructure.ai.embedding_service import EmbeddingService
 
     event_repo = SupabaseEventRepository()
     match_repo = SupabaseMatchRepository()
@@ -160,7 +162,7 @@ async def run_event_matching():
                 result = await embedding_service.generate_embeddings(user)
                 if result:
                     await user_repo.update_embeddings(user.id, *result)
-                    log(f"    ✅ Done")
+                    log("    ✅ Done")
             except Exception as e:
                 log(f"    ⚠️ Failed: {e}")
 
@@ -205,7 +207,7 @@ async def run_event_matching():
                         "score": score,
                         "explanation": result.get('explanation', '')
                     })
-                    log(f"    ✅ Match created!")
+                    log("    ✅ Match created!")
                 except Exception as e:
                     log(f"    ❌ DB error: {e}")
 
@@ -245,7 +247,7 @@ async def main():
                     f"🎯 <b>New Matches Created!</b>\n\n{match_text}"
                 )
             else:
-                log(f"  ℹ️ No new matches")
+                log("  ℹ️ No new matches")
 
         except Exception as e:
             log(f"  ❌ Error: {e}")

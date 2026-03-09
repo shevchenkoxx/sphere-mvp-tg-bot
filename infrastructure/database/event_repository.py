@@ -5,14 +5,15 @@ Supabase implementation of Event repository.
 import logging
 import random
 import string
-from typing import Optional, List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 from uuid import UUID
-from core.domain.models import Event, EventCreate, User, MessagePlatform
+
 from core.domain.constants import EVENT_CODE_LENGTH
+from core.domain.models import Event, EventCreate, User
 from core.interfaces.repositories import IEventRepository
-from infrastructure.database.supabase_client import supabase, run_sync
+from infrastructure.database.supabase_client import run_sync, supabase
 from infrastructure.database.user_repository import SupabaseUserRepository
 
 

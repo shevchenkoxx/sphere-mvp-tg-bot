@@ -2,11 +2,12 @@
 Speed Dating Repository - handles caching of AI-generated conversations.
 """
 
-from typing import Optional
-from uuid import UUID
 from dataclasses import dataclass
 from datetime import datetime
-from infrastructure.database.supabase_client import supabase, run_sync
+from typing import Optional
+from uuid import UUID
+
+from infrastructure.database.supabase_client import run_sync, supabase
 
 
 @dataclass

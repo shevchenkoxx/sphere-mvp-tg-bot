@@ -4,18 +4,19 @@ Modular - can be swapped for Anthropic, local models, etc.
 """
 
 import json
-import re
 import logging
-from typing import Dict, Any
+import re
+from typing import Any, Dict
+
 from openai import AsyncOpenAI
 
+from config.settings import settings
 from core.interfaces.conversation import (
-    IConversationAI,
-    ConversationState,
     ConversationResponse,
+    ConversationState,
+    IConversationAI,
 )
 from core.prompts import ONBOARDING_SYSTEM_PROMPT, PROFILE_EXTRACTION_PROMPT
-from config.settings import settings
 
 logger = logging.getLogger(__name__)
 

@@ -5,23 +5,22 @@ Prompt Test Runner - Test AI prompts and save results.
 
 import asyncio
 import json
-import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from openai import AsyncOpenAI
+
 from config.settings import settings
 from core.prompts.audio_onboarding import AUDIO_EXTRACTION_PROMPT
 from core.prompts.templates import (
     ONBOARDING_SYSTEM_PROMPT,
     PROFILE_EXTRACTION_PROMPT,
-    MATCH_ANALYSIS_PROMPT,
 )
 
 # Test directory paths

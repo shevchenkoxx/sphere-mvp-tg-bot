@@ -222,7 +222,15 @@ sphere-bot/
 │   ├── 007_event_info.sql      # Event info JSONB (schedule, speakers)
 │   ├── 013_user_events_activity.sql # Activity intent columns + GIN index
 │   └── 014_bot_config.sql      # bot_config table for dynamic menu settings
-└── .credentials/keys.md        # All credentials (gitignored)
+├── tests/
+│   ├── conftest.py            # Shared fixtures: make_user factory, mock repos/AI
+│   ├── test_models.py         # Domain model tests (17 tests)
+│   ├── test_user_service.py   # User service tests (16 tests)
+│   └── test_matching_service.py # Matching service tests (4 tests)
+├── pyproject.toml             # ruff + mypy + pytest config (target py39)
+├── Makefile                   # make lint/test/check/compile-check
+├── .pre-commit-config.yaml    # ruff lint+format on commit
+└── .credentials/keys.md       # All credentials (gitignored)
 ```
 
 ### Standalone Dashboard (separate repo)
@@ -523,6 +531,41 @@ PERSONALIZATION_MODE=intent  # "intent" (activity picker) or "passion" (old text
 ---
 
 ## Recent Session Changes
+
+### March 9, 2026 - Agent-Driven Development Readiness
+
+**Goal:** Make codebase agent-friendly with linting, tests, and quality gates.
+
+**Analysis (3 agents in parallel):**
+- Codebase architecture scored B+ (82%) — strong patterns, no tooling
+- 644 ruff issues found across 60+ files, 0 tests, no CI
+
+**New files created:**
+- `pyproject.toml` — ruff (lint), mypy (types), pytest config, target py39
+- `Makefile` — `make lint`, `make test`, `make check`, `make format`, `make compile-check`, `make install-dev`
+- `.pre-commit-config.yaml` — auto ruff lint+format on commit
+- `tests/__init__.py`, `tests/conftest.py` — mock fixtures (make_user, mock repos, mock AI service)
+- `tests/test_models.py` — 17 domain model tests
+- `tests/test_user_service.py` — 16 service layer tests with mocked repos
+- `tests/test_matching_service.py` — 4 matching logic tests
+- **Total: 37 tests, all passing**
+
+**Ruff cleanup:**
+- 523 auto-fixed (import sorting, unused imports, f-string placeholders)
+- 8 manual fixes (unused variables across handlers/services/AI)
+- 644 → 12 remaining (all in scripts/tests, production code is clean)
+- 60 files modified
+
+**Remaining gaps (documented, not fixed):**
+- No handler tests (10,600 lines untested) — #1 priority
+- 13 direct DB access locations in handlers (bypass repo layer)
+- 4 inline `SupabaseUserRepository()` creations in matching_service
+- No CI/CD pipeline (GitHub Actions)
+- FSM in memory (MemoryStorage loses state on redeploy)
+
+**Not yet committed** — all changes are local, pending user review.
+
+---
 
 ### March 9, 2026 - Git Cleanup + Standalone Dashboard + Feature Toggles
 

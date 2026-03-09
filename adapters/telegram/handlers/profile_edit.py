@@ -9,25 +9,22 @@ import json
 import logging
 import os
 import tempfile
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
 
-from core.domain.models import MessagePlatform
-from adapters.telegram.loader import (
-    user_service, ai_service, voice_service,
-    embedding_service, user_repo, bot
-)
+from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+
 from adapters.telegram.keyboards.inline import (
-    get_edit_mode_keyboard,
-    get_edit_field_keyboard,
     get_edit_confirm_keyboard,
     get_edit_continue_keyboard,
-    get_profile_with_edit_keyboard,
-    get_interests_keyboard,
+    get_edit_field_keyboard,
+    get_edit_mode_keyboard,
     get_goals_keyboard,
+    get_interests_keyboard,
 )
+from adapters.telegram.loader import ai_service, bot, embedding_service, user_repo, user_service, voice_service
 from adapters.telegram.states.onboarding import ProfileEditStates
+from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,9 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
-from typing import List, Optional
 import os
 from pathlib import Path
+from typing import List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -53,6 +54,6 @@ settings = Settings()
 
 # Debug: print what we got (remove in production)
 if os.getenv("DEBUG", "").lower() == "true":
-    print(f"Settings loaded:")
+    print("Settings loaded:")
     print(f"  SUPABASE_URL: {'set' if settings.supabase_url else 'MISSING'}")
     print(f"  SUPABASE_KEY: {'set' if settings.supabase_key else 'MISSING'}")

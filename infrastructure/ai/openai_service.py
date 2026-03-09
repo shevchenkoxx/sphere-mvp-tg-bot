@@ -4,13 +4,15 @@ Handles user analysis and match compatibility using GPT-4.
 """
 
 import json
-import re
 import logging
-from typing import Dict, Any
+import re
+from typing import Any, Dict
+
 from openai import AsyncOpenAI
+
+from config.settings import settings
 from core.domain.models import MatchResult, MatchType
 from core.interfaces.ai import IAIService
-from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,6 @@ class OpenAIService(IAIService):
         """Generate AI summary of user profile for matching system"""
 
         # Build context from ACTUAL user data only
-        name = user_data.get('display_name') or 'Someone'
         bio = user_data.get('bio') or ''
         looking_for = user_data.get('looking_for') or ''
         can_help_with = user_data.get('can_help_with') or ''

@@ -12,18 +12,20 @@ Usage:
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
-import os
 
 # Add parent dir to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load environment variables
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from openai import AsyncOpenAI
+
 from config.settings import settings
 from core.prompts.audio_onboarding import AUDIO_EXTRACTION_PROMPT
 
@@ -151,7 +153,7 @@ def format_json_output(data: dict) -> str:
 
     output_lines = []
     for field in key_fields:
-        if field in data and data[field]:
+        if data.get(field):
             value = data[field]
             if isinstance(value, list):
                 value = ', '.join(str(v) for v in value) if value else '(empty)'
@@ -209,7 +211,7 @@ async def main():
         transcription = args.text
     else:
         try:
-            with open(args.file, 'r', encoding='utf-8') as f:
+            with open(args.file, encoding='utf-8') as f:
                 transcription = f.read().strip()
         except FileNotFoundError:
             print(f"Error: File not found: {args.file}")

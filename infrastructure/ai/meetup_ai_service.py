@@ -5,11 +5,12 @@ for meetup proposals between matched users.
 
 import json
 import logging
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 from openai import AsyncOpenAI
-from core.domain.models import User
+
 from config.settings import settings
+from core.domain.models import User
 
 logger = logging.getLogger(__name__)
 

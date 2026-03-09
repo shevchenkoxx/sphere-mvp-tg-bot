@@ -4,15 +4,14 @@ Platform-agnostic, modular, extensible.
 """
 
 import logging
-from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 
+from core.domain.models import OnboardingData
 from core.interfaces.conversation import (
-    IConversationAI,
     ConversationState,
-    ConversationResponse,
+    IConversationAI,
 )
-from core.domain.models import MessagePlatform, OnboardingData
 
 logger = logging.getLogger(__name__)
 
@@ -131,12 +130,11 @@ class ConversationService:
         Returns greeting message without needing user input.
         """
         # Create initial assistant message to start conversation
-        event_name = state.context.get("event_name", "")
         user_name = state.context.get("user_first_name", "")
 
         # Generate first message by sending empty trigger
         # The LLM will see it's a fresh conversation and greet
-        initial_trigger = f"Hi" if not user_name else f"Hi, I'm {user_name}"
+        initial_trigger = "Hi" if not user_name else f"Hi, I'm {user_name}"
 
         response = await self.conversation_ai.generate_response(state, initial_trigger)
 

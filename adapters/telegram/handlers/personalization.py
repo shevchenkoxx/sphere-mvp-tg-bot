@@ -11,37 +11,37 @@ Goal: Better matching by understanding TODAY's needs, not just static profile.
 """
 
 import json
-import re
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+import re
+
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 from openai import AsyncOpenAI
 
-from core.domain.models import MessagePlatform
-from core.prompts.templates import (
-    PASSION_EXTRACTION_PROMPT,
-    PERSONALIZED_ADAPTIVE_BUTTONS_PROMPT,
-    IDEAL_CONNECTION_QUESTION_PROMPT,
-)
-from adapters.telegram.loader import user_service, bot, voice_service
-from adapters.telegram.states import PersonalizationStates, UserEventStates
 from adapters.telegram.keyboards import (
-    get_connection_mode_keyboard,
-    get_adaptive_buttons_keyboard,
-    get_skip_personalization_keyboard,
-    get_main_menu_keyboard,
     get_activity_keyboard,
     get_activity_subcategory_keyboard,
+    get_adaptive_buttons_keyboard,
+    get_connection_mode_keyboard,
+    get_main_menu_keyboard,
+    get_skip_personalization_keyboard,
 )
-from config.settings import settings
+from adapters.telegram.loader import bot, user_service, voice_service
+from adapters.telegram.states import PersonalizationStates, UserEventStates
 from config.features import Features
-from core.utils.language import detect_lang
+from config.settings import settings
 from core.domain.activity_constants import (
     ACTIVITY_CATEGORIES,
-    ACTIVITY_SUBCATEGORIES,
     MAX_ACTIVITY_SELECTIONS,
 )
+from core.domain.models import MessagePlatform
+from core.prompts.templates import (
+    IDEAL_CONNECTION_QUESTION_PROMPT,
+    PASSION_EXTRACTION_PROMPT,
+    PERSONALIZED_ADAPTIVE_BUTTONS_PROMPT,
+)
+from core.utils.language import detect_lang
 
 logger = logging.getLogger(__name__)
 

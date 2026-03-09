@@ -4,7 +4,8 @@ Allows swapping between providers (Claude, GPT, local models, etc.)
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Any, Dict
+
 from core.domain.models import MatchResult
 
 

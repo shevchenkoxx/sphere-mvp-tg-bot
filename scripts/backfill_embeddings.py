@@ -4,15 +4,15 @@ Run once before release to ensure vector matching works for everyone.
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from infrastructure.ai.embedding_service import EmbeddingService
 from infrastructure.database.supabase_client import supabase
 from infrastructure.database.user_repository import SupabaseUserRepository
-from infrastructure.ai.embedding_service import EmbeddingService
 
 
 async def backfill():

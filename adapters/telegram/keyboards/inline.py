@@ -3,11 +3,12 @@ Inline keyboards for Telegram bot.
 Optimized for fast, friendly onboarding.
 """
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from typing import List
-from core.domain.constants import INTERESTS, GOALS
 
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from core.domain.constants import GOALS, INTERESTS
 
 # === ONBOARDING ===
 

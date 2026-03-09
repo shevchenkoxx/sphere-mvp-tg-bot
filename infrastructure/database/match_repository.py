@@ -2,11 +2,12 @@
 Supabase implementation of Match repository.
 """
 
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
+
 from core.domain.models import Match, MatchCreate, MatchStatus, MatchType
 from core.interfaces.repositories import IMatchRepository
-from infrastructure.database.supabase_client import supabase, run_sync
+from infrastructure.database.supabase_client import run_sync, supabase
 
 
 class SupabaseMatchRepository(IMatchRepository):

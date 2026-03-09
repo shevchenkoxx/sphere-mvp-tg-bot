@@ -4,23 +4,23 @@ Uses natural conversation instead of scripted buttons.
 """
 
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from adapters.telegram.keyboards import get_main_menu_keyboard
+from adapters.telegram.loader import bot, embedding_service, event_service, user_service
 from core.domain.models import MessagePlatform
 from core.services.conversation_service import (
     ConversationService,
-    serialize_state,
     deserialize_state,
+    serialize_state,
 )
 from infrastructure.ai.conversation_ai import create_conversation_ai
-from adapters.telegram.loader import user_service, event_service, bot, embedding_service
 from infrastructure.database.user_repository import SupabaseUserRepository
-from adapters.telegram.keyboards import get_main_menu_keyboard
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.types import InlineKeyboardMarkup
 
 
 def get_selfie_keyboard_v2(lang: str = "en") -> InlineKeyboardMarkup:
@@ -133,13 +133,13 @@ async def start_conversational_onboarding_from_callback(
 @router.message(ConversationalOnboarding.in_conversation, F.text)
 async def process_conversation_message(message: Message, state: FSMContext):
     """Process user message in conversation"""
-    logger.info(f"[TEXT ONBOARDING] ========================================")
+    logger.info("[TEXT ONBOARDING] ========================================")
     logger.info(f"[TEXT ONBOARDING] Received message from {message.from_user.id}: {message.text[:50]}...")
 
     # Check for reset/restart commands first
     text_lower = message.text.lower().strip()
     if text_lower in ["reset", "start over", "заново", "/start", "/reset"]:
-        logger.info(f"[TEXT ONBOARDING] User requested reset")
+        logger.info("[TEXT ONBOARDING] User requested reset")
         await state.clear()
         await message.answer(
             "Let's start fresh! Send /start to begin again.",
@@ -224,22 +224,22 @@ async def process_conversation_message(message: Message, state: FSMContext):
                 event_name=None,  # Fresh recovery - no pending event
                 user_first_name=message.from_user.first_name
             )
-            logger.debug(f"[TEXT ONBOARDING] Created fresh onboarding state after error")
+            logger.debug("[TEXT ONBOARDING] Created fresh onboarding state after error")
 
             # Initialize fresh conversation to get proper greeting
             conv_state, greeting = await conversation_service.start_conversation(conv_state)
-            logger.info(f"[TEXT ONBOARDING] Started fresh conversation after error recovery")
+            logger.info("[TEXT ONBOARDING] Started fresh conversation after error recovery")
 
             # Save only clean state
             await state.update_data(conversation=serialize_state(conv_state))
             await state.set_state(ConversationalOnboarding.in_conversation)
-            logger.info(f"[TEXT ONBOARDING] Recovery complete - fresh conversation ready")
+            logger.info("[TEXT ONBOARDING] Recovery complete - fresh conversation ready")
 
         except Exception as e2:
             logger.error(f"[TEXT ONBOARDING] Failed to recover from error: {e2}", exc_info=True)
             # Also clear state on recovery failure to prevent cascading corruption
             await state.clear()
-            logger.warning(f"[TEXT ONBOARDING] Cleared state due to recovery failure")
+            logger.warning("[TEXT ONBOARDING] Cleared state due to recovery failure")
             await message.answer("Please type /start to restart.")
 
 
@@ -298,10 +298,9 @@ async def complete_conversational_onboarding(
     """Complete onboarding with extracted profile data"""
 
     user_id = str(message.from_user.id)
-    tg_username = message.from_user.username
 
     # Convert to OnboardingData
-    onboarding_data = conversation_service.convert_to_onboarding_data(
+    conversation_service.convert_to_onboarding_data(
         profile_data,
         pending_event_code=pending_event
     )
@@ -398,8 +397,8 @@ async def complete_conversational_onboarding(
 
 async def show_top_matches_v2(message: Message, user, event, tg_username: str = None, lang: str = "en"):
     """Show top matches after onboarding (v2 version) and notify matched users"""
-    from adapters.telegram.loader import matching_service
     from adapters.telegram.handlers.matches import notify_about_match
+    from adapters.telegram.loader import matching_service
     from config.features import Features
 
     try:
