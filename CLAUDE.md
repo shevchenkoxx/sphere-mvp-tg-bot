@@ -68,7 +68,7 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 
 ---
 
-## Current Status (February 2026)
+## Current Status (March 2026)
 
 ### Working Features ✅
 
@@ -134,12 +134,25 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
     - Now extracts: profession, company, skills, location, experience_level
     - `/test_extract` command for debugging (admin-only)
 
-11. **AI Speed Dating** (NEW)
+11. **AI Speed Dating**
     - Preview simulated conversation between you and match
     - GPT-4o-mini generates 5 exchanges (10 messages) based on profiles
     - Cached in DB (instant on repeat view)
     - "Regenerate" button for new conversation
     - Bilingual: auto-detects RU/EN from profiles
+
+12. **UserEvents Activity Intent** (NEW - March 2026)
+    - Two-level activity picker replacing "What's your passion?" onboarding step
+    - Level 1: 6 categories (Coffee, Walk, Sport, Dining, Event, Chat)
+    - Level 2: Subcategories for Sport (5), Dining (5), Event (5) + "Other" custom input
+    - Multi-select up to 3 categories
+    - Text/voice free input always available
+    - Feature toggle: `PERSONALIZATION_MODE=intent` (default) vs `passion`
+    - "My Activities" menu button for view/edit/refine after onboarding
+    - Activity context integrated into AI matching prompt (shared activities boost score)
+    - Refinement text stored and displayed + used in matching
+    - DB: `activity_categories[]`, `activity_details JSONB`, `custom_activity_text`
+    - Migration: `013_user_events_activity.sql`
 
 ### Known Issues / Gaps ❌
 
@@ -158,23 +171,27 @@ Telegram bot for meaningful connections at events. Users scan QR → quick voice
 sphere-bot/
 ├── adapters/telegram/
 │   ├── handlers/
-│   │   ├── start.py           # /start, menu, profile, reset, matches menu
+│   │   ├── start.py           # /start, menu, profile, reset, matches menu, My Activities
 │   │   ├── profile_edit.py    # Profile editing (quick + conversational)
 │   │   ├── onboarding_audio.py # Voice onboarding + selfie + /test_extract
 │   │   ├── onboarding_v2.py    # Text onboarding flow
 │   │   ├── matches.py          # Match display, pagination, notifications
 │   │   ├── sphere_city.py      # City-based matching (Sphere City)
 │   │   └── events.py           # Event creation & joining
-│   ├── keyboards/inline.py     # All keyboards + city picker + Sphere City
-│   ├── states/onboarding.py    # FSM states (includes ProfileEditStates)
+│   ├── keyboards/inline.py     # All keyboards + city picker + activity picker
+│   ├── states/onboarding.py    # FSM states (ProfileEditStates, UserEventStates)
 │   └── loader.py               # Bot & services init (includes embedding_service)
+├── config/
+│   └── features.py             # Feature toggles (PERSONALIZATION_MODE)
 ├── core/
 │   ├── domain/
-│   │   ├── models.py           # User, Event, Match (with city field)
-│   │   └── constants.py        # INTERESTS, GOALS
+│   │   ├── models.py           # User, Event, Match (with activity fields)
+│   │   ├── constants.py        # INTERESTS, GOALS
+│   │   └── activity_constants.py # Activity categories, subcategories, helpers
 │   ├── services/
 │   │   ├── matching_service.py # Vector + LLM + City matching
-│   │   └── event_service.py
+│   │   ├── event_service.py
+│   │   └── config_service.py  # Menu config cache (60s TTL) from bot_config table
 │   └── prompts/
 │       └── audio_onboarding.py # Chain-of-thought extraction prompts
 ├── infrastructure/
@@ -182,9 +199,10 @@ sphere-bot/
 │   │   ├── user_repository.py  # includes update_embeddings(), get_users_by_city()
 │   │   ├── match_repository.py # includes get_city_matches()
 │   │   ├── speed_dating_repository.py # AI Speed Dating cache
+│   │   ├── config_repository.py # Reads bot_config table
 │   │   └── supabase_client.py
 │   └── ai/
-│       ├── openai_service.py   # GPT-4o-mini + profession/skills in matching
+│       ├── openai_service.py   # GPT-4o-mini + activity intent in matching
 │       ├── whisper_service.py  # Voice transcription
 │       ├── embedding_service.py # text-embedding-3-small
 │       ├── speed_dating_service.py # AI Speed Dating conversation generator
@@ -201,8 +219,22 @@ sphere-bot/
 │   ├── 004_sphere_city.sql     # experience_level, city on matches
 │   ├── 005_speed_dating.sql    # AI Speed Dating cache table
 │   ├── 006_match_feedback.sql  # Match feedback (👍/👎)
-│   └── 007_event_info.sql      # Event info JSONB (schedule, speakers)
+│   ├── 007_event_info.sql      # Event info JSONB (schedule, speakers)
+│   ├── 013_user_events_activity.sql # Activity intent columns + GIN index
+│   └── 014_bot_config.sql      # bot_config table for dynamic menu settings
 └── .credentials/keys.md        # All credentials (gitignored)
+```
+
+### Standalone Dashboard (separate repo)
+```
+sphere-dashboard/              # https://github.com/shevchenkoxx/sphere-dashboard
+├── app.py                     # Entry point: creates aiohttp app, Supabase client
+├── stats.py                   # Dashboard handlers (~1,400 lines, ported from community-v1)
+├── config_handlers.py         # Settings tab: toggle/reorder menu buttons
+├── requirements.txt           # aiohttp, supabase-py
+├── Procfile                   # web: python app.py
+├── railway.toml               # Railway deploy config
+└── .env.example               # SUPABASE_URL, SUPABASE_KEY, STATS_TOKEN
 ```
 
 ---
@@ -221,6 +253,10 @@ current_event_id, city_current
 profile_embedding, interests_embedding, expertise_embedding
 -- Professional info (populated from extraction)
 profession, company, skills[], experience_level
+-- Activity intent (UserEvents feature)
+activity_categories TEXT[] DEFAULT '{}'  -- e.g. ['coffee', 'sport', 'dining']
+activity_details JSONB DEFAULT '{}'     -- subcategories, custom text, refinement
+custom_activity_text TEXT               -- free-form activity description
 -- Available but unused
 linkedin_url, linkedin_data, deep_profile
 ```
@@ -260,6 +296,13 @@ id, match_id, user_id
 feedback_type ('good' or 'bad')
 created_at
 -- Unique constraint: (match_id, user_id)
+```
+
+### bot_config (NEW)
+```sql
+key TEXT PRIMARY KEY           -- e.g. 'menu_buttons'
+value JSONB NOT NULL DEFAULT '{}'  -- button configs with id, emoji, labels, enabled, locked, order
+updated_at TIMESTAMPTZ
 ```
 
 ---
@@ -474,11 +517,76 @@ ADMIN_TELEGRAM_IDS=123,456
 DEBUG=true
 DEFAULT_MATCH_THRESHOLD=0.6
 ONBOARDING_MODE=audio
+PERSONALIZATION_MODE=intent  # "intent" (activity picker) or "passion" (old text question)
 ```
 
 ---
 
 ## Recent Session Changes
+
+### March 9, 2026 - Git Cleanup + Standalone Dashboard + Feature Toggles
+
+**Phase 1: Git Cleanup**
+- Deleted 10 branches (local + remote): claude/*, staging, main2, experiment, v1.1, codex/*, feature/agent-onboarding
+- Cleared 2 stashes
+- Set repo description and delete-branch-on-merge
+- **3 branches remain**: main, community-v1, global-mode-v1
+
+**Phase 2: Standalone Dashboard**
+- Created `sphere-dashboard/` as separate repo: https://github.com/shevchenkoxx/sphere-dashboard
+- Ported 2,568-line aiohttp+HTMX dashboard from community-v1
+- **Removed**: Communities tab, Conversations tab (community-specific)
+- **Removed**: bot dependency — queries Supabase directly via supabase-py
+- **Tabs**: Overview, Users, Onboarding, Events, Matches, Broadcast, Settings
+- **Files**: app.py, stats.py (~1,400 lines), config_handlers.py, requirements.txt, Procfile, railway.toml
+
+**Phase 3: Dynamic Menu (Feature Toggles)**
+- **Migration**: `014_bot_config.sql` — `bot_config` table with `menu_buttons` JSONB config (run on Supabase)
+- **New files**:
+  - `infrastructure/database/config_repository.py` — reads bot_config table
+  - `core/services/config_service.py` — 60s TTL cache, hardcoded defaults fallback
+- **Modified files**:
+  - `adapters/telegram/keyboards/inline.py` — dynamic `get_main_menu_keyboard()` from config, `set_menu_config()` setter
+  - `adapters/telegram/loader.py` — instantiate ConfigRepository + ConfigService
+  - `main.py` — load menu config on startup
+- **Settings tab in dashboard**: toggle buttons on/off, reorder with arrows, locked buttons (Profile/Matches) cannot be disabled
+- **Deploy needed**: Push bot changes to main, deploy dashboard to Railway as new service
+
+---
+
+### March 9, 2026 - UserEvents Activity Intent Feature
+
+**New feature: Activity Intent picker for onboarding + My Activities menu**
+
+**7 commits pushed to main:**
+1. `83da014` feat: add UserEvents activity intent foundation (migration, constants, models, states, keyboards, feature toggle)
+2. `cfdbab8` feat: add activity intent flow to personalization handler
+3. `4e56ed8` feat: add activity intent context to matching prompt
+4. `afc8c8d` feat: add My Activities menu button with view/edit/refine handlers
+5. `6aea805` fix: change_activities saves directly, /reset clears activity fields, extract helper
+6. `bbbb28f` fix: 6 bugs from code review (editing flow, subcategory hints, max-3 check, callback ordering, stale keyboard, short refinement)
+7. `5cabff7` fix: refinement text now displayed and used in matching, callback.answer ordering
+
+**New files:**
+- `core/domain/activity_constants.py` — 6 categories, 3 subcategory sets (sport/dining/event), bilingual labels, format helpers
+- `supabase/migrations/013_user_events_activity.sql` — 3 columns + GIN index (migration run)
+- `docs/plans/2026-03-07-user-events-activity-intent-design.md` — Design doc
+- `docs/plans/2026-03-07-user-events-implementation.md` — 10-task implementation plan
+
+**Modified files:**
+- `config/features.py` — `PERSONALIZATION_MODE` toggle (intent/passion)
+- `core/domain/models.py` — 3 new fields on User + UserUpdate
+- `infrastructure/database/user_repository.py` — _to_model mapping for activity fields
+- `adapters/telegram/states/onboarding.py` — UserEventStates (5 states)
+- `adapters/telegram/keyboards/inline.py` — 3 activity keyboards + menu button
+- `adapters/telegram/handlers/personalization.py` — Full activity flow (Level 1→2, custom input, editing, refinement)
+- `adapters/telegram/handlers/start.py` — My Activities handlers (view/edit/refine)
+- `infrastructure/ai/openai_service.py` — Activity intent in matching prompt (shared activities, subcategories, refinement)
+- `core/services/user_service.py` — /reset clears activity fields
+
+**Code reviewed by 4 agents** (superpowers:code-reviewer + feature-dev:code-reviewer x2 + final review). All bugs found and fixed.
+
+---
 
 ### February 12, 2026 - SXN Event Day Session 4 (Pre-Event Final)
 

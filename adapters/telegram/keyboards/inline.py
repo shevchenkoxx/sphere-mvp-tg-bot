@@ -243,27 +243,61 @@ def get_profile_view_keyboard(match_id: str, lang: str = "en", partner_username:
 
 # === MAIN MENU ===
 
+# Module-level menu config cache — set by config_service on startup and refresh
+_menu_config: list[dict] | None = None
+
+
+def set_menu_config(buttons: list[dict]):
+    """Called by config_service to update the cached menu config."""
+    global _menu_config
+    _menu_config = buttons
+
+
 def get_main_menu_keyboard(lang: str = "en", pending_invitations: int = 0) -> InlineKeyboardMarkup:
-    """Main menu keyboard - clean and simple"""
+    """Main menu keyboard — dynamic from bot_config, falls back to hardcoded."""
     builder = InlineKeyboardBuilder()
     inv_badge = f" ({pending_invitations})" if pending_invitations > 0 else ""
-    if lang == "ru":
-        builder.button(text="👤 Профиль", callback_data="my_profile")
-        builder.button(text="🎉 Ивенты", callback_data="my_events")
-        builder.button(text="💫 Матчи", callback_data="my_matches")
-        builder.button(text="🎯 Мои активности", callback_data="my_activities")
-        builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
-        builder.button(text="🔮 Проверь совместимость", callback_data="vibe_new")
-        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+
+    if _menu_config is not None:
+        # Dynamic: build from config
+        label_key = "label_ru" if lang == "ru" else "label_en"
+        added = 0
+        for btn in _menu_config:
+            if not btn.get("enabled", True) and not btn.get("locked", False):
+                continue  # skip disabled (non-locked) buttons
+            emoji = btn.get("emoji", "")
+            label = btn.get(label_key, btn.get("label_en", btn["id"]))
+            callback = btn["id"]
+            # Special: invitation badge
+            if callback == "my_invitations" and inv_badge:
+                label = f"{label}{inv_badge}"
+            builder.button(text=f"{emoji} {label}", callback_data=callback)
+            added += 1
+        # Adaptive row layout: 2 per row, last one alone if odd
+        rows = [2] * (added // 2)
+        if added % 2:
+            rows.append(1)
+        if rows:
+            builder.adjust(*rows)
     else:
-        builder.button(text="👤 Profile", callback_data="my_profile")
-        builder.button(text="🎉 Events", callback_data="my_events")
-        builder.button(text="💫 Matches", callback_data="my_matches")
-        builder.button(text="🎯 My Activities", callback_data="my_activities")
-        builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
-        builder.button(text="🔮 Check Our Vibe", callback_data="vibe_new")
-        builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
-    builder.adjust(2, 2, 2, 1)
+        # Hardcoded fallback
+        if lang == "ru":
+            builder.button(text="👤 Профиль", callback_data="my_profile")
+            builder.button(text="🎉 Ивенты", callback_data="my_events")
+            builder.button(text="💫 Матчи", callback_data="my_matches")
+            builder.button(text="🎯 Мои активности", callback_data="my_activities")
+            builder.button(text=f"📩 Приглашения{inv_badge}", callback_data="my_invitations")
+            builder.button(text="🔮 Проверь совместимость", callback_data="vibe_new")
+            builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+        else:
+            builder.button(text="👤 Profile", callback_data="my_profile")
+            builder.button(text="🎉 Events", callback_data="my_events")
+            builder.button(text="💫 Matches", callback_data="my_matches")
+            builder.button(text="🎯 My Activities", callback_data="my_activities")
+            builder.button(text=f"📩 Invitations{inv_badge}", callback_data="my_invitations")
+            builder.button(text="🔮 Check Our Vibe", callback_data="vibe_new")
+            builder.button(text="🎁 Giveaway", callback_data="giveaway_info")
+        builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 

@@ -9,9 +9,10 @@ import asyncio
 import logging
 import sys
 from aiogram.exceptions import TelegramConflictError, TelegramUnauthorizedError
-from adapters.telegram.loader import bot, dp
+from adapters.telegram.loader import bot, dp, config_service
 from adapters.telegram.handlers import routers
 from adapters.telegram.middleware import ThrottlingMiddleware
+from adapters.telegram.keyboards.inline import set_menu_config
 from config.features import features
 
 # Configure logging
@@ -47,6 +48,26 @@ async def main():
     logger.info("Feature Flags:")
     for key, value in features.to_dict().items():
         logger.info(f"  {key}: {value}")
+
+    # Load menu config from DB (dynamic button toggles)
+    try:
+        buttons = await config_service.get_menu_buttons()
+        set_menu_config(buttons)
+        logger.info(f"Menu config loaded: {len(buttons)} buttons")
+    except Exception as e:
+        logger.warning(f"Failed to load menu config, using defaults: {e}")
+
+    # Background task: refresh menu config every 60s
+    async def _refresh_menu_config():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                buttons = await config_service.get_menu_buttons()
+                set_menu_config(buttons)
+            except Exception:
+                pass  # keep old config on failure
+
+    asyncio.create_task(_refresh_menu_config())
 
     # Register rate limiting middleware
     dp.message.middleware(ThrottlingMiddleware())

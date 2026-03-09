@@ -20,9 +20,11 @@ from infrastructure.ai.event_parser_service import EventParserService
 from infrastructure.ai.meetup_ai_service import MeetupAIService
 from infrastructure.database.speed_dating_repository import SpeedDatingRepository
 from infrastructure.database.meetup_repository import MeetupRepository
+from infrastructure.database.config_repository import ConfigRepository
 
 # Core services
 from core.services import UserService, EventService, MatchingService
+from core.services.config_service import ConfigService
 
 
 # === BOT INITIALIZATION ===
@@ -49,6 +51,11 @@ meetup_ai_service = MeetupAIService()
 # === ADDITIONAL REPOSITORIES ===
 speed_dating_repo = SpeedDatingRepository()
 meetup_repo = MeetupRepository()
+config_repo = ConfigRepository()
+
+
+# === CONFIG SERVICE ===
+config_service = ConfigService(config_repo)
 
 
 # === BUSINESS SERVICES ===
