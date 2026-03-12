@@ -1459,6 +1459,12 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
             async def photo_nudge():
                 await asyncio.sleep(120)  # 2 min after matches
                 try:
+                    # Re-check if user added photo during the delay
+                    fresh_user = await user_service.get_user_by_platform(
+                        MessagePlatform.TELEGRAM, str(chat_id)
+                    )
+                    if fresh_user and fresh_user.photo_url:
+                        return  # User already added photo
                     nudge = (
                         "📸 <b>Quick tip:</b> Adding a photo makes your matches "
                         "<b>3x more likely</b> to reach out!\n\n"

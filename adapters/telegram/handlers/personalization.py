@@ -259,8 +259,8 @@ async def skip_passion_step(callback: CallbackQuery, state: FSMContext):
 
     # Move to next enabled step without passion context
     await state.update_data(passion_text=None, passion_themes=[])
-    await _advance_to_next_step(callback.message, state, lang, after="activity_picker")
     await callback.answer()
+    await _advance_to_next_step(callback.message, state, lang, after="activity_picker")
 
 
 # === Activity Intent Handlers (Level 1) ===
