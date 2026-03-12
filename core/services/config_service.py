@@ -73,7 +73,7 @@ class ConfigService:
         """Check if a specific onboarding step is enabled."""
         steps = await self.get_onboarding_steps()
         for step in steps:
-            if step["id"] == step_id:
+            if step.get("id") == step_id:
                 return step.get("enabled", True)
         # Unknown step — default to enabled
         return True

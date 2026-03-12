@@ -26,6 +26,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from adapters.telegram.keyboards import get_main_menu_keyboard
 from adapters.telegram.loader import (
     bot,
+    config_service,
     embedding_service,
     event_service,
     matching_service,
@@ -1450,8 +1451,7 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
         # Schedule delayed photo nudge if user has no photo and step is enabled
-        from adapters.telegram.loader import config_service as _cfg_svc
-        photo_enabled = await _cfg_svc.is_step_enabled("photo_request")
+        photo_enabled = await config_service.is_step_enabled("photo_request")
         if photo_enabled and not user.photo_url:
             import asyncio
             chat_id = message.chat.id

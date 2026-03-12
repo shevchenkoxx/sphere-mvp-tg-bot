@@ -820,13 +820,14 @@ async def process_connection_mode(callback: CallbackQuery, state: FSMContext):
         mode = "|".join(selected)
         await state.update_data(connection_mode=mode)
 
+        await callback.answer()
+
         await callback.message.edit_text(
             "✨ Готовлю персональные варианты..." if lang == "ru"
             else "✨ Preparing personalized options..."
         )
 
         await _advance_to_next_step(callback.message, state, lang, after="connection_mode")
-        await callback.answer()
         return
 
     # Toggle selection
@@ -895,7 +896,11 @@ async def show_adaptive_buttons_step(message: Message, state: FSMContext, lang: 
         else f"🎯 <b>What resonates with you today?</b>{hint}"
     )
 
-    await message.edit_text(text, reply_markup=get_adaptive_buttons_keyboard(buttons, lang))
+    try:
+        await message.edit_text(text, reply_markup=get_adaptive_buttons_keyboard(buttons, lang))
+    except Exception:
+        # message may not be editable (e.g. user's own message, not bot's)
+        await message.answer(text, reply_markup=get_adaptive_buttons_keyboard(buttons, lang))
     await state.set_state(PersonalizationStates.choosing_adaptive_option)
 
 
