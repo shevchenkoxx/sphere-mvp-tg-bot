@@ -48,9 +48,11 @@ Return ONLY the message text."""
 # Rich static templates (used instead of LLM for consistent formatting)
 AUDIO_WELCOME_EN = """Hey{name_part}! Welcome to <b>Sphere</b> 👋
 
-<b>The Future of Dating is here</b>
+<b>The Future Of Networking</b>
 
 I'll find you the best people to meet — just record a quick voice intro (30-60 sec).
+
+💡 Just imagine — you meet someone at an event and introduce yourself. Now you only need to do it <b>once</b>, and the rest is on us.
 
 <b>Here's what to include:</b>
 
@@ -58,16 +60,15 @@ I'll find you the best people to meet — just record a quick voice intro (30-60
    🔍 <i>What kind of people do you want to meet?</i>
    💡 <i>How can you help others with your expertise?</i>
 
-Just relax and speak naturally — this is all about making meaningful connections!
-
-🎁 <b>Sphere × Valentine's Day Giveaway</b>
-Win a Date Dinner in top Warsaw restaurant! Details in the menu ✨"""
+Just relax and speak naturally — this is all about making meaningful connections!"""
 
 AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать в <b>Sphere</b> 👋
 
-<b>The Future of Dating is here</b>
+<b>The Future Of Networking</b>
 
 Я найду тебе лучших людей для знакомства — просто запиши короткое голосовое (30-60 сек).
+
+💡 Представь — ты знакомишься с кем-то на мероприятии и представляешься. Теперь это нужно сделать всего <b>один раз</b>, а дальше мы всё сделаем за тебя.
 
 <b>Расскажи:</b>
 
@@ -75,10 +76,7 @@ AUDIO_WELCOME_RU = """Привет{name_part}! Добро пожаловать �
    🔍 <i>Кого хочешь встретить?</i>
    💡 <i>Чем можешь помочь другим?</i>
 
-Говори свободно и естественно — здесь важны живые люди, а не формальности!
-
-🎁 <b>Sphere × Valentine's Day Giveaway</b>
-Выиграй Date Dinner в топовом ресторане Варшавы! Подробности в меню ✨"""
+Говори свободно и естественно — здесь важны живые люди, а не формальности!"""
 
 # Fallback static guides (used if LLM fails)
 AUDIO_GUIDE_PROMPT = AUDIO_WELCOME_EN

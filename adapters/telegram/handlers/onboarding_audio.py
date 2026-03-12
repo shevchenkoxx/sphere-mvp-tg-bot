@@ -295,7 +295,10 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
             "   🙋 <i>Кто ты и чем занимаешься?</i>\n"
             "   🔍 <i>Кого хочешь встретить?</i>\n"
             "   💡 <i>Чем можешь помочь другим?</i>\n\n"
-            "Говори свободно и естественно 🎙"
+            "Говори свободно и естественно 🎙\n\n"
+            "🌍 Воспринимай это как возможность рассказать о себе всей Sphere! "
+            "Один шанс рассказать миру о себе — включай всё важное и не только. "
+            "Чем больше расскажешь, тем лучше будут твои мэтчи ✨"
         )
     else:
         text = (
@@ -304,7 +307,10 @@ async def audio_ready(callback: CallbackQuery, state: FSMContext):
             "   🙋 <i>Who are you and what do you do?</i>\n"
             "   🔍 <i>What kind of people do you want to meet?</i>\n"
             "   💡 <i>How can you help others?</i>\n\n"
-            "Just speak naturally 🎙"
+            "Just speak naturally 🎙\n\n"
+            "🌍 Treat it like an opportunity to tell about yourself to the whole Sphere! "
+            "One chance to tell the world about yourself — include all the important "
+            "and not only things. The more you tell, the better match you will receive ✨"
         )
 
     # Add "Switch to text" button
@@ -441,7 +447,10 @@ async def switch_to_voice(callback: CallbackQuery, state: FSMContext):
             "   🙋 <i>Кто ты и чем занимаешься?</i>\n"
             "   🔍 <i>Кого хочешь встретить?</i>\n"
             "   💡 <i>Чем можешь помочь другим?</i>\n\n"
-            "Говори свободно и естественно 🎙"
+            "Говори свободно и естественно 🎙\n\n"
+            "🌍 Воспринимай это как возможность рассказать о себе всей Sphere! "
+            "Один шанс рассказать миру о себе — включай всё важное и не только. "
+            "Чем больше расскажешь, тем лучше будут твои мэтчи ✨"
         )
     else:
         text = (
@@ -450,7 +459,10 @@ async def switch_to_voice(callback: CallbackQuery, state: FSMContext):
             "   🙋 <i>Who are you and what do you do?</i>\n"
             "   🔍 <i>What kind of people do you want to meet?</i>\n"
             "   💡 <i>How can you help others?</i>\n\n"
-            "Just speak naturally 🎙"
+            "Just speak naturally 🎙\n\n"
+            "🌍 Treat it like an opportunity to tell about yourself to the whole Sphere! "
+            "One chance to tell the world about yourself — include all the important "
+            "and not only things. The more you tell, the better match you will receive ✨"
         )
 
     switch_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -830,6 +842,12 @@ async def show_profile_confirmation(
     if can_help_with:
         label = "Могу помочь" if is_ru else "Can help with"
         lines.append(f"💪 **{label}:** {can_help_with}")
+
+    # Rich profile hint
+    if is_ru:
+        lines.append("\n✨ Убедись что твой профиль насыщенный! Мы скоро сделаем тебе intro для нового знакомства на основе этой информации =)")
+    else:
+        lines.append("\n✨ Make sure your profile is rich! We will make you an intro to your new connection using this info soon =)")
 
     # Hashtags: merge interests + skills
     tags = []

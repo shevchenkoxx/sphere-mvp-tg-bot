@@ -881,6 +881,12 @@ async def show_profile(callback: CallbackQuery, state: FSMContext):
         goals_display = " • ".join([get_goal_display(g, lang) for g in user.goals[:3]])
         text += f"\n🎯 {goals_display}\n"
 
+    # Rich profile hint
+    if lang == "ru":
+        text += "\n✨ Убедись что твой профиль насыщенный! Мы скоро сделаем тебе intro для нового знакомства на основе этой информации =)"
+    else:
+        text += "\n✨ Make sure your profile is rich! We will make you an intro to your new connection using this info soon =)"
+
     # Photo status - subtle
     if not user.photo_url:
         add_photo = "📸 Add photo to help matches find you" if lang == "en" else "📸 Добавь фото, чтобы тебя узнали"
