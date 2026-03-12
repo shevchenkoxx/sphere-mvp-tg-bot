@@ -27,7 +27,7 @@ from adapters.telegram.keyboards import (
     get_main_menu_keyboard,
     get_skip_personalization_keyboard,
 )
-from adapters.telegram.loader import bot, user_service, voice_service
+from adapters.telegram.loader import bot, config_service, user_service, voice_service
 from adapters.telegram.states import PersonalizationStates, UserEventStates
 from config.features import Features
 from config.settings import settings
@@ -73,9 +73,40 @@ async def start_personalization(
     )
 
     if Features.PERSONALIZATION_MODE == "intent":
-        await start_activity_flow(message, state, lang)
+        activity_enabled = await config_service.is_step_enabled("activity_picker")
+        if activity_enabled:
+            await start_activity_flow(message, state, lang)
+        else:
+            # Skip activity picker, go to next enabled step
+            await _advance_to_next_step(message, state, lang, after="activity_picker")
     else:
         await start_passion_flow(message, state, lang)
+
+
+async def _advance_to_next_step(message: Message, state: FSMContext, lang: str, after: str):
+    """Skip to the next enabled step after the given step.
+
+    Step order: activity_picker → connection_mode → adaptive_buttons → save.
+    If a step is disabled, skip it and check the next one.
+    """
+    step_order = ["activity_picker", "connection_mode", "adaptive_buttons"]
+
+    # Find the index of `after` and iterate from the next step onwards
+    try:
+        start_idx = step_order.index(after) + 1
+    except ValueError:
+        start_idx = 0
+
+    for step_id in step_order[start_idx:]:
+        if await config_service.is_step_enabled(step_id):
+            if step_id == "connection_mode":
+                await show_connection_mode_step(message, state, lang)
+            elif step_id == "adaptive_buttons":
+                await show_adaptive_buttons_step(message, state, lang)
+            return
+
+    # All remaining steps disabled — save and finish
+    await save_personalization_data(message, state, lang)
 
 
 async def start_passion_flow(message: Message, state: FSMContext, lang: str):
@@ -171,8 +202,8 @@ async def process_passion_text(message: Message, state: FSMContext):
         matching_signals=themes_data.get("matching_signals", [])
     )
 
-    # Move to Step 2: Connection Mode
-    await show_connection_mode_step(message, state, lang)
+    # Move to next enabled step
+    await _advance_to_next_step(message, state, lang, after="activity_picker")
 
 
 @router.message(PersonalizationStates.waiting_passion, F.voice)
@@ -201,8 +232,8 @@ async def process_passion_voice(message: Message, state: FSMContext):
                 matching_signals=themes_data.get("matching_signals", [])
             )
 
-            # Move to Step 2
-            await show_connection_mode_step(message, state, lang)
+            # Move to next enabled step
+            await _advance_to_next_step(message, state, lang, after="activity_picker")
         else:
             await status.edit_text(
                 "Не расслышал 😅 Попробуй ещё раз или напиши текстом" if lang == "ru"
@@ -226,9 +257,9 @@ async def skip_passion_step(callback: CallbackQuery, state: FSMContext):
         "👌 Пропускаем!" if lang == "ru" else "👌 Skipping!"
     )
 
-    # Move directly to connection mode without passion context
+    # Move to next enabled step without passion context
     await state.update_data(passion_text=None, passion_themes=[])
-    await show_connection_mode_step(callback.message, state, lang)
+    await _advance_to_next_step(callback.message, state, lang, after="activity_picker")
     await callback.answer()
 
 
@@ -358,7 +389,7 @@ async def process_activity_free_text(message: Message, state: FSMContext):
         return
 
     await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
-    await show_connection_mode_step(message, state, lang)
+    await _advance_to_next_step(message, state, lang, after="activity_picker")
 
 
 @router.message(UserEventStates.choosing_activity, F.voice)
@@ -404,7 +435,7 @@ async def process_activity_voice(message: Message, state: FSMContext):
                 return
 
             await message.answer("✓ " + ("Отлично!" if lang == "ru" else "Great!"))
-            await show_connection_mode_step(message, state, lang)
+            await _advance_to_next_step(message, state, lang, after="activity_picker")
         else:
             await status.edit_text(
                 "Не расслышал 😅 Попробуй ещё раз или напиши текстом" if lang == "ru"
@@ -747,11 +778,11 @@ async def finish_activity_selection(callback: CallbackQuery, state: FSMContext, 
         )
         return
 
-    # Normal onboarding flow: proceed to connection mode
+    # Normal onboarding flow: proceed to next enabled step
     await callback.message.edit_text(
         "✓ " + ("Отлично!" if lang == "ru" else "Great!")
     )
-    await show_connection_mode_step(callback.message, state, lang)
+    await _advance_to_next_step(callback.message, state, lang, after="activity_picker")
 
 
 # === Step 2: Connection Mode ===
@@ -794,7 +825,7 @@ async def process_connection_mode(callback: CallbackQuery, state: FSMContext):
             else "✨ Preparing personalized options..."
         )
 
-        await show_adaptive_buttons_step(callback.message, state, lang)
+        await _advance_to_next_step(callback.message, state, lang, after="connection_mode")
         await callback.answer()
         return
 

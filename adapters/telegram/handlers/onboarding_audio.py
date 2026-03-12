@@ -1449,8 +1449,10 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
 
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
-        # Schedule delayed photo nudge if user has no photo
-        if not user.photo_url:
+        # Schedule delayed photo nudge if user has no photo and step is enabled
+        from adapters.telegram.loader import config_service as _cfg_svc
+        photo_enabled = await _cfg_svc.is_step_enabled("photo_request")
+        if photo_enabled and not user.photo_url:
             import asyncio
             chat_id = message.chat.id
 

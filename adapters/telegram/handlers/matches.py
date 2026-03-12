@@ -20,6 +20,7 @@ from adapters.telegram.keyboards import (
 )
 from adapters.telegram.loader import (
     bot,
+    config_service,
     event_service,
     matching_service,
     speed_dating_repo,
@@ -187,7 +188,8 @@ async def list_matches_callback(callback: CallbackQuery, index: int = 0, event_i
         )
 
     # Check if user has no photo - ask for one before showing matches
-    if not user.photo_url and state:
+    photo_step_enabled = await config_service.is_step_enabled("photo_request")
+    if photo_step_enabled and not user.photo_url and state:
         # Store context for after photo
         await state.update_data(
             matches_index=index,
