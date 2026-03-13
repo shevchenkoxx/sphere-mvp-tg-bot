@@ -26,6 +26,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from adapters.telegram.keyboards import get_main_menu_keyboard
 from adapters.telegram.loader import (
     bot,
+    config_service,
     embedding_service,
     event_service,
     matching_service,
@@ -1449,14 +1450,21 @@ async def show_top_matches(message, user, event, lang: str, tg_username: str = N
 
         await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
 
-        # Schedule delayed photo nudge if user has no photo
-        if not user.photo_url:
+        # Schedule delayed photo nudge if user has no photo and step is enabled
+        photo_enabled = await config_service.is_step_enabled("photo_request")
+        if photo_enabled and not user.photo_url:
             import asyncio
             chat_id = message.chat.id
 
             async def photo_nudge():
                 await asyncio.sleep(120)  # 2 min after matches
                 try:
+                    # Re-check if user added photo during the delay
+                    fresh_user = await user_service.get_user_by_platform(
+                        MessagePlatform.TELEGRAM, str(chat_id)
+                    )
+                    if fresh_user and fresh_user.photo_url:
+                        return  # User already added photo
                     nudge = (
                         "📸 <b>Quick tip:</b> Adding a photo makes your matches "
                         "<b>3x more likely</b> to reach out!\n\n"
