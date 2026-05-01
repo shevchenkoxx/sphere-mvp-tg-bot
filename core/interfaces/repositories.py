@@ -56,6 +56,16 @@ class IUserRepository(ABC):
         """Get existing user or create new one"""
         pass
 
+    @abstractmethod
+    async def update_platform_for_telegram(
+        self,
+        user_id: UUID,
+        tg_platform_user_id: str,
+        tg_username: Optional[str],
+    ) -> None:
+        """Promote a user row to telegram platform identity (for web → bot handoff)"""
+        pass
+
 
 class IEventRepository(ABC):
     """Interface for event data access"""

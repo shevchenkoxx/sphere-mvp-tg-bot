@@ -225,3 +225,28 @@ class SupabaseUserRepository(IUserRepository):
         """Get users in a specific city for Sphere City matching"""
         data = await self._get_users_by_city_sync(city, exclude_user_id, limit)
         return [self._to_model(d) for d in data]
+
+    @run_sync
+    def _update_platform_for_telegram_sync(
+        self,
+        user_id: UUID,
+        tg_platform_user_id: str,
+        tg_username: Optional[str],
+    ) -> None:
+        """Set platform='telegram', platform_user_id and username on a user row."""
+        payload: dict = {
+            "platform": "telegram",
+            "platform_user_id": tg_platform_user_id,
+        }
+        if tg_username is not None:
+            payload["username"] = tg_username
+        supabase.table("users").update(payload).eq("id", str(user_id)).execute()
+
+    async def update_platform_for_telegram(
+        self,
+        user_id: UUID,
+        tg_platform_user_id: str,
+        tg_username: Optional[str],
+    ) -> None:
+        """Promote a user row to telegram platform identity (for web → bot handoff)"""
+        await self._update_platform_for_telegram_sync(user_id, tg_platform_user_id, tg_username)

@@ -170,3 +170,31 @@ class UserService:
         """Check if user completed onboarding"""
         user = await self.user_repo.get_by_platform_id(platform, platform_user_id)
         return user is not None and user.onboarding_completed
+
+    async def merge_records(
+        self,
+        web_user_id: UUID,
+        tg_platform_user_id: str,
+        tg_username: Optional[str] = None,
+    ) -> UUID:
+        """Promote a web-session user into a Telegram user identity.
+
+        P1 conflict resolution: if a Telegram user with this platform_user_id
+        already exists, return their ID (prefer the existing TG record).
+        Otherwise, update the web-created user row to adopt the Telegram identity
+        and return web_user_id.
+        """
+        existing_tg_user = await self.user_repo.get_by_platform_id(
+            MessagePlatform.TELEGRAM, tg_platform_user_id
+        )
+        if existing_tg_user is not None:
+            # TG user already exists — prefer it, nothing to merge
+            return existing_tg_user.id
+
+        # Promote the web user row to a Telegram identity.
+        # UserUpdate doesn't expose platform/platform_user_id, so we call
+        # update_platform_for_telegram on the repo, which accepts a raw dict.
+        await self.user_repo.update_platform_for_telegram(
+            web_user_id, tg_platform_user_id, tg_username
+        )
+        return web_user_id
