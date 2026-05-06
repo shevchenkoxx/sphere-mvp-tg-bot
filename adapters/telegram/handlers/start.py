@@ -30,71 +30,110 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def _redact_token(token: str) -> str:
+    """Truncate handoff token for safe logging (never log full token)."""
+    return f"{token[:6]}…" if len(token) > 6 else "***"
+
+
 async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -> None:
-    """Resolve a web-session handoff token, merge user identity, show matches."""
+    """
+    Resolve a web-session handoff token, merge user identity, transfer check-in,
+    show menu. Token is atomically consumed (set NULL + status='handed_off') in
+    a single UPDATE so it cannot be replayed within its 24h TTL.
+    """
     from infrastructure.database.supabase_client import supabase
 
-    # Look up the session by handoff_token
+    # Reset any in-flight FSM (e.g. user mid-onboarding tapped a venue link)
+    await state.clear()
+
+    if not message.from_user:
+        return  # Defensive: channel posts have no from_user
+
+    # ATOMIC CONSUME: token presence is the gate. The same UPDATE that finds
+    # the row also nulls the token, so a second redeem returns 0 rows
+    # (handoff_token doesn't match on the next call). status was already set
+    # to 'handed_off' by sphere-api at mint time; we keep it that way.
     try:
-        resp = supabase.table("web_sessions").select("*").eq("handoff_token", token).execute()
+        consume = (
+            supabase.table("web_sessions")
+            .update({"handoff_token": None})
+            .eq("handoff_token", token)
+            .execute()
+        )
     except Exception as e:
-        logger.error(f"web_sessions lookup failed for token {token!r}: {e}", exc_info=True)
+        logger.error(f"web_sessions consume failed for token={_redact_token(token)}: {e}", exc_info=True)
         await message.answer("Something went wrong reconciling your account. Please try again.")
         return
 
-    if not resp.data:
+    if not consume.data:
+        # Token unknown, already consumed, or expired and cleared.
         await message.answer(
-            "That link looks invalid or already used. Please scan the venue QR again."
+            "That link is invalid, expired, or already used. Please scan the venue QR again."
         )
         return
 
-    session = resp.data[0]
+    session = consume.data[0]
 
-    # Check expiry
+    # Verify expiry (TTL is 24h server-side; double-check for safety).
     expires_raw = session.get("handoff_token_expires")
     if expires_raw:
         try:
-            # Supabase returns ISO strings; parse and compare in UTC
             expires_at = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
             if datetime.now(timezone.utc) > expires_at:
                 await message.answer(
                     "Your link expired. Please scan the venue QR again to start a new session."
                 )
                 return
-        except Exception:
-            pass  # If we can't parse, proceed optimistically
+        except (ValueError, TypeError):
+            # Reject malformed timestamps rather than accepting optimistically.
+            logger.warning(f"Malformed handoff_token_expires on consumed session {session.get('id')}")
+            await message.answer("Something went wrong reconciling your account. Please try again.")
+            return
 
     web_user_id_raw = session.get("user_id")
     if not web_user_id_raw:
         await message.answer("Something went wrong reconciling your account. Please try again.")
         return
+    web_user_id = UUID(str(web_user_id_raw))
 
-    # Merge web identity into Telegram
+    # Merge web identity into Telegram. Returns either the same web_user_id
+    # (no existing TG user — web row promoted) or an existing TG user_id (conflict).
     try:
         unified_user_id = await user_service.merge_records(
-            web_user_id=UUID(str(web_user_id_raw)),
+            web_user_id=web_user_id,
             tg_platform_user_id=str(message.from_user.id),
             tg_username=message.from_user.username,
         )
     except Exception as e:
-        logger.error(f"merge_records failed for web_user_id={web_user_id_raw}: {e}", exc_info=True)
+        logger.error(
+            f"merge_records failed for web_user_id={web_user_id} "
+            f"token={_redact_token(token)}: {e}",
+            exc_info=True,
+        )
         await message.answer("Something went wrong reconciling your account. Please try again.")
         return
 
-    # Mark session as handed off
-    try:
-        supabase.table("web_sessions").update({"status": "handed_off"}).eq(
-            "handoff_token", token
-        ).execute()
-    except Exception as e:
-        logger.warning(f"Failed to mark web_session as handed_off: {e}")
+    # If conflict path was taken (existing TG user already had a row),
+    # transfer the web user's venue check-in to the TG user so attendance is preserved.
+    if unified_user_id != web_user_id:
+        try:
+            supabase.table("venue_checkins").update(
+                {"user_id": str(unified_user_id)}
+            ).eq("user_id", str(web_user_id)).execute()
+        except Exception as e:
+            logger.warning(
+                f"Failed to transfer venue_checkins from web_user={web_user_id} "
+                f"to tg_user={unified_user_id}: {e}"
+            )
 
-    # Optionally look up venue name for a friendlier greeting
+    # Friendlier greeting if we know the venue name.
     venue_name: str | None = None
     venue_id = session.get("venue_id")
     if venue_id:
         try:
-            v_resp = supabase.table("venues").select("name").eq("id", str(venue_id)).execute()
+            v_resp = (
+                supabase.table("venues").select("name").eq("id", str(venue_id)).execute()
+            )
             if v_resp.data:
                 venue_name = v_resp.data[0].get("name")
         except Exception:
@@ -106,7 +145,6 @@ async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -
         "Your profile is in — finding the right people for you to meet now."
     )
 
-    # Send user to the main menu (matches are triggered from there)
     await message.answer(
         "What would you like to do?",
         reply_markup=get_main_menu_keyboard("en"),
@@ -147,6 +185,13 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
     """Handle /start with deep link (QR code entry)"""
     args = command.args
 
+    # Venue web handoff MUST be checked before get_or_create_user, otherwise
+    # we'd create an empty TG row and merge_records would prefer it over the
+    # web profile (orphaning the user's email/name/venue origin).
+    if args and args.startswith("web_"):
+        await _handle_web_handoff(message, state, args[len("web_"):])
+        return
+
     # Get or create user
     try:
         user = await user_service.get_or_create_user(
@@ -164,11 +209,6 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             if lang == "en" else
             "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
         )
-        return
-
-    # Check if deep link is for venue web handoff (must be first)
-    if args and args.startswith("web_"):
-        await _handle_web_handoff(message, state, args[len("web_"):])
         return
 
     # Check if deep link is for vibe check
