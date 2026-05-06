@@ -4,6 +4,7 @@ Tests for UserService — business logic with mocked repositories.
 
 
 import pytest
+from uuid import uuid4
 
 from core.domain.models import (
     MessagePlatform,
@@ -182,3 +183,53 @@ class TestCompleteOnboarding:
 
         mock_ai_service.generate_user_summary.assert_called_once()
         assert mock_user_repo.update_by_platform_id.call_count == 2  # data + summary
+
+
+class TestMergeRecords:
+    @pytest.mark.asyncio
+    async def test_merge_web_user_into_telegram_user(
+        self, mock_user_repo, mock_ai_service
+    ):
+        """When no TG user exists yet, update_platform_for_telegram is called and
+        web_user_id is returned."""
+        web_id = uuid4()
+        tg_id = "987654321"
+        tg_username = "newuser"
+
+        # No existing TG user
+        mock_user_repo.get_by_platform_id.return_value = None
+
+        service = UserService(user_repo=mock_user_repo, ai_service=mock_ai_service)
+        result = await service.merge_records(
+            web_user_id=web_id,
+            tg_platform_user_id=tg_id,
+            tg_username=tg_username,
+        )
+
+        assert result == web_id
+        mock_user_repo.get_by_platform_id.assert_called_once_with(
+            MessagePlatform.TELEGRAM, tg_id
+        )
+        mock_user_repo.update_platform_for_telegram.assert_called_once_with(
+            web_id, tg_id, tg_username
+        )
+
+    @pytest.mark.asyncio
+    async def test_merge_returns_existing_tg_user_on_conflict(
+        self, mock_user_repo, mock_ai_service, make_user
+    ):
+        """When a TG user with that platform_user_id already exists, return its ID
+        and do NOT call update_platform_for_telegram (P1 conflict: prefer existing)."""
+        web_id = uuid4()
+        existing_tg_user = make_user(platform_user_id="555")
+        mock_user_repo.get_by_platform_id.return_value = existing_tg_user
+
+        service = UserService(user_repo=mock_user_repo, ai_service=mock_ai_service)
+        result = await service.merge_records(
+            web_user_id=web_id,
+            tg_platform_user_id="555",
+            tg_username="existinguser",
+        )
+
+        assert result == existing_tg_user.id
+        mock_user_repo.update_platform_for_telegram.assert_not_called()

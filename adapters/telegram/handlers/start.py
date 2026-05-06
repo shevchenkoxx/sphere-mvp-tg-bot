@@ -4,6 +4,10 @@ Fast, friendly, conversational.
 Multilingual: English default, Russian supported.
 """
 
+import logging
+from datetime import datetime, timezone
+from uuid import UUID
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -21,7 +25,92 @@ from core.domain.constants import get_goal_display
 from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
 
+logger = logging.getLogger(__name__)
+
 router = Router()
+
+
+async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -> None:
+    """Resolve a web-session handoff token, merge user identity, show matches."""
+    from infrastructure.database.supabase_client import supabase
+
+    # Look up the session by handoff_token
+    try:
+        resp = supabase.table("web_sessions").select("*").eq("handoff_token", token).execute()
+    except Exception as e:
+        logger.error(f"web_sessions lookup failed for token {token!r}: {e}", exc_info=True)
+        await message.answer("Something went wrong reconciling your account. Please try again.")
+        return
+
+    if not resp.data:
+        await message.answer(
+            "That link looks invalid or already used. Please scan the venue QR again."
+        )
+        return
+
+    session = resp.data[0]
+
+    # Check expiry
+    expires_raw = session.get("handoff_token_expires")
+    if expires_raw:
+        try:
+            # Supabase returns ISO strings; parse and compare in UTC
+            expires_at = datetime.fromisoformat(expires_raw.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_at:
+                await message.answer(
+                    "Your link expired. Please scan the venue QR again to start a new session."
+                )
+                return
+        except Exception:
+            pass  # If we can't parse, proceed optimistically
+
+    web_user_id_raw = session.get("user_id")
+    if not web_user_id_raw:
+        await message.answer("Something went wrong reconciling your account. Please try again.")
+        return
+
+    # Merge web identity into Telegram
+    try:
+        unified_user_id = await user_service.merge_records(
+            web_user_id=UUID(str(web_user_id_raw)),
+            tg_platform_user_id=str(message.from_user.id),
+            tg_username=message.from_user.username,
+        )
+    except Exception as e:
+        logger.error(f"merge_records failed for web_user_id={web_user_id_raw}: {e}", exc_info=True)
+        await message.answer("Something went wrong reconciling your account. Please try again.")
+        return
+
+    # Mark session as handed off
+    try:
+        supabase.table("web_sessions").update({"status": "handed_off"}).eq(
+            "handoff_token", token
+        ).execute()
+    except Exception as e:
+        logger.warning(f"Failed to mark web_session as handed_off: {e}")
+
+    # Optionally look up venue name for a friendlier greeting
+    venue_name: str | None = None
+    venue_id = session.get("venue_id")
+    if venue_id:
+        try:
+            v_resp = supabase.table("venues").select("name").eq("id", str(venue_id)).execute()
+            if v_resp.data:
+                venue_name = v_resp.data[0].get("name")
+        except Exception:
+            pass  # Non-critical
+
+    greeting_venue = f" at {venue_name}" if venue_name else ""
+    await message.answer(
+        f"Welcome to Sphere{greeting_venue}. "
+        "Your profile is in — finding the right people for you to meet now."
+    )
+
+    # Send user to the main menu (matches are triggered from there)
+    await message.answer(
+        "What would you like to do?",
+        reply_markup=get_main_menu_keyboard("en"),
+    )
 
 
 def _extract_city_from_location(location: str):
@@ -75,6 +164,11 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             if lang == "en" else
             "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
         )
+        return
+
+    # Check if deep link is for venue web handoff (must be first)
+    if args and args.startswith("web_"):
+        await _handle_web_handoff(message, state, args[len("web_"):])
         return
 
     # Check if deep link is for vibe check
