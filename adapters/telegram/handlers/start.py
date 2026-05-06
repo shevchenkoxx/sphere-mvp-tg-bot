@@ -113,9 +113,45 @@ async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -
         await message.answer("Something went wrong reconciling your account. Please try again.")
         return
 
-    # If conflict path was taken (existing TG user already had a row),
-    # transfer the web user's venue check-in to the TG user so attendance is preserved.
+    # If conflict path was taken (existing TG user already had a row), copy the
+    # just-filled web profile onto the TG user (web wins — user just took the time
+    # to type those fields) and transfer venue check-ins.
     if unified_user_id != web_user_id:
+        try:
+            web_resp = (
+                supabase.table("users").select("*").eq("id", str(web_user_id)).execute()
+            )
+            if web_resp.data:
+                w = web_resp.data[0]
+                # Fields populated from the web form. Copy non-empty values onto TG user.
+                # Do NOT touch platform / platform_user_id / username (already merged).
+                copy_fields = [
+                    "email", "phone", "display_name", "bio",
+                    "looking_for", "can_help_with", "interests",
+                    "web_origin_venue_id", "web_session_id",
+                    "onboarding_completed",
+                ]
+                payload = {}
+                for f in copy_fields:
+                    v = w.get(f)
+                    if v is None:
+                        continue
+                    if isinstance(v, str) and not v.strip():
+                        continue
+                    if isinstance(v, list) and len(v) == 0:
+                        continue
+                    payload[f] = v
+                if payload:
+                    supabase.table("users").update(payload).eq(
+                        "id", str(unified_user_id)
+                    ).execute()
+        except Exception as e:
+            logger.warning(
+                f"Failed to copy web profile onto TG user "
+                f"(web={web_user_id} → tg={unified_user_id}): {e}"
+            )
+
+        # Transfer venue check-ins so attendance follows the unified user.
         try:
             supabase.table("venue_checkins").update(
                 {"user_id": str(unified_user_id)}
