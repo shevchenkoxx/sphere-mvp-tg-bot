@@ -162,16 +162,22 @@ async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -
                 f"to tg_user={unified_user_id}: {e}"
             )
 
-    # Friendlier greeting if we know the venue name.
+    # Friendlier greeting if we know the venue name; surface on_match perk if active.
     venue_name: str | None = None
+    match_perk_line = ""
     venue_id = session.get("venue_id")
     if venue_id:
         try:
             v_resp = (
-                supabase.table("venues").select("name").eq("id", str(venue_id)).execute()
+                supabase.table("venues").select("name,config").eq("id", str(venue_id)).execute()
             )
             if v_resp.data:
                 venue_name = v_resp.data[0].get("name")
+                cfg = v_resp.data[0].get("config") or {}
+                mp = (cfg.get("perks") or {}).get("on_match") or {}
+                if mp.get("active") and mp.get("label"):
+                    code_line = f" — code: {mp['code']}" if mp.get("code") else ""
+                    match_perk_line = f"\n\n🎁 {mp['label']}{code_line}"
         except Exception:
             pass  # Non-critical
 
@@ -179,6 +185,7 @@ async def _handle_web_handoff(message: Message, state: FSMContext, token: str) -
     await message.answer(
         f"Welcome to Sphere{greeting_venue}. "
         "Your profile is in — finding the right people for you to meet now."
+        f"{match_perk_line}"
     )
 
     await message.answer(
