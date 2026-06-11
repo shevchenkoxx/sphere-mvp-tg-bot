@@ -81,6 +81,8 @@ class SupabaseUserRepository(IUserRepository):
             # Referral tracking
             referral_count=data.get("referral_count", 0),
             referred_by=data.get("referred_by"),
+            # Source attribution
+            source_code=data.get("source_code"),
         )
 
     @run_sync

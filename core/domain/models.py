@@ -102,6 +102,8 @@ class User(UserBase):
     # Referral tracking
     referral_count: int = 0
     referred_by: Optional[str] = None
+    # Source attribution (outreach deep links)
+    source_code: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -144,6 +146,8 @@ class UserUpdate(BaseModel):
     # Referral tracking
     referral_count: Optional[int] = None
     referred_by: Optional[str] = None
+    # Source attribution
+    source_code: Optional[str] = None
 
 
 # === EVENT ===

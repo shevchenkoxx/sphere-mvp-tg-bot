@@ -235,6 +235,14 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
         await _handle_web_handoff(message, state, args[len("web_"):])
         return
 
+    # Outreach attribution — extract before get_or_create_user so we can
+    # persist on the user row right after creation (first-touch wins).
+    deep_link_source = None
+    if args and args.startswith("src_"):
+        rest = args[len("src_"):]
+        if rest:
+            deep_link_source = rest
+
     # Get or create user
     try:
         user = await user_service.get_or_create_user(
@@ -253,6 +261,20 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
             "⚠️ Ошибка подключения к серверу. Попробуй через минуту."
         )
         return
+
+    # Persist outreach source — first-touch only, never overwrite.
+    if deep_link_source and not user.source_code:
+        try:
+            await user_service.update_user(
+                platform=MessagePlatform.TELEGRAM,
+                platform_user_id=str(message.from_user.id),
+                source_code=deep_link_source,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Source attribution failed: {e}")
+
+    # src_ deep links are attribution-only — fall through to normal /start flow.
 
     # Check if deep link is for vibe check
     if args and args.startswith("vibe_"):
