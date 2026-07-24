@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # AI Services
     openai_api_key: str = ""
 
+    # Analytics
+    statsig_server_secret: str = ""
+
     # App Settings
     admin_telegram_ids: List[int] = []
     default_match_threshold: float = 0.4

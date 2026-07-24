@@ -4,6 +4,7 @@ Fast, friendly, conversational.
 Multilingual: English default, Russian supported.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -24,6 +25,7 @@ from adapters.telegram.states import OnboardingStates
 from core.domain.constants import get_goal_display
 from core.domain.models import MessagePlatform
 from core.utils.language import detect_lang
+from infrastructure.analytics.statsig_service import log_waitlist_signup_completed
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +272,11 @@ async def start_with_deep_link(message: Message, command: CommandObject, state: 
                 platform_user_id=str(message.from_user.id),
                 source_code=deep_link_source,
             )
+            # Fire conversion event (deduped: only on first attribution write)
+            asyncio.create_task(log_waitlist_signup_completed(
+                telegram_user_id=str(message.from_user.id),
+                src_code=deep_link_source,
+            ))
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Source attribution failed: {e}")
