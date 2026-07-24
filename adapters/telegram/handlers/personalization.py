@@ -1115,17 +1115,19 @@ async def finish_personalization(message: Message, state: FSMContext, lang: str)
                 reply_markup=get_main_menu_keyboard(lang)
             )
     else:
-        if lang == "ru":
-            text = (
-                "🎉 <b>Отлично! Твой профиль готов!</b>\n\n"
-                "Сканируй QR-код на ивенте чтобы получить матчи!"
-            )
-        else:
-            text = (
-                "🎉 <b>Great! Your profile is ready!</b>\n\n"
-                "Scan a QR code at an event to get matches!"
-            )
-        await message.answer(text, reply_markup=get_main_menu_keyboard(lang))
+        # No event — query existing matches (created by background task) and show CTA
+        from adapters.telegram.handlers.matches import send_post_onboarding_match_cta
+        from adapters.telegram.loader import matching_service as ms
+
+        user_id = str(message.chat.id)
+        user = await user_service.get_user_by_platform(MessagePlatform.TELEGRAM, user_id)
+        matches = []
+        if user:
+            try:
+                matches = await ms.get_top_matches_for_user(user.id, limit=2)
+            except Exception as e:
+                logger.error(f"Failed to query onboarding matches: {e}")
+        await send_post_onboarding_match_cta(message.chat.id, matches, lang)
 
     await state.clear()
 

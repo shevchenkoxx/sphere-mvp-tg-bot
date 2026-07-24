@@ -229,6 +229,26 @@ class SupabaseUserRepository(IUserRepository):
         return [self._to_model(d) for d in data]
 
     @run_sync
+    def _get_onboarded_users_sync(self, exclude_user_id: UUID, limit: int) -> List[dict]:
+        """Get all onboarded active users excluding self"""
+        response = supabase.table("users").select("*")\
+            .neq("id", str(exclude_user_id))\
+            .eq("onboarding_completed", True)\
+            .eq("is_active", True)\
+            .limit(limit)\
+            .execute()
+        return response.data if response.data else []
+
+    async def get_onboarded_users(
+        self,
+        exclude_user_id: UUID,
+        limit: int = 20
+    ) -> List[User]:
+        """Get all onboarded users for global matching"""
+        data = await self._get_onboarded_users_sync(exclude_user_id, limit)
+        return [self._to_model(d) for d in data]
+
+    @run_sync
     def _update_platform_for_telegram_sync(
         self,
         user_id: UUID,

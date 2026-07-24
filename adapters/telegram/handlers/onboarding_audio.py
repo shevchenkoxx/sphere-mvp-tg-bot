@@ -1238,55 +1238,60 @@ async def save_audio_profile(message_or_callback, state: FSMContext, profile_dat
                     )
                     logger.info(f"Generated embeddings for user {user_obj.id}")
 
-                    # Step 2: Run matching if user is in an event
-                    if event_code:
-                        try:
-                            updated_user = await user_repo.get_by_id(user_obj.id)
-                            if updated_user and updated_user.current_event_id:
+                    # Step 2: Run matching
+                    try:
+                        updated_user = await user_repo.get_by_id(user_obj.id)
+                        if updated_user:
+                            from adapters.telegram.handlers.matches import (
+                                notify_about_match,
+                                notify_admin_new_matches,
+                            )
+
+                            if event_code and updated_user.current_event_id:
                                 matches = await matching_service.find_matches_vector(
                                     user=updated_user,
                                     event_id=updated_user.current_event_id,
                                     limit=5
                                 )
-                                match_count = len(matches) if matches else 0
-                                logger.info(f"Auto-created {match_count} matches for user {user_obj.id}")
+                            else:
+                                matches = await matching_service.find_onboarding_matches(
+                                    user=updated_user,
+                                    limit=2
+                                )
 
-                                # Send notifications for each match
-                                if matches and chat_id:
-                                    from adapters.telegram.handlers.matches import (
-                                        notify_about_match,
-                                        notify_admin_new_matches,
-                                    )
-                                    user_name = updated_user.display_name or updated_user.first_name or "Someone"
-                                    for partner, result_with_id in matches[:3]:
-                                        partner_name = partner.display_name or partner.first_name or "Someone"
+                            match_count = len(matches) if matches else 0
+                            logger.info(f"Auto-created {match_count} matches for user {user_obj.id}")
+
+                            if matches:
+                                user_name = updated_user.display_name or updated_user.first_name or "Someone"
+                                for partner, result_with_id in matches[:3]:
+                                    if partner.platform_user_id:
                                         await notify_about_match(
-                                            user_telegram_id=chat_id,
-                                            partner_name=partner_name,
+                                            user_telegram_id=int(partner.platform_user_id),
+                                            partner_name=user_name,
                                             explanation=result_with_id.explanation,
                                             icebreaker=result_with_id.icebreaker,
                                             match_id=str(result_with_id.match_id),
                                             lang=lang,
-                                            partner_username=partner.username
+                                            partner_username=updated_user.username
                                         )
-                                    # Notify admin
-                                    admin_info = [
-                                        (
-                                            p.display_name or p.first_name or "?",
-                                            p.username,
-                                            r.compatibility_score if hasattr(r, 'compatibility_score') else "?",
-                                            str(r.match_id)
-                                        )
-                                        for p, r in matches
-                                    ]
-                                    await notify_admin_new_matches(
-                                        user_name=user_name,
-                                        user_username=updated_user.username,
-                                        matches_info=admin_info,
-                                        event_name=event_code
+                                admin_info = [
+                                    (
+                                        p.display_name or p.first_name or "?",
+                                        p.username,
+                                        r.compatibility_score if hasattr(r, 'compatibility_score') else "?",
+                                        str(r.match_id)
                                     )
-                        except Exception as me:
-                            logger.error(f"Background matching failed for user {user_obj.id}: {me}", exc_info=True)
+                                    for p, r in matches
+                                ]
+                                await notify_admin_new_matches(
+                                    user_name=user_name,
+                                    user_username=updated_user.username,
+                                    matches_info=admin_info,
+                                    event_name=event_code or "Onboarding"
+                                )
+                    except Exception as me:
+                        logger.error(f"Background matching failed for user {user_obj.id}: {me}", exc_info=True)
                 else:
                     logger.warning(f"Embeddings returned None for user {user_obj.id}")
                     if chat_id:

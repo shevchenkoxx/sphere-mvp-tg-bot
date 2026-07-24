@@ -577,3 +577,59 @@ class MatchingService:
         # Sort by score
         matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
         return matches[:limit]
+
+    async def find_onboarding_matches(
+        self,
+        user: User,
+        limit: int = 2
+    ) -> List[Tuple[User, MatchResultWithId]]:
+        """
+        Find matches for a newly onboarded user without an event.
+        Tries city-based matching first, then global matching.
+        """
+        # Try city matches first
+        if user.city_current:
+            matches = await self.find_city_matches(user, limit=limit)
+            if matches:
+                return matches
+
+        # Fall back to global matching across all onboarded users
+        from infrastructure.database.user_repository import SupabaseUserRepository
+        user_repo = SupabaseUserRepository()
+        candidates = await user_repo.get_onboarded_users(
+            exclude_user_id=user.id, limit=20
+        )
+
+        if not candidates:
+            return []
+
+        matches = []
+        for candidate in candidates:
+            if await self.match_repo.exists_any(user.id, candidate.id):
+                continue
+
+            result = await self.analyze_pair(user, candidate, "Sphere")
+            if result and result.compatibility_score >= self.threshold:
+                match_create = MatchCreate(
+                    event_id=None,
+                    user_a_id=user.id,
+                    user_b_id=candidate.id,
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    ai_explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                )
+                created_match = await self.match_repo.create(match_create)
+                result_with_id = MatchResultWithId(
+                    compatibility_score=result.compatibility_score,
+                    match_type=result.match_type,
+                    explanation=result.explanation,
+                    icebreaker=result.icebreaker,
+                    match_id=created_match.id
+                )
+                matches.append((candidate, result_with_id))
+                if len(matches) >= limit:
+                    break
+
+        matches.sort(key=lambda x: x[1].compatibility_score, reverse=True)
+        return matches[:limit]

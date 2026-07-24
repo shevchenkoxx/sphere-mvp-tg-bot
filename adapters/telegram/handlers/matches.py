@@ -1421,6 +1421,89 @@ async def send_followup_checkin(
         logger.error(f"Failed to send follow-up to {user_telegram_id}: {e}")
 
 
+async def send_post_onboarding_match_cta(
+    chat_id: int,
+    matches: list,
+    lang: str = "en"
+):
+    """Send post-onboarding match suggestion with vibe check CTA."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    if not matches:
+        text = (
+            "🎉 <b>Your profile is ready!</b>\n\n"
+            "We're finding people you'd vibe with. "
+            "Check back soon or start a vibe check!"
+        ) if lang == "en" else (
+            "🎉 <b>Профиль готов!</b>\n\n"
+            "Ищем людей, с которыми вам по пути. "
+            "Загляните позже или начните vibe check!"
+        )
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="🔮 Start a Vibe Check" if lang == "en" else "🔮 Начать Vibe Check",
+            callback_data="vibe_new",
+        )
+        builder.button(
+            text="← Menu" if lang == "en" else "← Меню",
+            callback_data="back_to_menu",
+        )
+        builder.adjust(1)
+        try:
+            await bot.send_message(
+                chat_id, text, parse_mode="HTML", reply_markup=builder.as_markup()
+            )
+        except Exception as e:
+            logger.error(f"Failed to send onboarding CTA to {chat_id}: {e}")
+        return
+
+    partner, match_result = matches[0]
+    partner_name = partner.display_name or partner.first_name or "Someone"
+    icebreaker = match_result.icebreaker or "You two have a lot in common!"
+    explanation = getattr(match_result, "explanation", None) or getattr(match_result, "ai_explanation", "") or ""
+
+    if lang == "en":
+        text = (
+            f"🎉 <b>Your profile is ready!</b>\n\n"
+            f"Here's someone you might vibe with:\n\n"
+            f"👤 <b>{partner_name}</b>\n"
+        )
+        if explanation:
+            text += f"💡 <i>{explanation}</i>\n\n"
+        text += f"💬 <b>Start with:</b> {icebreaker}"
+    else:
+        text = (
+            f"🎉 <b>Профиль готов!</b>\n\n"
+            f"Вот кто может быть вам интересен:\n\n"
+            f"👤 <b>{partner_name}</b>\n"
+        )
+        if explanation:
+            text += f"💡 <i>{explanation}</i>\n\n"
+        text += f"💬 <b>Начните с:</b> {icebreaker}"
+
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="👋 Send a Vibe Check" if lang == "en" else "👋 Отправить Vibe Check",
+        callback_data="vibe_new",
+    )
+    builder.button(
+        text="💫 See All Matches" if lang == "en" else "💫 Все матчи",
+        callback_data="my_matches",
+    )
+    builder.button(
+        text="← Menu" if lang == "en" else "← Меню",
+        callback_data="back_to_menu",
+    )
+    builder.adjust(1)
+
+    try:
+        await bot.send_message(
+            chat_id, text, parse_mode="HTML", reply_markup=builder.as_markup()
+        )
+    except Exception as e:
+        logger.error(f"Failed to send onboarding match CTA to {chat_id}: {e}")
+
+
 async def notify_admin_new_matches(
     user_name: str,
     user_username: str,
